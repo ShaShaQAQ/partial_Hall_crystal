@@ -15,7 +15,7 @@ include("../shared/hamiltonian.jl")
 include("../shared/solver.jl")
 include("../shared/structure_factor.jl")
 
-using Printf, LinearAlgebra, Dates
+using Printf, LinearAlgebra, Dates, SparseArrays
 
 # ── BLAS 线程分配：64核 / 15扇区 ≈ 每扇区4线程，提升 dot/axpy 效率 ──
 # 扇区数在晶格构建后才知，这里用已知值 15（TiltedLat30 的 Nuc）
@@ -33,7 +33,8 @@ V2  = 0.0
 V3  = 0.0
 Np  = 12
 nev = 8
-kd  = 200    # 大扇区需要更大 Krylov 子空间保证收敛
+kd  = 120    # CSR 版：256 GB 内存约束（15×kd×5.77M×16B + 31GB CSR ≈ 203 GB）
+             # 原 matrix-free 版 kd=200 需 314 GB（超限）
 
 println("="^60)
 println("ED — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np（填充 $(Np)/30 = 2/5）")
@@ -78,19 +79,19 @@ total_reps = sum(length(s.reps) for s in secs)
 @printf("  fock2rep 内存估算: %.1f MB\n",
         sum(length(s.fock2rep) for s in secs) * (8+4+16) / 1e6)
 
-# ── 4. 零通量能谱（多线程 Lanczos）──
-println("\n[4/5] 零通量能谱（多线程 Lanczos，krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
-dim_avg = round(Int, total_reps / lat.Nuc)
-println("      各扇区 dim≈$(dim_avg)，预计每扇区需数分钟")
-println("      保留各扇区基态波函数，供后处理直接使用（省去二次 Lanczos）")
+# ── 4. CSR 稀疏矩阵能谱（步骤 A 建矩阵 + 步骤 B Lanczos）──
+println("\n[4/5] CSR 稀疏矩阵能谱（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
+println("      内存预估：CSR ~31 GB + Krylov ~$(round(15*kd*5.77e6*16/1e9,digits=0)) GB")
+println("      保留各扇区基态波函数，供结构因子直接使用")
 flush(stdout)
 hops0 = build_hops(lat, t1, t3, 0.0)
 t_spec = @elapsed begin
-    all_ev, gs_vecs = compute_spectrum_with_vecs(secs, lat, hops0, V1, V2, V3;
-                                                  nev=nev, krylovdim=kd, verbose=true)
+    all_ev, gs_vecs = compute_spectrum_sparse_with_vecs(
+        secs, lat, hops0, V1, V2, V3;
+        nev=nev, krylovdim=kd, verbose=true)
 end
 E0 = all_ev[1][2]
-@printf("  能谱计算耗时: %.1f s (%.2f min)\n", t_spec, t_spec/60)
+@printf("  能谱总耗时: %.1f s (%.2f min)\n", t_spec, t_spec/60)
 
 println("\n  最低 20 个能量（相对基态）:")
 for (i,(m,e)) in enumerate(all_ev[1:min(20,end)])
@@ -102,12 +103,18 @@ gap = length(all_ev) > 15 ? all_ev[16][2]-all_ev[15][2] : NaN
 @printf("  15→16 gap:  %.8f\n", gap)
 
 open("spectrum_Np$(Np).dat","w") do f
-    println(f,"# k  E-E0  [30sites Np=$Np V1=$V1 V2=$V2 V3=$V3 t'=$t3]")
+    println(f,"# k  E-E0  [30sites Np=$Np V1=$V1 V2=$V2 V3=$V3 t'=$t3 CSR]")
     for (m,e) in all_ev
         @printf(f,"%d  %.10f\n", m, e-E0)
     end
 end
 println("  能谱保存: spectrum_Np$(Np).dat")
+
+# ── 释放 CSR 矩阵（步骤 5 结构因子不需要，释放 ~31 GB）──
+# （CSR 变量在 compute_spectrum_sparse_with_vecs 内部，已离开作用域，GC 可回收）
+GC.gc()
+@printf("  GC 后内存：已释放 CSR 矩阵\n")
+flush(stdout)
 
 # ── 5. 结构因子 ──
 # 各扇区基态波函数已由步骤 4 保存在 gs_vecs，无需重跑 Lanczos。
