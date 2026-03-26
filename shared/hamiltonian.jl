@@ -123,3 +123,73 @@ function Hv!(w::AbstractVector{ComplexF64}, v::AbstractVector{ComplexF64},
     end
     return w
 end
+
+# ============================================================
+# CSR 预建稀疏哈密顿量
+#
+# 一次性将 Hv! 的所有操作展开为 SparseMatrixCSC 的非零元，
+# 后续 Hv = mul!(w, H, v)，顺序内存访问，BLAS 优化。
+# ============================================================
+using SparseArrays
+
+"""
+    build_sparse_H(sec, lat, hops, V1, V2, V3) -> SparseMatrixCSC{ComplexF64,Int32}
+
+将动量扇区 sec 的哈密顿量预建为稀疏矩阵（CSR 格式）。
+包含：对角势能（内联 precompute_diag_H 逻辑）+ off-diagonal 跳跃项。
+fock2rep 哈希查找只发生一次（此函数内），之后 Lanczos 全程无 Dict 访问。
+"""
+function build_sparse_H(sec::KSector, lat::GenLat,
+                        hops::Vector{Tuple{Int,Int,ComplexF64}},
+                        V1::Float64, V2::Float64, V3::Float64)
+    Nrep = length(sec.reps)
+    Nrep == 0 && return spzeros(ComplexF64, Int32, 0, 0)
+    Ns = lat.Ns
+
+    Is = Int32[]
+    Js = Int32[]
+    Vs = ComplexF64[]
+    sizehint!(Is, Nrep * 50)
+    sizehint!(Js, Nrep * 50)
+    sizehint!(Vs, Nrep * 50)
+
+    for i in 1:Nrep
+        ni  = 1.0 / sec.norms[i]
+        ni2 = ni * ni
+
+        # ── 对角势能（内联 precompute_diag_H） ──
+        diag_val = 0.0
+        for (c_α, F) in sec.orbit_data[i]
+            Eint = 0.0
+            for s in 1:Ns
+                (F>>(s-1))&1 == 0 && continue
+                for k in 1:6
+                    Eint += V1 * ((F>>(lat.nb1[s,k]-1))&1) * 0.5
+                    Eint += V2 * ((F>>(lat.nb2[s,k]-1))&1) * 0.5
+                    Eint += V3 * ((F>>(lat.nb3[s,k]-1))&1) * 0.5
+                end
+            end
+            diag_val += abs2(c_α) * ni2 * Eint
+        end
+        push!(Is, Int32(i)); push!(Js, Int32(i)); push!(Vs, ComplexF64(diag_val))
+
+        # ── 跳跃（off-diagonal） ──
+        for (c_α, F) in sec.orbit_data[i]
+            coeff_base = c_α * ni
+            for (tgt, src, tval) in hops
+                (F>>(src-1))&1 == 0 && continue
+                (F>>(tgt-1))&1 == 1 && continue
+                newF, sgn_hop = hop(F, tgt, src)
+                info = get(sec.fock2rep, newF, nothing)
+                info === nothing && continue
+                (j, c_conj_norm) = info
+                push!(Is, Int32(j))
+                push!(Js, Int32(i))
+                push!(Vs, coeff_base * tval * sgn_hop * c_conj_norm)
+            end
+        end
+    end
+
+    # Julia sparse() 自动合并重复 (i,j) 索引（求和），正确处理多轨道贡献
+    return sparse(Is, Js, Vs, Nrep, Nrep)
+end
