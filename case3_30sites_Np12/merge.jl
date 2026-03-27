@@ -3,13 +3,13 @@
 # 用法：julia merge.jl
 # 前置条件：output/partial_0.jld2  partial_5.jld2  partial_10.jld2 均存在
 # ============================================================
+using Printf, Dates, JLD2
+
 include("../shared/lattice.jl")
 include("../shared/hoppings.jl")
 include("../shared/basis.jl")
 include("../shared/ksector.jl")
 include("../shared/structure_factor.jl")
-
-using Printf, Dates, JLD2
 
 Np  = 12
 V1  = 10.0
