@@ -2,3 +2,10 @@
 .claude/
 case3_server_upload.tar.gz
 .worktrees/
+
+# multi-node 运行产物
+case3_30sites_Np12/output/*.jld2
+case3_30sites_Np12/output/*.dat
+case3_30sites_Np12/output/*.pdf
+case3_30sites_Np12/output/*.out
+case3_30sites_Np12/output/*.err
