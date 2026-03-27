@@ -112,9 +112,9 @@ println("  全扇区结构因子保存: output/sq_all_Np$(Np).dat")
 println("[4/4] 绘图...")
 n_gs = 15  # Np=12, ν=2/5 → 15重简并；换粒子数时在此修改
 # plot.jl 读取当前目录下的 dat 文件，切换到 output/ 再 include
-cd("output")
-include("../plot.jl")
-cd("..")
+cd(joinpath(@__DIR__, "output"))
+include(joinpath(@__DIR__, "plot.jl"))
+cd(@__DIR__)
 
 @printf("\n总耗时: %.1f s (%.2f min)\n", time()-t_total, (time()-t_total)/60)
 println("完成时间: ", now())
