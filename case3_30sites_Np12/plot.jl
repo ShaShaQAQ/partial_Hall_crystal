@@ -12,7 +12,7 @@ V3  = @isdefined(V3) ? V3 : 0.0
 t1  = @isdefined(t1) ? t1 : 1.0
 t3  = @isdefined(t3) ? t3 : 0.2
 # 预期简并度：Np=12(ν=2/5)→15，其余默认标最低1个
-n_gs = Np == 12 ? 15 : 1
+n_gs = @isdefined(n_gs) ? n_gs : 15
 
 # ── 1. 能谱图 ──
 dat = readlines("spectrum_Np$(Np).dat")
