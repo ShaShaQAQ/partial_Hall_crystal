@@ -4,8 +4,13 @@
 # ============================================================
 using Plots, Printf
 
-Np  = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 12
-Nuc = 15
+Np  = @isdefined(Np) ? Np : (length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 12)
+Nuc = @isdefined(Nuc) ? Nuc : 15
+V1  = @isdefined(V1) ? V1 : 1.0
+V2  = @isdefined(V2) ? V2 : 0.0
+V3  = @isdefined(V3) ? V3 : 0.0
+t1  = @isdefined(t1) ? t1 : 1.0
+t3  = @isdefined(t3) ? t3 : 0.2
 # 预期简并度：Np=12(ν=2/5)→15，其余默认标最低1个
 n_gs = Np == 12 ? 15 : 1
 
@@ -32,8 +37,8 @@ p = scatter(xs, es;
     color=colors,
     xlabel="momentum k",
     ylabel="E - E₀",
-    title="Tilted 30-site (4×4-1), Np=$Np,  ν=2/5\n" *
-          "t=1, t'=0.2, V₁=1, V₂=V₃=0",
+    title="Tilted 30-site (4×4-1), Np=$Np,  ν=$(Np)/30\n" *
+          "t=$t1, t'=$t3, V₁=$V1, V₂=$V2, V₃=$V3",
     xticks=(1:15, string.(0:14)),
     legend=false,
     ylims=(-0.02, 0.40),
@@ -71,7 +76,7 @@ p2 = plot(sx, sy;
     xlabel="momentum q",
     ylabel="n(q)",
     title="Tilted 30-site (4×4-1), Np=$Np: Structure Factor n(q)  [global GS]\n" *
-          "t=1, t'=0.2, V₁=1, V₂=V₃=0",
+          "t=$t1, t'=$t3, V₁=$V1, V₂=$V2, V₃=$V3",
     xticks=(1:15, string.(0:14)),
     legend=false,
     xlims=(0.3, 15.7),
@@ -118,7 +123,7 @@ end
 p3 = heatmap(0:Nuc-1, 0:Nuc-1, Z;
     xlabel="momentum q",
     ylabel="sector k",
-    title="Structure Factor n(q) — all sectors\nNp=$Np, t=1, t'=0.2, V₁=1",
+    title="Structure Factor n(q) — all sectors\nNp=$Np, t=$t1, t'=$t3, V₁=$V1",
     xticks=0:Nuc-1,
     yticks=0:Nuc-1,
     color=:viridis,
