@@ -16,6 +16,12 @@ include("../shared/solver.jl")
 include("../shared/structure_factor.jl")
 
 using Printf, LinearAlgebra, Dates, SparseArrays
+using JLD2
+
+# ── 多节点参数：本节点负责的扇区索引范围（0-based，闭区间）──
+seg_start = parse(Int, get(ENV, "SECTOR_START", "0"))
+seg_end   = parse(Int, get(ENV, "SECTOR_END",   "14"))
+seg_id    = seg_start   # 用于命名输出文件
 
 # ── BLAS 线程分配：64核 / 15扇区 ≈ 每扇区4线程，提升 dot/axpy 效率 ──
 # 扇区数在晶格构建后才知，这里用已知值 15（TiltedLat30 的 Nuc）
@@ -78,6 +84,12 @@ total_reps = sum(length(s.reps) for s in secs)
 @printf("  fock2rep 内存估算: %.1f MB\n",
         sum(length(s.fock2rep) for s in secs) * (8+4+16) / 1e6)
 
+# ── 本节点只求解分配的扇区 ──
+secs_local = secs[seg_start+1 : seg_end+1]   # Julia 1-based
+@printf("  本节点负责扇区索引 %d–%d（共 %d 个）\n",
+        seg_start, seg_end, length(secs_local))
+flush(stdout)
+
 # ── 4. CSR 稀疏矩阵能谱（步骤 A 建矩阵 + 步骤 B Lanczos）──
 println("\n[4/5] CSR 稀疏矩阵能谱（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
 println("      内存预估：CSR ~31 GB + Krylov ~$(round(15*kd*5.77e6*16/1e9,digits=0)) GB")
@@ -86,7 +98,7 @@ flush(stdout)
 hops0 = build_hops(lat, t1, t3, 0.0)
 t_spec = @elapsed begin
     all_ev, gs_vecs = compute_spectrum_sparse_with_vecs(
-        secs, lat, hops0, V1, V2, V3;
+        secs_local, lat, hops0, V1, V2, V3;
         nev=nev, krylovdim=kd, verbose=true)
 end
 E0 = all_ev[1][2]
@@ -115,48 +127,11 @@ GC.gc()
 @printf("  GC 后内存：已释放 CSR 矩阵\n")
 flush(stdout)
 
-# ── 5. 结构因子 ──
-# 各扇区基态波函数已由步骤 4 保存在 gs_vecs，无需重跑 Lanczos。
-println("\n[5/5] 结构因子 N(k) 计算（全扇区，直接使用已保存波函数）...")
-flush(stdout)
-
-gs_k   = all_ev[1][1]
-gs_sec = secs[findfirst(s -> s.m == gs_k, secs)]
-
-# ── 5a. 全局基态扇区的 N(q) ──
-print("  全局基态 (k=$gs_k) 结构因子... "); flush(stdout)
-t_sq = @elapsed begin
-    gs_vec = gs_vecs[gs_k]
-    results_ord, results_srt, norm2, Np_check =
-        structure_factor_survey(gs_sec, gs_vec, lat, Np)
-end
-@printf("done (%.1f s)\n", t_sq)
-print_sq_report(results_srt, norm2, Np_check, Np, lat.Ns, gs_k)
-
-open("sq_Np$(Np).dat","w") do f
-    println(f,"# ik  N(k)  kx  ky  [30sites Np=$Np V1=$V1 t'=$t3]")
-    println(f,"# 基态扇区 k=$gs_k  E0=$(round(E0,digits=8))")
-    for (m, sq, kx, ky) in results_ord
-        @printf(f,"%d  %.6f  %.6f  %.6f\n", m, sq, kx, ky)
-    end
-end
-println("  结构因子保存: sq_Np$(Np).dat")
-
-# ── 5b. 所有扇区基态的 N(q)（无额外 Lanczos 开销）──
-print("  全扇区结构因子矩阵... "); flush(stdout)
-t_all = @elapsed open("sq_all_Np$(Np).dat","w") do f
-    println(f,"# sector_k  q  N(q)  kx  ky  [30sites Np=$Np V1=$V1 t'=$t3]")
-    println(f,"# 行：扇区 k（本征态来自该扇区基态）  列：动量 q")
-    for sec in secs
-        haskey(gs_vecs, sec.m) || continue
-        res_ord, _, _, _ = structure_factor_survey(sec, gs_vecs[sec.m], lat, Np)
-        for (m, sq, kx, ky) in res_ord
-            @printf(f,"%d  %d  %.6f  %.6f  %.6f\n", sec.m, m, sq, kx, ky)
-        end
-    end
-end
-@printf("done (%.1f s)\n", t_all)
-println("  全扇区结构因子保存: sq_all_Np$(Np).dat")
+# ── 5. 保存中间结果（供 merge.jl 使用）──
+mkpath("output")
+out_file = "output/partial_$(seg_id).jld2"
+jldsave(out_file; ev_pairs=all_ev, gs_vecs=gs_vecs)
+@printf("  中间结果保存: %s\n", out_file)
 
 @printf("\n总耗时: %.1f s (%.2f min)\n", time()-t_total, (time()-t_total)/60)
 println("完成时间: ", now())
