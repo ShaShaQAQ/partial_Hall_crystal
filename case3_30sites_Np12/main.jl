@@ -33,8 +33,7 @@ V2  = 2.0
 V3  = 2.0
 Np  = 12
 nev = 8
-kd  = 120    # CSR 版：256 GB 内存约束（15×kd×5.77M×16B + 31GB CSR ≈ 203 GB）
-             # 原 matrix-free 版 kd=200 需 314 GB（超限）
+kd  = 100    # 降低峰值内存：15×100×5.77M×16B + 31GB CSR ≈ 169 GB（留 ~87 GB 余量）
 
 println("="^60)
 println("ED — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np（填充 $(Np)/30 = 2/5）")
