@@ -11,19 +11,27 @@ include("../shared/basis.jl")
 include("../shared/ksector.jl")
 include("../shared/structure_factor.jl")
 
-Np  = 12
-V1  = 10.0
-V2  = 2.0
-V3  = 2.0
-t1  = 1.0
-t3  = 0.2
-
 println("="^60)
 println("Merge — 汇总 3 个节点的结果")
 println("开始时间: ", now())
 println("="^60)
 
 t_total = time()
+
+# ── 0. 从第一个 partial 文件读取参数 ──
+partial_files = [
+    ("output/partial_0.jld2",  "k=0..4"),
+    ("output/partial_5.jld2",  "k=5..9"),
+    ("output/partial_10.jld2", "k=10..14"),
+]
+isfile(partial_files[1][1]) || error("找不到文件: $(partial_files[1][1])")
+let d = load(partial_files[1][1])
+    global Np = d["Np"]
+    global V1 = d["V1"];  global V2 = d["V2"];  global V3 = d["V3"]
+    global t1 = d["t1"];  global t3 = d["t3"]
+end
+@printf("参数读取: Np=%d  V1=%.4g  V2=%.4g  V3=%.4g  t1=%.4g  t3=%.4g\n",
+        Np, V1, V2, V3, t1, t3)
 
 # ── 1. 重建晶格与完整扇区列表（供结构因子使用）──
 print("[1/4] 重建晶格与扇区... "); flush(stdout)
@@ -39,12 +47,6 @@ end
 
 # ── 2. 加载所有 partial 文件 ──
 println("[2/4] 加载 partial JLD2 文件...")
-partial_files = [
-    ("output/partial_0.jld2",  "k=0..4"),
-    ("output/partial_5.jld2",  "k=5..9"),
-    ("output/partial_10.jld2", "k=10..14"),
-]
-
 all_ev   = Tuple{Int,Float64}[]
 gs_vecs  = Dict{Int,Vector{ComplexF64}}()
 

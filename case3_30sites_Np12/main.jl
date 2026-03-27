@@ -130,7 +130,8 @@ flush(stdout)
 # ── 5. 保存中间结果（供 merge.jl 使用）──
 mkpath("output")
 out_file = "output/partial_$(seg_id).jld2"
-jldsave(out_file; ev_pairs=all_ev, gs_vecs=gs_vecs)
+jldsave(out_file; ev_pairs=all_ev, gs_vecs=gs_vecs,
+        Np=Np, V1=V1, V2=V2, V3=V3, t1=t1, t3=t3)
 @printf("  中间结果保存: %s\n", out_file)
 
 @printf("\n总耗时: %.1f s (%.2f min)\n", time()-t_total, (time()-t_total)/60)
