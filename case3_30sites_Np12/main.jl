@@ -23,12 +23,12 @@ seg_start = parse(Int, get(ENV, "SECTOR_START", "0"))
 seg_end   = parse(Int, get(ENV, "SECTOR_END",   "14"))
 seg_id    = seg_start   # 用于命名输出文件
 
-# ── BLAS 线程分配：64核 / 15扇区 ≈ 每扇区4线程，提升 dot/axpy 效率 ──
-# 扇区数在晶格构建后才知，这里用已知值 15（TiltedLat30 的 Nuc）
-let blas_per_sec = max(1, Threads.nthreads() ÷ 15)
+# ── BLAS 线程分配：按本节点实际扇区数分配，提升 dot/axpy 效率 ──
+let n_local = seg_end - seg_start + 1,
+    blas_per_sec = max(1, Threads.nthreads() ÷ n_local)
     BLAS.set_num_threads(blas_per_sec)
-    @printf("BLAS threads/扇区: %d  (Julia threads: %d)\n",
-            blas_per_sec, Threads.nthreads())
+    @printf("本节点扇区数: %d  BLAS threads/扇区: %d  (Julia threads: %d)\n",
+            n_local, blas_per_sec, Threads.nthreads())
 end
 
 # ── 参数 ──
@@ -50,6 +50,8 @@ println("开始时间: ", now())
 println("="^60)
 
 t_total = time()
+@printf("[MEM] 启动后基线 RSS = %.2f GB\n", mem_rss_gb())
+flush(stdout)
 
 # ── 1. 构建晶格 ──
 print("[1/5] 构建晶格... "); flush(stdout)
@@ -62,37 +64,42 @@ flush(stdout)
 t = @elapsed basis = gen_basis(lat.Ns, Np)
 @printf("done  (%.2f s)\n", t)
 @printf("      内存估算: %.1f MB\n", length(basis) * 8 / 1e6)
+@printf("[MEM] 生成基矢后 RSS = %.2f GB\n", mem_rss_gb())
+flush(stdout)
 
-# ── 3. 构建动量扇区（逐扇区计时，最大瓶颈）──
-println("[3/5] 构建动量扇区（逐扇区计时）...")
+# ── 3. 构建动量扇区（只建本节点负责的扇区）──
+println("[3/5] 构建动量扇区（只建扇区 $(seg_start)–$(seg_end)，跳过其余）...")
 println("      注：每扇区需对 $(length(basis)) 个 Fock 态做 $(lat.Nuc) 次平移，是主要瓶颈")
 flush(stdout)
-secs = KSector[]
+secs_local = KSector[]
 t_secs = @elapsed begin
     for (i, m) in enumerate(lat.ktab)
+        i-1 < seg_start && continue
+        i-1 > seg_end   && continue
         local t = @elapsed sec = build_ksector(basis, lat, m)
-        push!(secs, sec)
+        push!(secs_local, sec)
         elapsed_total = time() - t_total
         @printf("  k=%2d (%2d/%d): dim=%6d  本扇区 %5.1f s  累计 %5.1f s\n",
                 m, i, lat.Nuc, length(sec.reps), t, elapsed_total)
         flush(stdout)
     end
 end
-total_reps = sum(length(s.reps) for s in secs)
-@printf("  总代表元: %d / %d ✓  扇区构造总耗时: %.1f s\n",
-        total_reps, length(basis), t_secs)
-@printf("  fock2rep 内存估算: %.1f MB\n",
-        sum(length(s.fock2rep) for s in secs) * (8+4+16) / 1e6)
-
-# ── 本节点只求解分配的扇区 ──
-secs_local = secs[seg_start+1 : seg_end+1]   # Julia 1-based
-@printf("  本节点负责扇区索引 %d–%d（共 %d 个）\n",
-        seg_start, seg_end, length(secs_local))
+total_reps = sum(length(s.reps) for s in secs_local)
+@printf("  本节点扇区 %d–%d  代表元: %d  构造耗时: %.1f s\n",
+        seg_start, seg_end, total_reps, t_secs)
+@printf("  fock2rep 内存估算: %.1f MB（将在 CSR 建完后释放）\n",
+        sum(length(s.fock2rep) for s in secs_local) * (8+4+16) / 1e6)
+@printf("  orbit_data 内存估算: %.1f GB（轨道数×平均轨道长度×24B）\n",
+        sum(sum(length(od) for od in s.orbit_data) for s in secs_local) * 24 / 1e9)
+@printf("[MEM] 扇区构建完成后 RSS = %.2f GB\n", mem_rss_gb())
 flush(stdout)
 
 # ── 4. CSR 稀疏矩阵能谱（步骤 A 建矩阵 + 步骤 B Lanczos）──
 println("\n[4/5] CSR 稀疏矩阵能谱（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
-println("      内存预估：CSR ~31 GB + Krylov ~$(round(15*kd*5.77e6*16/1e9,digits=0)) GB")
+let n_loc = length(secs_local)
+    @printf("      内存预估：CSR ~%.0f GB + Krylov ~%.0f GB\n",
+            n_loc*2.1, n_loc*kd*5.77e6*16/1e9)
+end
 println("      保留各扇区基态波函数，供结构因子直接使用")
 flush(stdout)
 hops0 = build_hops(lat, t1, t3, 0.0)
@@ -124,7 +131,7 @@ println("  能谱保存: spectrum_Np$(Np).dat")
 # ── 释放 CSR 矩阵（步骤 5 结构因子不需要，释放 ~31 GB）──
 # （CSR 变量在 compute_spectrum_sparse_with_vecs 内部，已离开作用域，GC 可回收）
 GC.gc()
-@printf("  GC 后内存：已释放 CSR 矩阵\n")
+@printf("  GC 后 RSS = %.2f GB（已释放 CSR 矩阵+Krylov向量）\n", mem_rss_gb())
 flush(stdout)
 
 # ── 5. 保存中间结果（供 merge.jl 使用）──
@@ -133,6 +140,7 @@ out_file = "output/partial_$(seg_id).jld2"
 jldsave(out_file; ev_pairs=all_ev, gs_vecs=gs_vecs,
         Np=Np, V1=V1, V2=V2, V3=V3, t1=t1, t3=t3)
 @printf("  中间结果保存: %s\n", out_file)
+@printf("[MEM] JLD2 保存后 RSS = %.2f GB\n", mem_rss_gb())
 
 @printf("\n总耗时: %.1f s (%.2f min)\n", time()-t_total, (time()-t_total)/60)
 println("完成时间: ", now())

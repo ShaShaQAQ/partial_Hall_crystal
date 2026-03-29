@@ -7,6 +7,19 @@
 # ============================================================
 using KrylovKit, Printf
 
+# ── 实际内存用量（RSS，Linux /proc，macOS fallback）──
+function mem_rss_gb()
+    try
+        for line in eachline("/proc/self/status")
+            if startswith(line, "VmRSS:")
+                return parse(Int, split(line)[2]) / 1e6   # kB → GB
+            end
+        end
+    catch
+    end
+    return (Sys.total_memory() - Sys.free_memory()) / 1e9  # fallback
+end
+
 function solve_sector(sec::KSector, lat::GenLat,
                       hops::Vector{Tuple{Int,Int,ComplexF64}},
                       V1::Float64, V2::Float64, V3::Float64;
@@ -220,18 +233,29 @@ function compute_spectrum_sparse_with_vecs(
     # ── A. 并行建 CSR ──
     @printf("  [CSR-A] 并行构建 %d 个稀疏 H 矩阵 (%d 线程)...\n",
             n, Threads.nthreads())
+    @printf("  [MEM] CSR 构建前 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
     H_csrs = Vector{SparseMatrixCSC{ComplexF64,Int32}}(undef, n)
     t_build = @elapsed Threads.@threads for i in 1:n
         H_csrs[i] = build_sparse_H(secs[i], lat, hops, V1, V2, V3)
+        empty!(secs[i].fock2rep)   # CSR 建完即释放，节省 ~3.4 GB/扇区
+        lock(lk) do
+            @printf("  [MEM] k=%2d CSR 完成 nnz=%d (%.2f GB)  RSS=%.2f GB\n",
+                    secs[i].m, nnz(H_csrs[i]),
+                    nnz(H_csrs[i])*12/1e9, mem_rss_gb())
+            flush(stdout)
+        end
     end
     nnz_total = sum(nnz(H) for H in H_csrs)
     @printf("  [CSR-A] 完成  耗时 %.1f s  总非零元 %d  内存估算 %.2f GB\n",
             t_build, nnz_total, nnz_total * 12 / 1e9)
+    @printf("  [MEM] CSR 全部完成后 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
 
     # ── B. 并行 Lanczos ──
     @printf("  [CSR-B] 并行 Lanczos  krylovdim=%d  nev=%d...\n", krylovdim, nev)
+    @printf("  [MEM] Lanczos 开始前 RSS = %.2f GB  (预估 Krylov 峰值 +%.1f GB)\n",
+            mem_rss_gb(), n * krylovdim * (length(secs[1].reps)*16/1e9))
     flush(stdout)
     all_res  = Vector{Vector{Tuple{Int,Float64}}}(undef, n)
     all_vecs = Vector{Vector{ComplexF64}}(undef, n)
@@ -273,9 +297,9 @@ function compute_spectrum_sparse_with_vecs(
 
         nhv = n_hv[]
         msg = @sprintf(
-            "  ✓ [k=%2d] dim=%7d  H·v×%3d  均 %.5f s/次  Lanczos %.1f s  E0=%.8f\n",
+            "  ✓ [k=%2d] dim=%7d  H·v×%3d  均 %.5f s/次  Lanczos %.1f s  E0=%.8f  RSS=%.2f GB\n",
             sec.m, Nrep, nhv, nhv > 0 ? t_hv[] / nhv : 0.0, t_eig,
-            isempty(vals) ? NaN : real(vals[1]))
+            isempty(vals) ? NaN : real(vals[1]), mem_rss_gb())
         lock(lk) do; print(msg); flush(stdout); end
 
         n_vals = min(nev_actual, length(vals))
@@ -284,6 +308,7 @@ function compute_spectrum_sparse_with_vecs(
     end
     @printf("  [CSR-B] Lanczos 完成  耗时 %.1f s (%.2f min)\n",
             t_solve, t_solve / 60)
+    @printf("  [MEM] Lanczos 完成后 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
 
     all_ev = Tuple{Int,Float64}[]
