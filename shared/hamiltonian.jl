@@ -158,24 +158,54 @@ function build_sparse_H(sec::KSector, lat::GenLat,
     Nrep == 0 && return spzeros(ComplexF64, Int32, 0, 0)
     Ns = lat.Ns
 
-    @printf("    [build_sparse_H k=%2d] 开始  Nrep=%d  RSS=%.2f GB\n",
+    @printf("    [build_sparse_H k=%2d] 开始 Nrep=%d  RSS=%.2f GB\n",
             sec.m, Nrep, mem_rss_gb()); flush(stdout)
 
-    Is = Int32[]
-    Js = Int32[]
-    Vs = ComplexF64[]
-    sizehint!(Is, Nrep * 50)
-    sizehint!(Js, Nrep * 50)
-    sizehint!(Vs, Nrep * 50)
+    # ── 第一遍：统计每列唯一非零行数，用于精确分配 CSC 数组 ──
+    col_nnz = zeros(Int32, Nrep)
+    row_set = Set{Int32}()
+    for i in 1:Nrep
+        empty!(row_set)
+        push!(row_set, Int32(i))                    # 对角元
+        for (_, F) in sec.orbit_data[i]
+            for (tgt, src, _) in hops
+                (F>>(src-1))&1 == 0 && continue
+                (F>>(tgt-1))&1 == 1 && continue
+                newF, _ = hop(F, tgt, src)
+                info = get(sec.fock2rep, newF, nothing)
+                info === nothing && continue
+                push!(row_set, info[1])
+            end
+        end
+        col_nnz[i] = Int32(length(row_set))
+    end
 
-    @printf("    [build_sparse_H k=%2d] sizehint 后  RSS=%.2f GB\n",
+    colptr = Vector{Int32}(undef, Nrep + 1)
+    colptr[1] = Int32(1)
+    for i in 1:Nrep
+        colptr[i+1] = colptr[i] + col_nnz[i]
+    end
+    total_nnz = Int(colptr[Nrep+1]) - 1
+
+    @printf("    [build_sparse_H k=%2d] 第一遍完成  nnz=%d  RSS=%.2f GB\n",
+            sec.m, total_nnz, mem_rss_gb()); flush(stdout)
+
+    rowval = Vector{Int32}(undef, total_nnz)
+    nzval  = Vector{ComplexF64}(undef, total_nnz)
+
+    @printf("    [build_sparse_H k=%2d] CSC 数组分配后  RSS=%.2f GB\n",
             sec.m, mem_rss_gb()); flush(stdout)
+
+    # ── 第二遍：逐列用小 Dict 累加，直接写入 CSC 数组 ──
+    col_buf = Dict{Int32, ComplexF64}()
+    sizehint!(col_buf, 256)
 
     for i in 1:Nrep
         ni  = 1.0 / sec.norms[i]
         ni2 = ni * ni
+        empty!(col_buf)
 
-        # ── 对角势能（内联 precompute_diag_H） ──
+        # 对角势能
         diag_val = 0.0
         for (c_α, F) in sec.orbit_data[i]
             Eint = 0.0
@@ -189,9 +219,9 @@ function build_sparse_H(sec::KSector, lat::GenLat,
             end
             diag_val += abs2(c_α) * ni2 * Eint
         end
-        push!(Is, Int32(i)); push!(Js, Int32(i)); push!(Vs, ComplexF64(diag_val))
+        col_buf[Int32(i)] = ComplexF64(diag_val)
 
-        # ── 跳跃（off-diagonal） ──
+        # 跳跃（off-diagonal）
         for (c_α, F) in sec.orbit_data[i]
             coeff_base = c_α * ni
             for (tgt, src, tval) in hops
@@ -201,21 +231,22 @@ function build_sparse_H(sec::KSector, lat::GenLat,
                 info = get(sec.fock2rep, newF, nothing)
                 info === nothing && continue
                 (j, c_conj_norm) = info
-                push!(Is, Int32(j))
-                push!(Js, Int32(i))
-                push!(Vs, coeff_base * tval * sgn_hop * c_conj_norm)
+                v = coeff_base * tval * sgn_hop * c_conj_norm
+                col_buf[j] = get(col_buf, j, zero(ComplexF64)) + v
             end
+        end
+
+        # 写入 CSC（行号排序，Julia SpMV 要求）
+        pos = Int(colptr[i])
+        for j in sort!(collect(keys(col_buf)))
+            rowval[pos] = j
+            nzval[pos]  = col_buf[j]
+            pos += 1
         end
     end
 
-    @printf("    [build_sparse_H k=%2d] 循环完成  COO 条目=%d  RSS=%.2f GB\n",
-            sec.m, length(Is), mem_rss_gb()); flush(stdout)
+    @printf("    [build_sparse_H k=%2d] 第二遍完成  RSS=%.2f GB\n",
+            sec.m, mem_rss_gb()); flush(stdout)
 
-    # Julia sparse() 自动合并重复 (i,j) 索引（求和），正确处理多轨道贡献
-    H = sparse(Is, Js, Vs, Nrep, Nrep)
-
-    @printf("    [build_sparse_H k=%2d] sparse() 完成  nnz=%d  RSS=%.2f GB\n",
-            sec.m, nnz(H), mem_rss_gb()); flush(stdout)
-
-    return H
+    return SparseMatrixCSC(Nrep, Nrep, colptr, rowval, nzval)
 end
