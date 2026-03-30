@@ -74,7 +74,7 @@ p = scatter(phi_plot, e_plot;
     title      = "Spectral Flow — Tilted 30-site (4×4-1), Np=$Np (ν=2/5)\n" *
                  "t=$t1, t'=$t3, V₁=$V1, V₂=$V2, V₃=$V3",
     legend     = false,
-    xlims      = (-0.02, 1.02),
+    xlims      = (-0.04, 2.04),
     ylims      = (-0.02, ymax),
     framestyle = :box,
     size       = (900, 600),
