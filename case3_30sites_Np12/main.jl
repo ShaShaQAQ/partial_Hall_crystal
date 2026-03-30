@@ -39,7 +39,7 @@ V2  = 2.0
 V3  = 2.0
 Np  = 12
 nev = 8
-kd  = 60     # 流水线模式峰值：5×60×5.77M×16B + 5×2.1GB CSR ≈ 38 GB
+kd  = 60
 
 println("="^60)
 println("ED — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np（填充 $(Np)/30 = 2/5）")
@@ -63,7 +63,6 @@ t = @elapsed lat = TiltedLat30()
 flush(stdout)
 t = @elapsed basis = gen_basis(lat.Ns, Np)
 @printf("done  (%.2f s)\n", t)
-@printf("      内存估算: %.1f MB\n", length(basis) * 8 / 1e6)
 @printf("[MEM] 生成基矢后 RSS = %.2f GB\n", mem_rss_gb())
 flush(stdout)
 
@@ -83,16 +82,14 @@ t_pipeline = @elapsed begin
 
         # 建 ksector
         t_ks = @elapsed sec = build_ksector(basis, lat, m)
-        od_gb = sum(length(od) for od in sec.orbit_data) * 24 / 1e9
-        f2r_gb = length(sec.fock2rep) * (8+4+16) * 2 / 1e9  # ×2 for Dict overhead
-        @printf("  k=%2d  dim=%d  ksector %.1f s  orbit=%.2fGB  fock2rep≈%.2fGB  RSS=%.2f GB\n",
-                m, length(sec.reps), t_ks, od_gb, f2r_gb, mem_rss_gb())
+        @printf("  k=%2d  dim=%d  ksector %.1f s  RSS=%.2f GB\n",
+                m, length(sec.reps), t_ks, mem_rss_gb())
         flush(stdout)
 
         # 建 CSR（使用 orbit_data + fock2rep）
         t_csr = @elapsed H = build_sparse_H(sec, lat, hops0, V1, V2, V3)
-        @printf("  k=%2d  CSR %.1f s  nnz=%d (%.2f GB)  RSS=%.2f GB\n",
-                m, t_csr, nnz(H), nnz(H)*12/1e9, mem_rss_gb())
+        @printf("  k=%2d  CSR %.1f s  nnz=%d  RSS=%.2f GB\n",
+                m, t_csr, nnz(H), mem_rss_gb())
         flush(stdout)
 
         # 立即释放不再需要的大内存
@@ -117,11 +114,6 @@ flush(stdout)
 
 # ── 4. 并行 Lanczos（对预建 CSR 矩阵）──
 println("\n[4/5] 并行 Lanczos（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
-let n_loc = length(secs_local)
-    @printf("      内存预估：CSR %.0f GB + Krylov %.0f GB = %.0f GB 峰值\n",
-            n_loc*2.1, n_loc*kd*5.77e6*16/1e9,
-            n_loc*2.1 + n_loc*kd*5.77e6*16/1e9)
-end
 flush(stdout)
 t_spec = @elapsed begin
     all_ev, gs_vecs = lanczos_sparse_sectors(
@@ -148,10 +140,8 @@ open("spectrum_Np$(Np).dat","w") do f
 end
 println("  能谱保存: spectrum_Np$(Np).dat")
 
-# ── 释放 CSR 矩阵（步骤 5 结构因子不需要，释放 ~31 GB）──
-# （CSR 变量在 compute_spectrum_sparse_with_vecs 内部，已离开作用域，GC 可回收）
 GC.gc()
-@printf("  GC 后 RSS = %.2f GB（已释放 CSR 矩阵+Krylov向量）\n", mem_rss_gb())
+@printf("[MEM] GC 后 RSS = %.2f GB\n", mem_rss_gb())
 flush(stdout)
 
 # ── 5. 保存中间结果（供 merge.jl 使用）──

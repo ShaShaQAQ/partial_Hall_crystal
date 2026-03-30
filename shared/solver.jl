@@ -269,8 +269,7 @@ function lanczos_sparse_sectors(
 
     @printf("  [CSR-B] 并行 Lanczos  krylovdim=%d  nev=%d  %d 个扇区...\n",
             krylovdim, nev, n)
-    @printf("  [MEM] Lanczos 开始前 RSS = %.2f GB  (预估 Krylov 峰值 +%.1f GB)\n",
-            mem_rss_gb(), n * krylovdim * (length(secs[1].reps)*16/1e9))
+    @printf("  [MEM] Lanczos 开始前 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
     all_res  = Vector{Vector{Tuple{Int,Float64}}}(undef, n)
     all_vecs = Vector{Vector{ComplexF64}}(undef, n)
