@@ -10,7 +10,7 @@ V2 = @isdefined(V2) ? V2 : 2.0
 V3 = @isdefined(V3) ? V3 : 2.0
 t1 = @isdefined(t1) ? t1 : 1.0
 t3 = @isdefined(t3) ? t3 : 0.2
-n_show = @isdefined(n_show) ? n_show : 2   # 每扇区保留最低 n_show 个态
+n_show = @isdefined(n_show) ? n_show : 2   # 每扇区保留最低 2 个态（与 nev 一致）
 
 dat = readlines("sf_Np$(Np).dat")
 
