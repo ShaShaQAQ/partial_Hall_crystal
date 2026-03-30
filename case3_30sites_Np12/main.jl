@@ -56,7 +56,7 @@ flush(stdout)
 # ── 1. 构建晶格 ──
 print("[1/5] 构建晶格... "); flush(stdout)
 t = @elapsed lat = TiltedLat30()
-@printf("done  Ns=%d  Nuc=%d  (%.2f s)\n", lat.Ns, lat.Nuc, t)
+@printf("done  Ns=%d  Nuc=%d  (%.2f s)  RSS=%.2f GB\n", lat.Ns, lat.Nuc, t, mem_rss_gb())
 
 # ── 2. 生成基矢 ──
 @printf("[2/5] 生成基矢 C(%d,%d)=%d... ", lat.Ns, Np, binomial(lat.Ns, Np))
@@ -72,7 +72,8 @@ flush(stdout)
 println("[3/5] 流水线构建扇区+CSR（扇区 $(seg_start)–$(seg_end)）...")
 println("      每扇区：build_ksector → build_sparse_H → empty!(orbit_data/fock2rep) → GC")
 flush(stdout)
-hops0     = build_hops(lat, t1, t3, 0.0)
+t = @elapsed hops0 = build_hops(lat, t1, t3, 0.0)
+@printf("  build_hops %.2f s  RSS=%.2f GB\n", t, mem_rss_gb())
 H_csrs    = SparseMatrixCSC{ComplexF64,Int32}[]
 secs_local = KSector[]
 t_pipeline = @elapsed begin
@@ -139,6 +140,8 @@ open("spectrum_Np$(Np).dat","w") do f
     end
 end
 println("  能谱保存: spectrum_Np$(Np).dat")
+@printf("[MEM] 能谱写文件后 RSS = %.2f GB\n", mem_rss_gb())
+flush(stdout)
 
 GC.gc()
 @printf("[MEM] GC 后 RSS = %.2f GB\n", mem_rss_gb())

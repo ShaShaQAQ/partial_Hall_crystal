@@ -237,15 +237,13 @@ function compute_spectrum_sparse_with_vecs(
         H_csrs[i] = build_sparse_H(secs[i], lat, hops, V1, V2, V3)
         empty!(secs[i].fock2rep)
         lock(lk) do
-            @printf("  [MEM] k=%2d CSR 完成 nnz=%d (%.2f GB)  RSS=%.2f GB\n",
-                    secs[i].m, nnz(H_csrs[i]),
-                    nnz(H_csrs[i])*12/1e9, mem_rss_gb())
+            @printf("  [MEM] k=%2d CSR 完成 nnz=%d  RSS=%.2f GB\n",
+                    secs[i].m, nnz(H_csrs[i]), mem_rss_gb())
             flush(stdout)
         end
     end
     nnz_total = sum(nnz(H) for H in H_csrs)
-    @printf("  [CSR-A] 完成  耗时 %.1f s  总非零元 %d  内存估算 %.2f GB\n",
-            t_build, nnz_total, nnz_total * 12 / 1e9)
+    @printf("  [CSR-A] 完成  耗时 %.1f s  总非零元 %d\n", t_build, nnz_total)
     @printf("  [MEM] CSR 全部完成后 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
 
