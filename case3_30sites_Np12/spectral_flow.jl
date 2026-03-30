@@ -43,7 +43,7 @@ println("谱流计算 — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np (ν=2/5)")
         seg_start, seg_end, seg_end - seg_start + 1)
 @printf("phi points: %d  range: 0 to %.4f (%.1f * 2pi)\n",
         N_phi, phi_grid[end], phi_grid[end]/(2π))
-@printf("t=$t1  t'=$t3  V1=$V1  V2=$V2  V3=$V3\n")
+println("t=$t1  t'=$t3  V1=$V1  V2=$V2  V3=$V3")
 @printf("nev=%d  krylovdim=%d\n", nev, kd)
 @printf("Julia threads: %d  BLAS threads: %d\n",
         Threads.nthreads(), BLAS.get_num_threads())
