@@ -39,7 +39,7 @@ V2  = 2.0
 V3  = 2.0
 Np  = 12
 nev = 8
-kd  = 100    # 降低峰值内存：15×100×5.77M×16B + 31GB CSR ≈ 169 GB（留 ~87 GB 余量）
+kd  = 60     # 流水线模式峰值：5×60×5.77M×16B + 5×2.1GB CSR ≈ 38 GB
 
 println("="^60)
 println("ED — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np（填充 $(Np)/30 = 2/5）")
@@ -67,45 +67,65 @@ t = @elapsed basis = gen_basis(lat.Ns, Np)
 @printf("[MEM] 生成基矢后 RSS = %.2f GB\n", mem_rss_gb())
 flush(stdout)
 
-# ── 3. 构建动量扇区（只建本节点负责的扇区）──
-println("[3/5] 构建动量扇区（只建扇区 $(seg_start)–$(seg_end)，跳过其余）...")
-println("      注：每扇区需对 $(length(basis)) 个 Fock 态做 $(lat.Nuc) 次平移，是主要瓶颈")
+# ── 3. 流水线：逐扇区 ksector → CSR → 立即释放 orbit_data/fock2rep ──
+# 内存优化关键：不再批量构建所有 ksector，而是每扇区建完 CSR 立即释放大内存。
+# 峰值从 ~39 GB（旧）降至 ~11 GB/扇区（新）。
+println("[3/5] 流水线构建扇区+CSR（扇区 $(seg_start)–$(seg_end)）...")
+println("      每扇区：build_ksector → build_sparse_H → empty!(orbit_data/fock2rep) → GC")
 flush(stdout)
+hops0     = build_hops(lat, t1, t3, 0.0)
+H_csrs    = SparseMatrixCSC{ComplexF64,Int32}[]
 secs_local = KSector[]
-t_secs = @elapsed begin
+t_pipeline = @elapsed begin
     for (i, m) in enumerate(lat.ktab)
         i-1 < seg_start && continue
         i-1 > seg_end   && continue
-        local t = @elapsed sec = build_ksector(basis, lat, m)
-        push!(secs_local, sec)
-        elapsed_total = time() - t_total
-        @printf("  k=%2d (%2d/%d): dim=%6d  本扇区 %5.1f s  累计 %5.1f s\n",
-                m, i, lat.Nuc, length(sec.reps), t, elapsed_total)
+
+        # 建 ksector
+        t_ks = @elapsed sec = build_ksector(basis, lat, m)
+        od_gb = sum(length(od) for od in sec.orbit_data) * 24 / 1e9
+        f2r_gb = length(sec.fock2rep) * (8+4+16) * 2 / 1e9  # ×2 for Dict overhead
+        @printf("  k=%2d  dim=%d  ksector %.1f s  orbit=%.2fGB  fock2rep≈%.2fGB  RSS=%.2f GB\n",
+                m, length(sec.reps), t_ks, od_gb, f2r_gb, mem_rss_gb())
         flush(stdout)
+
+        # 建 CSR（使用 orbit_data + fock2rep）
+        t_csr = @elapsed H = build_sparse_H(sec, lat, hops0, V1, V2, V3)
+        @printf("  k=%2d  CSR %.1f s  nnz=%d (%.2f GB)  RSS=%.2f GB\n",
+                m, t_csr, nnz(H), nnz(H)*12/1e9, mem_rss_gb())
+        flush(stdout)
+
+        # 立即释放不再需要的大内存
+        empty!(sec.fock2rep)
+        empty!(sec.orbit_data)
+        GC.gc()
+        @printf("  k=%2d  GC 后 RSS=%.2f GB\n", m, mem_rss_gb())
+        flush(stdout)
+
+        push!(H_csrs, H)
+        push!(secs_local, sec)
     end
 end
+
+# 释放 basis（Lanczos 不再需要）
+empty!(basis); GC.gc()
 total_reps = sum(length(s.reps) for s in secs_local)
-@printf("  本节点扇区 %d–%d  代表元: %d  构造耗时: %.1f s\n",
-        seg_start, seg_end, total_reps, t_secs)
-@printf("  fock2rep 内存估算: %.1f MB（将在 CSR 建完后释放）\n",
-        sum(length(s.fock2rep) for s in secs_local) * (8+4+16) / 1e6)
-@printf("  orbit_data 内存估算: %.1f GB（轨道数×平均轨道长度×24B）\n",
-        sum(sum(length(od) for od in s.orbit_data) for s in secs_local) * 24 / 1e9)
-@printf("[MEM] 扇区构建完成后 RSS = %.2f GB\n", mem_rss_gb())
+@printf("  流水线完成  %d 扇区  代表元合计: %d  耗时: %.1f s\n",
+        length(secs_local), total_reps, t_pipeline)
+@printf("[MEM] basis 释放后 RSS = %.2f GB\n", mem_rss_gb())
 flush(stdout)
 
-# ── 4. CSR 稀疏矩阵能谱（步骤 A 建矩阵 + 步骤 B Lanczos）──
-println("\n[4/5] CSR 稀疏矩阵能谱（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
+# ── 4. 并行 Lanczos（对预建 CSR 矩阵）──
+println("\n[4/5] 并行 Lanczos（krylovdim=$(kd)，$(Threads.nthreads()) 线程）...")
 let n_loc = length(secs_local)
-    @printf("      内存预估：CSR ~%.0f GB + Krylov ~%.0f GB\n",
-            n_loc*2.1, n_loc*kd*5.77e6*16/1e9)
+    @printf("      内存预估：CSR %.0f GB + Krylov %.0f GB = %.0f GB 峰值\n",
+            n_loc*2.1, n_loc*kd*5.77e6*16/1e9,
+            n_loc*2.1 + n_loc*kd*5.77e6*16/1e9)
 end
-println("      保留各扇区基态波函数，供结构因子直接使用")
 flush(stdout)
-hops0 = build_hops(lat, t1, t3, 0.0)
 t_spec = @elapsed begin
-    all_ev, gs_vecs = compute_spectrum_sparse_with_vecs(
-        secs_local, lat, hops0, V1, V2, V3;
+    all_ev, gs_vecs = lanczos_sparse_sectors(
+        secs_local, H_csrs;
         nev=nev, krylovdim=kd, verbose=true)
 end
 E0 = all_ev[1][2]

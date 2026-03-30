@@ -214,12 +214,9 @@ end
 """
     compute_spectrum_sparse_with_vecs(secs, lat, hops, V1, V2, V3; ...)
 
-用预建 CSR 稀疏矩阵做并行 Lanczos。
-步骤 A 并行建矩阵，步骤 B 并行求解，返回格式与 compute_spectrum_with_vecs 相同。
-
-krylovdim 建议值：
-  Np=12, 30 sites（dim≈5.77M）：krylovdim=120（203 GB peak）
-  Np=13, 30 sites（dim≈7.98M）：krylovdim=80 （204 GB peak）
+【旧接口，保留供兼容】批量建 CSR + 并行 Lanczos。
+内存峰值高（所有扇区的 orbit_data/fock2rep 同时存在）。
+新代码请在 main.jl 中用流水线方式手动调用 build_sparse_H + lanczos_sparse_sectors。
 """
 function compute_spectrum_sparse_with_vecs(
         secs::Vector{KSector}, lat::GenLat,
@@ -238,7 +235,7 @@ function compute_spectrum_sparse_with_vecs(
     H_csrs = Vector{SparseMatrixCSC{ComplexF64,Int32}}(undef, n)
     t_build = @elapsed Threads.@threads for i in 1:n
         H_csrs[i] = build_sparse_H(secs[i], lat, hops, V1, V2, V3)
-        empty!(secs[i].fock2rep)   # CSR 建完即释放，节省 ~3.4 GB/扇区
+        empty!(secs[i].fock2rep)
         lock(lk) do
             @printf("  [MEM] k=%2d CSR 完成 nnz=%d (%.2f GB)  RSS=%.2f GB\n",
                     secs[i].m, nnz(H_csrs[i]),
@@ -252,8 +249,26 @@ function compute_spectrum_sparse_with_vecs(
     @printf("  [MEM] CSR 全部完成后 RSS = %.2f GB\n", mem_rss_gb())
     flush(stdout)
 
-    # ── B. 并行 Lanczos ──
-    @printf("  [CSR-B] 并行 Lanczos  krylovdim=%d  nev=%d...\n", krylovdim, nev)
+    return lanczos_sparse_sectors(secs, H_csrs; nev=nev, krylovdim=krylovdim, verbose=verbose)
+end
+
+"""
+    lanczos_sparse_sectors(secs, H_csrs; nev, krylovdim, verbose)
+
+对预建的 CSR 矩阵并行 Lanczos 求解。
+secs 只需保留 .m 和 .reps（orbit_data/fock2rep 可已清空）。
+供流水线模式的 main.jl 调用，避免 orbit_data/fock2rep 在 Lanczos 阶段仍占用内存。
+"""
+function lanczos_sparse_sectors(
+        secs::Vector{KSector},
+        H_csrs::Vector{SparseMatrixCSC{ComplexF64,Int32}};
+        nev::Int=4, krylovdim::Int=60, verbose::Bool=false)
+
+    n  = length(secs)
+    lk = ReentrantLock()
+
+    @printf("  [CSR-B] 并行 Lanczos  krylovdim=%d  nev=%d  %d 个扇区...\n",
+            krylovdim, nev, n)
     @printf("  [MEM] Lanczos 开始前 RSS = %.2f GB  (预估 Krylov 峰值 +%.1f GB)\n",
             mem_rss_gb(), n * krylovdim * (length(secs[1].reps)*16/1e9))
     flush(stdout)
@@ -306,6 +321,7 @@ function compute_spectrum_sparse_with_vecs(
         all_res[i]  = [(sec.m, e) for e in sort(real.(vals[1:n_vals]))]
         all_vecs[i] = isempty(vecs) ? ComplexF64[] : vecs[1]
     end
+
     @printf("  [CSR-B] Lanczos 完成  耗时 %.1f s (%.2f min)\n",
             t_solve, t_solve / 60)
     @printf("  [MEM] Lanczos 完成后 RSS = %.2f GB\n", mem_rss_gb())
