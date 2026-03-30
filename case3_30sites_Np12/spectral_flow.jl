@@ -41,7 +41,7 @@ println("="^60)
 println("谱流计算 — 倾斜 (4×4-1) 团簇，30 sites，Np=$Np (ν=2/5)")
 @printf("本节点扇区: %d – %d  (共 %d 个)\n",
         seg_start, seg_end, seg_end - seg_start + 1)
-@printf("φ 点数: %d  范围: 0 → %.4f (%.1f×2π)\n",
+@printf("phi points: %d  range: 0 to %.4f (%.1f * 2pi)\n",
         N_phi, phi_grid[end], phi_grid[end]/(2π))
 @printf("t=$t1  t'=$t3  V1=$V1  V2=$V2  V3=$V3\n")
 @printf("nev=%d  krylovdim=%d\n", nev, kd)
@@ -99,7 +99,7 @@ sf_data = Dict{Int, Vector{Tuple{Int,Float64}}}()
 
 for phi_idx in 0:(N_phi-1)
     phi_y = phi_grid[phi_idx + 1]   # Julia 1-based
-    @printf("  φ[%2d] = %.6f (%.4f·2π) ... ", phi_idx, phi_y, phi_y/(2π))
+    @printf("  phi[%2d] = %.6f (%.4f * 2pi) ... ", phi_idx, phi_y, phi_y/(2π))
     flush(stdout)
 
     t_phi = @elapsed begin
