@@ -5,20 +5,20 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --partition=amd_256
 #SBATCH --time=480:00:00
-#SBATCH --output=output_sf/sf_%j_phi${1}-${2}.out
-#SBATCH --error=output_sf/sf_%j_phi${1}-${2}.err
+#SBATCH --output=output_sf/sf_%j_sec${1}-${2}.out
+#SBATCH --error=output_sf/sf_%j_sec${1}-${2}.err
 
 export JULIA_NUM_THREADS=64
 export OMP_NUM_THREADS=1
-export PHI_START=$1
-export PHI_END=$2
+export SECTOR_START=$1
+export SECTOR_END=$2
 
 JULIA=~/sc71394/shajy/software/env_soft/julia_1.12.4/julia-1.12.4/bin/julia
 
 echo "========================================"
 echo "Job ID:    $SLURM_JOB_ID"
 echo "Node:      $SLURMD_NODENAME"
-echo "PHI:       $PHI_START – $PHI_END"
+echo "Sectors:   $SECTOR_START – $SECTOR_END"
 echo "Start:     $(date)"
 $JULIA --version
 echo "========================================"

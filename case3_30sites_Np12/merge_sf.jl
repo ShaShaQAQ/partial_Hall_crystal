@@ -13,29 +13,37 @@ println("找到 $(length(jld2_files)) 个 JLD2 文件:")
 for f in jld2_files; println("  $f"); end
 
 # 从第一个文件读取元数据
-d0   = load(jld2_files[1])
-N_phi     = d0["N_phi"]
-phi_grid  = d0["phi_grid"]
-Np        = d0["Np"]
-V1        = d0["V1"]
-V2        = get(d0, "V2", 0.0)
-V3        = get(d0, "V3", 0.0)
-t1        = d0["t1"]
-t3        = d0["t3"]
+d0       = load(jld2_files[1])
+N_phi    = d0["N_phi"]
+phi_grid = d0["phi_grid"]
+Np       = d0["Np"]
+V1       = d0["V1"]
+V2       = get(d0, "V2", 0.0)
+V3       = get(d0, "V3", 0.0)
+t1       = d0["t1"]
+t3       = d0["t3"]
 
 # 合并所有 sf_data
+# 每个文件的 sf_data[phi_idx] 只含该节点负责的扇区 → append 而非覆盖
 all_sf = Dict{Int, Vector{Tuple{Int,Float64}}}()
 for f in jld2_files
     d = load(f)
-    for (k, v) in d["sf_data"]
-        all_sf[k] = v
+    for (phi_idx, ev) in d["sf_data"]
+        append!(get!(all_sf, phi_idx, Tuple{Int,Float64}[]), ev)
     end
 end
+# 每个 φ 点内按能量排序
+for ev in values(all_sf)
+    sort!(ev, by=x->x[2])
+end
 
-n_found = length(all_sf)
+# 检查每个 φ 点是否已被所有文件覆盖（每个文件贡献部分扇区）
+# 以 φ 点为键，收集来自不同节点的 (k, E) 对
+phi_covered = Set(keys(all_sf))
+n_found = length(phi_covered)
 @printf("合并后覆盖 φ 点数: %d / %d\n", n_found, N_phi)
 if n_found < N_phi
-    missing_idx = setdiff(0:N_phi-1, keys(all_sf))
+    missing_idx = setdiff(0:N_phi-1, phi_covered)
     println("缺失 φ 索引: $missing_idx")
 end
 
