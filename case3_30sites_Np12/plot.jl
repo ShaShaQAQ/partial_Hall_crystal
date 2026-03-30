@@ -27,10 +27,24 @@ end
 
 xs = ks .+ 1    # k=0..14 → x=1..15
 
-# 最低 n_gs 个态标红
-gs_set = Set(sortperm(es)[1:min(n_gs, length(es))])
-colors = [i in gs_set ? :red : :steelblue for i in 1:length(es)]
-sizes  = [i in gs_set ? 8 : 5 for i in 1:length(es)]
+# 每个扇区的最低态和第二低态
+sector_sorted = Dict{Int,Vector{Int}}()   # k → indices sorted by energy
+for (i, k) in enumerate(ks)
+    push!(get!(sector_sorted, k, Int[]), i)
+end
+for v in values(sector_sorted)
+    sort!(v, by=i->es[i])
+end
+gs1_set = Set(v[1]       for v in values(sector_sorted) if length(v) >= 1)
+gs2_set = Set(v[2]       for v in values(sector_sorted) if length(v) >= 2)
+
+# 颜色：基态红，第二低态橙，其余蓝
+colors = [i in gs1_set ? :red : (i in gs2_set ? :darkorange : :steelblue) for i in 1:length(es)]
+sizes  = [i in gs1_set ? 8    : (i in gs2_set ? 7            : 5)          for i in 1:length(es)]
+
+# y 轴上限：覆盖所有扇区第二低态，再加 5% 留白
+y_top_required = maximum(es[i] for i in gs2_set)
+ymax = y_top_required * 1.05 + 0.02
 
 p = scatter(xs, es;
     marker=:circle, markersize=sizes, markerstrokewidth=0,
@@ -41,15 +55,16 @@ p = scatter(xs, es;
           "t=$t1, t'=$t3, V₁=$V1, V₂=$V2, V₃=$V3",
     xticks=(1:15, string.(0:14)),
     legend=false,
-    ylims=(-0.02, 0.40),
+    ylims=(-0.02, ymax),
     xlims=(0.3, 15.7),
     framestyle=:box,
     size=(600, 520),
     left_margin=8Plots.mm, bottom_margin=10Plots.mm
 )
 
-for i in sortperm(es)[1:min(n_gs, length(es))]
-    annotate!(xs[i], es[i] + 0.008, text(@sprintf("%.4f", es[i]), 6, :red, :center))
+# 标注基态能量
+for i in gs1_set
+    annotate!(xs[i], es[i] + ymax*0.015, text(@sprintf("%.4f", es[i]), 6, :red, :center))
 end
 
 savefig(p, "spectrum_Np$(Np).pdf")
