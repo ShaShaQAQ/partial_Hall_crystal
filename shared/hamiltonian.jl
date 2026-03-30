@@ -5,6 +5,18 @@
 #       Hv! 中直接用，省去每次 Lanczos 步的 Ns×6 嵌套循环
 #       和 fock2rep 哈希查找（对角项不需要查表）。
 # ============================================================
+using Printf
+# mem_rss_gb 在 solver.jl 中定义；若单独加载本文件则用此备用定义
+if !isdefined(Main, :mem_rss_gb)
+    function mem_rss_gb()
+        for line in eachline("/proc/self/status")
+            if startswith(line, "VmRSS:")
+                return parse(Int, split(line)[2]) / 1e6
+            end
+        end
+        return NaN
+    end
+end
 
 """
     precompute_diag_H(sec, lat, V1, V2, V3) -> Vector{Float64}
@@ -146,12 +158,18 @@ function build_sparse_H(sec::KSector, lat::GenLat,
     Nrep == 0 && return spzeros(ComplexF64, Int32, 0, 0)
     Ns = lat.Ns
 
+    @printf("    [build_sparse_H k=%2d] 开始  Nrep=%d  RSS=%.2f GB\n",
+            sec.m, Nrep, mem_rss_gb()); flush(stdout)
+
     Is = Int32[]
     Js = Int32[]
     Vs = ComplexF64[]
     sizehint!(Is, Nrep * 50)
     sizehint!(Js, Nrep * 50)
     sizehint!(Vs, Nrep * 50)
+
+    @printf("    [build_sparse_H k=%2d] sizehint 后  RSS=%.2f GB\n",
+            sec.m, mem_rss_gb()); flush(stdout)
 
     for i in 1:Nrep
         ni  = 1.0 / sec.norms[i]
@@ -190,6 +208,14 @@ function build_sparse_H(sec::KSector, lat::GenLat,
         end
     end
 
+    @printf("    [build_sparse_H k=%2d] 循环完成  COO 条目=%d  RSS=%.2f GB\n",
+            sec.m, length(Is), mem_rss_gb()); flush(stdout)
+
     # Julia sparse() 自动合并重复 (i,j) 索引（求和），正确处理多轨道贡献
-    return sparse(Is, Js, Vs, Nrep, Nrep)
+    H = sparse(Is, Js, Vs, Nrep, Nrep)
+
+    @printf("    [build_sparse_H k=%2d] sparse() 完成  nnz=%d  RSS=%.2f GB\n",
+            sec.m, nnz(H), mem_rss_gb()); flush(stdout)
+
+    return H
 end
