@@ -9,15 +9,12 @@ using KrylovKit, Printf
 
 # ── 实际内存用量（RSS，Linux /proc，macOS fallback）──
 function mem_rss_gb()
-    try
-        for line in eachline("/proc/self/status")
-            if startswith(line, "VmRSS:")
-                return parse(Int, split(line)[2]) / 1e6   # kB → GB
-            end
+    for line in eachline("/proc/self/status")
+        if startswith(line, "VmRSS:")
+            return parse(Int, split(line)[2]) / 1e6   # kB → GB
         end
-    catch
     end
-    return (Sys.total_memory() - Sys.free_memory()) / 1e9  # fallback
+    return NaN
 end
 
 function solve_sector(sec::KSector, lat::GenLat,
