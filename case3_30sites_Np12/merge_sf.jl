@@ -56,7 +56,7 @@ E_min = minimum(
 @printf("全局最低能量 E_min = %.10f\n", E_min)
 
 # 写 .dat 文件
-outfile = "sf_Np$(Np).dat"
+outfile = "output_sf/sf_Np$(Np).dat"
 open(outfile, "w") do f
     println(f, "# 谱流数据  Np=$Np  V1=$V1 V2=$V2 V3=$V3 t1=$t1 t3=$t3  N_phi=$N_phi")
     println(f, "# phi_idx  phi/2pi  k  E-Emin")
