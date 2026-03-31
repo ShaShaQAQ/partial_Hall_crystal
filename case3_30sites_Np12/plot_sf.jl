@@ -5,7 +5,16 @@
 using Plots, Printf
 cd(@__DIR__)
 
-Np = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 12
+if length(ARGS) >= 1
+    Np = parse(Int, ARGS[1])
+else
+    # 自动从 output_sf/ 找已有的 dat 文件
+    dat_files = filter(f -> occursin(r"sf_Np\d+\.dat", basename(f)),
+                       readdir("output_sf", join=true))
+    isempty(dat_files) && error("output_sf/ 中没有 sf_Np*.dat，请先运行 merge_sf.jl")
+    Np = parse(Int, match(r"sf_Np(\d+)\.dat", basename(dat_files[1])).captures[1])
+    println("自动检测到 Np=$Np")
+end
 V1 = @isdefined(V1) ? V1 : 10.0
 V2 = @isdefined(V2) ? V2 : 2.0
 V3 = @isdefined(V3) ? V3 : 2.0
