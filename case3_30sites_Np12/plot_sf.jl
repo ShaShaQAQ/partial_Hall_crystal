@@ -1,11 +1,11 @@
 # ============================================================
 # 谱流图：sf_Np$(Np).dat → sf_Np$(Np).pdf
-# 用法：julia plot_sf.jl
+# 用法：julia plot_sf.jl [Np]
 # ============================================================
 using Plots, Printf
 cd(@__DIR__)
 
-Np = @isdefined(Np) ? Np : 12
+Np = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 12
 V1 = @isdefined(V1) ? V1 : 10.0
 V2 = @isdefined(V2) ? V2 : 2.0
 V3 = @isdefined(V3) ? V3 : 2.0
