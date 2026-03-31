@@ -3,6 +3,7 @@
 # 用法：julia merge_sf.jl
 # ============================================================
 using JLD2, Printf
+cd(@__DIR__)
 
 # 找所有分段结果
 jld2_files = sort(filter(f -> endswith(f, ".jld2"),

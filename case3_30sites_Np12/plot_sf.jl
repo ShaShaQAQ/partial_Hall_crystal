@@ -3,6 +3,7 @@
 # 用法：julia plot_sf.jl
 # ============================================================
 using Plots, Printf
+cd(@__DIR__)
 
 Np = @isdefined(Np) ? Np : 12
 V1 = @isdefined(V1) ? V1 : 10.0
