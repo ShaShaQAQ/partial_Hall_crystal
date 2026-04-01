@@ -1,6 +1,7 @@
 # ============================================================
 # band.jl — Single-particle band energies and Bloch eigenstates
 # ============================================================
+# Requires: lattice.jl and hoppings.jl must be included before this file.
 using LinearAlgebra
 
 if abspath(PROGRAM_FILE) == @__FILE__
