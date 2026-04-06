@@ -98,8 +98,9 @@ function TiltedLat30()
     end
 
     # k 点（用于 Fourier 变换）
+    # 由相位公式推导: k_m = m*(4b1-b2)/15（相位中 n2_uc 系数为 -1/15，非 -1/30）
     b1c = collect(b1);  b2c = collect(b2)
-    G1_sc = (4 .* b1c .- b2c ./ 2) ./ 15
+    G1_sc = (4 .* b1c .- b2c) ./ 15
     kpoints = [m .* G1_sc for m in 0:14]
 
     # 近邻矩阵
@@ -174,10 +175,10 @@ function RectLat3x6()
     end
 
     # k 点（Fourier 变换用）
-    # G1_sc = B1_uc/3 = b1/3，G2_sc = B2_uc/3 = b2/6
+    # 由相位公式推导: k_m = (m%3)*b1/3 + (m÷3)*b2/3
     b1c = collect(b1);  b2c = collect(b2)
     G1_sc = b1c ./ 3
-    G2_sc = b2c ./ 6
+    G2_sc = b2c ./ 3
     kpoints = [(m%3) .* G1_sc .+ (m÷3) .* G2_sc for m in 0:8]
 
     # 近邻矩阵（同位移向量）
@@ -249,10 +250,10 @@ function RectLat5x6()
         end
     end
 
-    # k 点：G1_sc = b1/5，G2_sc = b2/6
+    # k 点：k_m = (m%5)*b1/5 + (m÷5)*b2/3（由相位公式推导）
     b1c = collect(b1);  b2c = collect(b2)
     G1_sc = b1c ./ 5
-    G2_sc = b2c ./ 6
+    G2_sc = b2c ./ 3
     kpoints = [(m%5) .* G1_sc .+ (m÷5) .* G2_sc for m in 0:14]
 
     d1 = [(1,0),(-1,0),(1,1),(-1,-1),(0,1),(0,-1)]
@@ -323,10 +324,10 @@ function RectLat4x6()
         end
     end
 
-    # k 点：G1_sc = b1/4，G2_sc = b2/6
+    # k 点：k_m = (m%4)*b1/4 + (m÷4)*b2/3（由相位公式推导）
     b1c = collect(b1);  b2c = collect(b2)
     G1_sc = b1c ./ 4
-    G2_sc = b2c ./ 6
+    G2_sc = b2c ./ 3
     kpoints = [(m%4) .* G1_sc .+ (m÷4) .* G2_sc for m in 0:11]
 
     d1 = [(1,0),(-1,0),(1,1),(-1,-1),(0,1),(0,-1)]
