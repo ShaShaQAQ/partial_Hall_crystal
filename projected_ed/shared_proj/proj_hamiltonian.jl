@@ -27,6 +27,9 @@ function build_proj_H(sector_states::Vector{Int},
 
     state2idx = Dict{Int,Int}(s => i for (i,s) in enumerate(sector_states))
 
+    # Precompute k_neg table once per call
+    k_neg = [_k_neg_qi(kadd, qi, Nk) for qi in 0:Nk-1]  # k_neg[qi+1] = -qi (0-based)
+
     for (i, si) in enumerate(sector_states)
         # --- diagonal: kinetic energy ---
         Ekin = 0.0
@@ -35,23 +38,28 @@ function build_proj_H(sector_states::Vector{Int},
         end
         H[i, i] += Ekin
 
+        # --- diagonal: q=0 Hartree interaction ---
+        # H += (1/Nk) * Σ_{m1<m2, both occupied} W[m1,m2,q=0]
+        # (the (m1,m2,0)+(m2,m1,0) pair together give 2×, cancelled by summing m1<m2 only)
+        for m1 in 0:Nk-1
+            (si >> m1) & 1 == 0 && continue
+            for m2 in m1+1:Nk-1
+                (si >> m2) & 1 == 0 && continue
+                H[i, i] += (1.0/Nk) * real(W[m1+1, m2+1, 1])
+            end
+        end
+
         # --- off-diagonal: c†_{m1+q} c†_{m2-q} c_{m2} c_{m1} for q≠0 ---
+        # Factor 0.5/Nk: loop over ALL (m1,m2,q) double-counts each scattering event
+        # (the pair (m1,m2,q) and (m2,m1,-q) both map si→sf with equal contribution).
         for m1 in 0:Nk-1
             (si >> m1) & 1 == 0 && continue
             for m2 in 0:Nk-1
                 m2 == m1 && continue
                 (si >> m2) & 1 == 0 && continue
-                for qi in 1:Nk-1   # q ≠ 0 (qi is 1-based label, 0-based value = qi-1... wait)
-                    # qi here is the 0-based momentum label; loop over qi=1..Nk-1 (skip 0)
-                    kp1 = kadd[m1+1, qi+1]   # k1 + q  (0-based)
-                    # k2 - q = k2 + (-q); find -q via kadd row 0: kadd[1, qi+1] = q → k_neg[qi]
-                    # Actually compute kp2 = m2 + (-qi): need k_neg table or use kadd
-                    # We'll compute inline: find kn s.t. kadd[qi+1, kn+1] == 0
-                    # Better: precompute k_neg outside, but for simplicity use the W index
-                    # kp2 = k2 - q: use same kadd but with q negated
-                    # We store k_neg in the caller; here receive qi as loop var 0-based
-                    # NOTE: qi in loop is 0-based value (not index)
-                    kp2 = kadd[m2+1, _k_neg_qi(kadd, qi, Nk)+1]   # k2 - q
+                for qi in 1:Nk-1   # 0-based q-label, skip q=0
+                    kp1 = kadd[m1+1, qi+1]             # k1 + q  (0-based)
+                    kp2 = kadd[m2+1, k_neg[qi+1]+1]   # k2 - q  (0-based); k_neg is 1-indexed
 
                     # Pauli blocking
                     (si >> kp1) & 1 == 1 && continue
@@ -63,8 +71,7 @@ function build_proj_H(sector_states::Vector{Int},
                     j = state2idx[sf]
 
                     # Fermion signs for c†_{kp1} c†_{kp2} c_{m2} c_{m1}
-                    # annihilate m1 first, then m2; create kp2 first, then kp1
-                    sgn_m1  = kfock_fermion_sign(si,  m1)
+                    sgn_m1  = kfock_fermion_sign(si,   m1)
                     tmp1    = si ⊻ (1 << m1)
                     sgn_m2  = kfock_fermion_sign(tmp1, m2)
                     tmp2    = tmp1 ⊻ (1 << m2)
@@ -73,7 +80,7 @@ function build_proj_H(sector_states::Vector{Int},
                     sgn_kp1 = kfock_fermion_sign(tmp3, kp1)
                     total_sgn = sgn_m1 * sgn_m2 * sgn_kp2 * sgn_kp1
 
-                    H[j, i] += (1.0 / Nk) * W[m1+1, m2+1, qi+1] * total_sgn
+                    H[j, i] += (0.5/Nk) * W[m1+1, m2+1, qi+1] * total_sgn
                 end
             end
         end

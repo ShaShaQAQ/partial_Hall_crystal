@@ -79,6 +79,8 @@ function _build_Vq_nb(lat::GenLat, nb::Matrix{Int},
     a1c        = collect(lat.a1)
     a2c        = collect(lat.a2)
     Vq         = zeros(ComplexF64, 2, 2, Nk)
+    # Sum over all Ns=2*Nk sites; divide by Nk so result is per-unit-cell Fourier transform.
+    # (No 0.5 factor: each Vq[αi,αj] accumulates only from αi-sublattice sites → no double-counting within one tensor element.)
     for si in 1:lat.Ns
         αi = site_alpha[si]
         for (k, (dx, dy)) in enumerate(ds)
@@ -86,7 +88,7 @@ function _build_Vq_nb(lat::GenLat, nb::Matrix{Int},
             αj  = site_alpha[sj]
             Δr  = dx .* a1c .+ dy .* a2c   # exact Cartesian displacement, no wrap
             for qi in 1:Nk
-                Vq[αi+1, αj+1, qi] += Vval * exp(-1im * dot(kpts[qi], Δr)) * 0.5
+                Vq[αi+1, αj+1, qi] += Vval * exp(-1im * dot(kpts[qi], Δr)) / Nk
             end
         end
     end
