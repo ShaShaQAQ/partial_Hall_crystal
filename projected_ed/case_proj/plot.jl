@@ -126,7 +126,155 @@ scatter!(p_comp5, xs_p5[1:N_show], es_p5[1:N_show];
 savefig(p_comp5, "spectrum_proj_vs_full_V0.pdf")
 println("保存：spectrum_proj_vs_full_V0.pdf")
 
+# ============================================================
+# 结构因子 N(q) 对比图
+# ============================================================
+
+function read_sq(path)
+    qs = Int[]; ns = Float64[]
+    for line in readlines(path)
+        startswith(line, "#") && continue
+        parts = split(strip(line))
+        length(parts) < 2 && continue
+        push!(qs, parse(Int, parts[1]))
+        push!(ns, parse(Float64, parts[2]))
+    end
+    return qs, ns
+end
+
+function read_sq_all(path)
+    sks = Int[]; qks = Int[]; vals = Float64[]
+    for line in readlines(path)
+        startswith(line, "#") && continue
+        parts = split(strip(line))
+        length(parts) < 3 && continue
+        push!(sks, parse(Int, parts[1]))
+        push!(qks, parse(Int, parts[2]))
+        push!(vals, parse(Float64, parts[3]))
+    end
+    return sks, qks, vals
+end
+
+# ── Case 4: N(q) 投影 ED vs 全 ED ──
+qs_p4, ns_p4 = read_sq("sq_proj_4x6_V1.dat")
+qs_f4, ns_f4 = read_sq("../../case4_4x6_Np4/sq_Np4.dat")
+
+xs_sq_p4 = kx.(qs_p4)
+xs_sq_f4 = kx.(qs_f4)
+ord_p4   = sortperm(xs_sq_p4)
+ord_f4   = sortperm(xs_sq_f4)
+
+sq_ymax = max(maximum(ns_f4), maximum(ns_p4)) * 1.20
+
+p_sq4 = plot(xs_sq_f4[ord_f4], ns_f4[ord_f4];
+    marker=:circle, markersize=7, markerstrokewidth=0.5,
+    color=:gray40, linewidth=1.5, label="Full 2-band ED",
+    xlabel="momentum q  (m₁, m₂)",
+    ylabel="N(q)",
+    title="Structure Factor N(q) — RectLat4×6, Np=$Np (ν=1/3)\nt=1, t'=0.2, V₁=1",
+    xticks=(1:Nk, klabels), xrotation=45,
+    ylims=(-0.02, sq_ymax), xlims=(0.3, Nk+0.7),
+    legend=:topright, framestyle=:box,
+    size=(640, 520),
+    left_margin=8Plots.mm, bottom_margin=14Plots.mm
+)
+plot!(p_sq4, xs_sq_p4[ord_p4], ns_p4[ord_p4];
+    marker=:diamond, markersize=7, markerstrokewidth=0.5,
+    color=:steelblue, linewidth=1.5, label="Projected ED (lowest band)"
+)
+# 标注全 ED 最大两个峰
+top2_f4 = sort(findall(q -> q != 0, qs_f4), by=i -> -ns_f4[i])[1:2]
+for i in top2_f4
+    annotate!(p_sq4, xs_sq_f4[i], ns_f4[i] + sq_ymax*0.04,
+        text(@sprintf("%.4f\n(k=%d)", ns_f4[i], qs_f4[i]), 7, :gray20, :center))
+end
+# 标注投影 ED 最大两个峰
+top2_p4 = sort(findall(q -> q != 0, qs_p4), by=i -> -ns_p4[i])[1:2]
+for i in top2_p4
+    annotate!(p_sq4, xs_sq_p4[i] + 0.45, ns_p4[i] + sq_ymax*0.04,
+        text(@sprintf("%.4f\n(q=%d)", ns_p4[i], qs_p4[i]), 7, :steelblue, :center))
+end
+savefig(p_sq4, "sq_proj_vs_full_V1.pdf")
+println("保存：sq_proj_vs_full_V1.pdf")
+
+# ── Case 5: N(q) V1=0 验证 ──
+qs_p5, ns_p5 = read_sq("sq_proj_4x6_V0.dat")
+qs_f5, ns_f5 = read_sq("../../case5_4x6_Np4_V0/sq_Np4.dat")
+
+xs_sq_p5 = kx.(qs_p5)
+xs_sq_f5 = kx.(qs_f5)
+ord_p5   = sortperm(xs_sq_p5)
+ord_f5   = sortperm(xs_sq_f5)
+
+sq_ymax5 = max(maximum(ns_f5), maximum(ns_p5)) * 1.20
+
+p_sq5 = plot(xs_sq_f5[ord_f5], ns_f5[ord_f5];
+    marker=:circle, markersize=7, markerstrokewidth=0.5,
+    color=:gray40, linewidth=1.5, label="Full 2-band ED",
+    xlabel="momentum q  (m₁, m₂)",
+    ylabel="N(q)",
+    title="Structure Factor N(q) — RectLat4×6, Np=$Np,  V₁=0 (non-interacting)\nt=1, t'=0.2",
+    xticks=(1:Nk, klabels), xrotation=45,
+    ylims=(-0.005, sq_ymax5), xlims=(0.3, Nk+0.7),
+    legend=:topright, framestyle=:box,
+    size=(640, 520),
+    left_margin=8Plots.mm, bottom_margin=14Plots.mm
+)
+plot!(p_sq5, xs_sq_p5[ord_p5], ns_p5[ord_p5];
+    marker=:diamond, markersize=7, markerstrokewidth=0.5,
+    color=:steelblue, linewidth=1.5, label="Projected ED (lowest band)"
+)
+savefig(p_sq5, "sq_proj_vs_full_V0.pdf")
+println("保存：sq_proj_vs_full_V0.pdf")
+
+# ── 全扇区热图：投影 ED  vs 全 ED ──
+sks_p, qks_p, vals_p = read_sq_all("sq_all_proj_4x6_V1.dat")
+sks_f, qks_f, vals_f = read_sq_all("../../case4_4x6_Np4/sq_all_Np4.dat")
+
+Zp = fill(NaN, Nk, Nk)
+for (sk, qk, v) in zip(sks_p, qks_p, vals_p)
+    Zp[kx(sk), kx(qk)] = v
+end
+
+Zf = fill(NaN, Nk, Nk)
+for (sk, qk, v) in zip(sks_f, qks_f, vals_f)
+    Zf[kx(sk), kx(qk)] = v
+end
+
+clim_max = max(maximum(filter(!isnan, Zp)), maximum(filter(!isnan, Zf)))
+
+ph1 = heatmap(1:Nk, 1:Nk, Zp';
+    xlabel="sector k", ylabel="q",
+    title="Projected ED — N(q) all sectors\nV₁=1",
+    xticks=(1:Nk, klabels), yticks=(1:Nk, klabels),
+    xrotation=45, color=:viridis,
+    clims=(0, clim_max),
+    aspect_ratio=:equal, framestyle=:box,
+    size=(600, 560),
+    left_margin=14Plots.mm, bottom_margin=14Plots.mm
+)
+
+ph2 = heatmap(1:Nk, 1:Nk, Zf';
+    xlabel="sector k", ylabel="q",
+    title="Full 2-band ED — N(q) all sectors\nV₁=1",
+    xticks=(1:Nk, klabels), yticks=(1:Nk, klabels),
+    xrotation=45, color=:viridis,
+    clims=(0, clim_max),
+    aspect_ratio=:equal, framestyle=:box,
+    size=(600, 560),
+    left_margin=14Plots.mm, bottom_margin=14Plots.mm
+)
+
+savefig(ph1, "sq_all_proj_V1.pdf")
+savefig(ph2, "sq_all_full_V1.pdf")
+println("保存：sq_all_proj_V1.pdf")
+println("保存：sq_all_full_V1.pdf")
+
 println("\n完成！输出文件：")
-println("  spectrum_proj_vs_full_V1.pdf  — Case4 投影 vs 全 ED 对比")
-println("  spectrum_proj_V1.pdf          — Case4 投影 ED 单独版")
+println("  spectrum_proj_vs_full_V1.pdf  — Case4 投影 vs 全 ED 能谱对比")
+println("  spectrum_proj_V1.pdf          — Case4 投影 ED 能谱单独版")
 println("  spectrum_proj_vs_full_V0.pdf  — Case5 V1=0 验证")
+println("  sq_proj_vs_full_V1.pdf        — Case4 N(q) 投影 vs 全 ED 对比")
+println("  sq_proj_vs_full_V0.pdf        — Case5 N(q) V1=0 对比")
+println("  sq_all_proj_V1.pdf            — Case4 全扇区 N(q) 热图（投影）")
+println("  sq_all_full_V1.pdf            — Case4 全扇区 N(q) 热图（全 ED）")

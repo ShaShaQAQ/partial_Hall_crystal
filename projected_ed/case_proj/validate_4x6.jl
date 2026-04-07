@@ -11,6 +11,7 @@ include("../shared_proj/band.jl")
 include("../shared_proj/proj_basis.jl")
 include("../shared_proj/proj_interaction.jl")
 include("../shared_proj/proj_hamiltonian.jl")
+include("../shared_proj/proj_structure_factor.jl")
 
 using Printf, LinearAlgebra
 
@@ -50,7 +51,7 @@ function run_and_compare(V1::Float64, full_ed_path::String, label::String)
 
     # 投影 ED
     W   = build_Vq_V123(lat, uvec, V1, 0.0, 0.0)
-    evp, _ = solve_proj_ed(sectors, eps, W, kadd, Nk)
+    evp, all_vecs = solve_proj_ed(sectors, eps, W, kadd, Nk)
     E0p = evp[1][2]
 
     # 全 ED
@@ -96,14 +97,50 @@ function run_and_compare(V1::Float64, full_ed_path::String, label::String)
     end
     println("  Saved: $outname")
 
-    return evp, evf
+    # ── 结构因子 N(q) ──
+    M_gs    = evp[1][1]
+    gs_vec  = complex(all_vecs[M_gs][:, 1])
+    sq_proj = compute_proj_sq(gs_vec, sectors[M_gs], kadd, Nk, uvec)
+
+    sq_outname = "sq_proj_4x6_V$(round(Int,V1)).dat"
+    open(sq_outname, "w") do f
+        println(f, "# ik  N_proj(k)  kx  ky  [proj ED RectLat4x6 Np=$Np V1=$V1 t3=$t3 GS_sector=$M_gs]")
+        for qi in 0:Nk-1
+            kphys = lat.kpoints[qi+1]
+            @printf(f, "%d  %.8f  %.6f  %.6f\n", qi, sq_proj[qi+1], kphys[1], kphys[2])
+        end
+    end
+    println("  Saved: $sq_outname")
+
+    # 打印结构因子报告
+    sq_sorted = sort(collect(enumerate(sq_proj)), by=x->-x[2])
+    @printf("\nProj N(q) 前5强峰：\n")
+    for (qi_1, val) in sq_sorted[1:min(5,end)]
+        kphys = lat.kpoints[qi_1]
+        @printf("  q=%2d  N=%.6f  (kx=%.4f, ky=%.4f)\n", qi_1-1, val, kphys[1], kphys[2])
+    end
+
+    # 全扇区结构因子矩阵
+    sq_all = compute_proj_sq_allsectors(all_vecs, sectors, kadd, Nk, uvec)
+    sq_all_outname = "sq_all_proj_4x6_V$(round(Int,V1)).dat"
+    open(sq_all_outname, "w") do f
+        println(f, "# sector_k  q  N_proj(q)  [proj ED RectLat4x6 Np=$Np V1=$V1 t3=$t3]")
+        for M in 0:Nk-1
+            for qi in 0:Nk-1
+                @printf(f, "%d  %d  %.8f\n", M, qi, sq_all[M+1, qi+1])
+            end
+        end
+    end
+    println("  Saved: $sq_all_outname")
+
+    return evp, evf, all_vecs, sq_proj
 end
 
-evp4, evf4 = run_and_compare(1.0,
+evp4, evf4, vecs4, sq4 = run_and_compare(1.0,
     "../../case4_4x6_Np4/spectrum_Np4.dat",
     "Case 4 (V1=1)")
 
-evp5, evf5 = run_and_compare(0.0,
+evp5, evf5, vecs5, sq5 = run_and_compare(0.0,
     "../../case5_4x6_Np4_V0/spectrum_Np4.dat",
     "Case 5 (V1=0)")
 
