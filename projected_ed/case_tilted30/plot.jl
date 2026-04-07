@@ -41,20 +41,27 @@ ks_f12, es_f12 = read_spectrum("../../case3_30sites_Np12/output_Np12/spectrum_Np
 E0f12 = 0.0   # full ED 已存 E-E0
 xs_p12 = xs(ks_p12);  xs_f12 = xs(ks_f12)
 
-# 颜色：基态标红
-n_gs_p12 = sum(e < 1e-8 for e in es_p12)
-n_gs_f12 = sum(e < 1e-8 for e in es_f12)
-c_p12 = [e < 1e-8 ? :red       : :steelblue for e in es_p12]
-c_f12 = [e < 1e-8 ? :firebrick : :gray50    for e in es_f12]
+# 颜色：最低 Nk=15 个态标红（近15重简并基态流形）
+# Np=12 全ED：15态跨 ΔE=0~0.034，之后 gap 到 0.59
+# Np=12 投影ED：15态跨 ΔE=0~0.51，之后 gap 到 0.54
+gs_idx_f12 = Set(sortperm(es_f12)[1:Nk])
+gs_idx_p12 = Set(sortperm(es_p12)[1:Nk])
+c_p12 = [i in gs_idx_p12 ? :red       : :steelblue for i in 1:length(es_p12)]
+c_f12 = [i in gs_idx_f12 ? :firebrick : :gray50    for i in 1:length(es_f12)]
+sz_p12 = [i in gs_idx_p12 ? 7 : 4 for i in 1:length(es_p12)]
+sz_f12 = [i in gs_idx_f12 ? 7 : 4 for i in 1:length(es_f12)]
 
-emax12 = 0.8
+# y 轴范围：显示基态流形 + 第一激发带底部
+gap12_f = sort(es_f12)[Nk+1]   # 第16个能级（激发带底）
+gap12_p = sort(es_p12)[Nk+1]
+emax12  = max(gap12_f, gap12_p) * 1.25
 
 p12 = scatter(xs_f12, es_f12;
-    marker=:circle, markersize=6, markerstrokewidth=0,
+    marker=:circle, markersize=sz_f12, markerstrokewidth=0,
     color=c_f12, label="Full 2-band ED (V1=10)",
     xlabel="momentum k",
     ylabel="E − E₀",
-    title="TiltedLat30, Np=12 (ν=4/5)\nt=1, t'=0.2, V1=10, V2=2, V3=2",
+    title="TiltedLat30, Np=12 (ν=4/5), 近15重简并基态流形（红色）\nt=1, t'=0.2, V1=10, V2=2, V3=2",
     xticks=(1:Nk, klabels), xrotation=0,
     ylims=(-0.02, emax12), xlims=(0.3, Nk+0.7),
     legend=:topright, framestyle=:box,
@@ -62,18 +69,16 @@ p12 = scatter(xs_f12, es_f12;
     left_margin=8Plots.mm, bottom_margin=10Plots.mm
 )
 scatter!(p12, xs_p12, es_p12;
-    marker=:diamond, markersize=6, markerstrokewidth=0,
+    marker=:diamond, markersize=sz_p12, markerstrokewidth=0,
     color=c_p12, label="Projected ED (lowest band)"
 )
-# 标注基态扇区
-for (m,e) in zip(ks_f12, es_f12)
-    e < 1e-8 || continue
-    annotate!(p12, m+1, e+0.025, text("k=$m", 8, :firebrick, :center))
-end
-for (m,e) in zip(ks_p12, es_p12)
-    e < 1e-8 || continue
-    annotate!(p12, m+1+0.4, e+0.012, text("k=$m", 7, :red, :center))
-end
+# 标注流形顶部与gap
+e_top_f12 = sort(es_f12)[Nk]
+e_top_p12 = sort(es_p12)[Nk]
+annotate!(p12, Nk*0.55, e_top_f12 + emax12*0.06,
+    text(@sprintf("Full GS spread=%.4f\ngap→%.4f", e_top_f12, gap12_f), 8, :firebrick, :left))
+annotate!(p12, Nk*0.55, e_top_p12 - emax12*0.10,
+    text(@sprintf("Proj GS spread=%.4f\ngap→%.4f", e_top_p12, gap12_p), 8, :red, :left))
 savefig(p12, "spectrum_proj_vs_full_Np12.pdf")
 println("保存：spectrum_proj_vs_full_Np12.pdf")
 
@@ -85,17 +90,23 @@ ks_f13, es_f13 = read_spectrum("../../case3_30sites_Np12/output_Np13/spectrum_Np
 
 xs_p13 = xs(ks_p13);  xs_f13 = xs(ks_f13)
 
-c_p13 = [e < 1e-8 ? :red       : :steelblue for e in es_p13]
-c_f13 = [e < 1e-8 ? :firebrick : :gray50    for e in es_f13]
+gs_idx_f13 = Set(sortperm(es_f13)[1:Nk])
+gs_idx_p13 = Set(sortperm(es_p13)[1:Nk])
+c_p13 = [i in gs_idx_p13 ? :red       : :steelblue for i in 1:length(es_p13)]
+c_f13 = [i in gs_idx_f13 ? :firebrick : :gray50    for i in 1:length(es_f13)]
+sz_p13 = [i in gs_idx_p13 ? 7 : 4 for i in 1:length(es_p13)]
+sz_f13 = [i in gs_idx_f13 ? 7 : 4 for i in 1:length(es_f13)]
 
-emax13 = min(0.6, max(maximum(es_p13[1:min(30,end)]), maximum(es_f13[1:min(30,end)]))*1.2)
+gap13_f = sort(es_f13)[Nk+1]
+gap13_p = sort(es_p13)[Nk+1]
+emax13  = max(gap13_f, gap13_p) * 1.25
 
 p13 = scatter(xs_f13, es_f13;
-    marker=:circle, markersize=6, markerstrokewidth=0,
+    marker=:circle, markersize=sz_f13, markerstrokewidth=0,
     color=c_f13, label="Full 2-band ED (V1=10)",
     xlabel="momentum k",
     ylabel="E − E₀",
-    title="TiltedLat30, Np=13 (ν=13/15)\nt=1, t'=0.2, V1=10, V2=2, V3=2",
+    title="TiltedLat30, Np=13 (ν=13/15), 近15重简并基态流形（红色）\nt=1, t'=0.2, V1=10, V2=2, V3=2",
     xticks=(1:Nk, klabels), xrotation=0,
     ylims=(-0.02, emax13), xlims=(0.3, Nk+0.7),
     legend=:topright, framestyle=:box,
@@ -103,17 +114,15 @@ p13 = scatter(xs_f13, es_f13;
     left_margin=8Plots.mm, bottom_margin=10Plots.mm
 )
 scatter!(p13, xs_p13, es_p13;
-    marker=:diamond, markersize=6, markerstrokewidth=0,
+    marker=:diamond, markersize=sz_p13, markerstrokewidth=0,
     color=c_p13, label="Projected ED (lowest band)"
 )
-for (m,e) in zip(ks_f13, es_f13)
-    e < 1e-8 || continue
-    annotate!(p13, m+1, e+emax13*0.07, text("k=$m", 8, :firebrick, :center))
-end
-for (m,e) in zip(ks_p13, es_p13)
-    e < 1e-8 || continue
-    annotate!(p13, m+1+0.4, e+emax13*0.04, text("k=$m", 7, :red, :center))
-end
+e_top_f13 = sort(es_f13)[Nk]
+e_top_p13 = sort(es_p13)[Nk]
+annotate!(p13, Nk*0.55, e_top_f13 + emax13*0.06,
+    text(@sprintf("Full GS spread=%.4f\ngap→%.4f", e_top_f13, gap13_f), 8, :firebrick, :left))
+annotate!(p13, Nk*0.55, e_top_p13 - emax13*0.10,
+    text(@sprintf("Proj GS spread=%.4f\ngap→%.4f", e_top_p13, gap13_p), 8, :red, :left))
 savefig(p13, "spectrum_proj_vs_full_Np13.pdf")
 println("保存：spectrum_proj_vs_full_Np13.pdf")
 
