@@ -11,21 +11,19 @@
 #     k=0 时 ρ_0^- = Np - n̄*Ns = 0，故 n(0) = 0。
 # ============================================================
 
-# 格点物理坐标：(ix,iy) → (rx,ry)（含子格偏移，用于实空间密度图）
-function site_phys_pos(ix::Int, iy::Int)
-    sorb = mod(iy, 2)
-    uc_y = (iy - sorb) ÷ 2
-    rx = Float64(ix) + Float64(uc_y)*(-1.0) + (sorb == 1 ? -0.5 : 0.0)
-    ry = Float64(uc_y)*sqrt(3.0)             + (sorb == 1 ? sqrt(3.0)/2 : 0.0)
+# 格点物理坐标：(ix,iy) → ix*a1 + iy*a2。
+function site_phys_pos(lat::GenLat, ix::Int, iy::Int)
+    rx = Float64(ix) * lat.a1[1] + Float64(iy) * lat.a2[1]
+    ry = Float64(ix) * lat.a1[2] + Float64(iy) * lat.a2[2]
     return rx, ry
 end
 
 # 原胞 Bravais 格矢：同一原胞的两个子格位点返回相同坐标
 # 用于 Eq.(27) 的 Rj，保证 n(q) 对完整倒格矢 b1,b2 周期
-function site_uc_pos(ix::Int, iy::Int)
+function site_uc_pos(lat::GenLat, ix::Int, iy::Int)
     uc_y = (iy - mod(iy, 2)) ÷ 2
-    rx = Float64(ix) + Float64(uc_y)*(-1.0)
-    ry = Float64(uc_y)*sqrt(3.0)
+    rx = Float64(ix) * lat.a1[1] + Float64(uc_y) * 2.0 * lat.a2[1]
+    ry = Float64(ix) * lat.a1[2] + Float64(uc_y) * 2.0 * lat.a2[2]
     return rx, ry
 end
 
@@ -47,7 +45,7 @@ function compute_sq(coeffs::Dict{Int64,ComplexF64},
     eiqr = Vector{ComplexF64}(undef, Ns)
     phase_sum = zero(ComplexF64)          # Σ_i e^{iq·ri}
     for (s, (ix, iy)) in enumerate(lat.sites)
-        rx, ry = site_uc_pos(ix, iy)      # 用原胞 Bravais 位置，保证 n(q+G)=n(q)
+        rx, ry = site_uc_pos(lat, ix, iy) # 用原胞 Bravais 位置，保证 n(q+G)=n(q)
         eiqr[s]   = cis(qx*rx + qy*ry)
         phase_sum += eiqr[s]
     end

@@ -15,8 +15,9 @@ function get_Hk(k::Vector{Float64}, t1::Float64, t3::Float64)
     return g[1]*σx + g[2]*σy + g[3]*σz + g0*I2
 end
 
-# 子格坐标：A=(0,0)，B=(-0.5, sqrt(3)/2)
-const SUBLAT_POS = [[0.0, 0.0], [-0.5, sqrt(3)/2]]
+# 子格坐标：A=(0,0)，B=a2。这样 RectLat4x6 使用本地 ED 的
+# a2=(1/2,sqrt(3)/2)，旧的 PHC 负号 a2 lattice 仍保持原坐标。
+sublat_pos(lat::GenLat) = [[0.0, 0.0], collect(lat.a2)]
 
 # Fourier 变换得到实空间 hopping 矩阵 t(R)
 # 使用 lat.kpoints（对不同超胞自动正确）
@@ -25,7 +26,8 @@ function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
     Nk = length(kpoints_list)
 
     a1_uc = collect(lat.a1)          # = (1,0)
-    a2_uc = 2 .* collect(lat.a2)    # = (-1, sqrt(3))
+    a2_uc = 2 .* collect(lat.a2)
+    sublat = sublat_pos(lat)
 
     tR = Dict{NTuple{2,Int}, Matrix{ComplexF64}}()
 
@@ -36,7 +38,7 @@ function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
         for k in kpoints_list
             Hk = get_Hk(k, t1, t3)
             for α in 1:2, β in 1:2
-                δ = SUBLAT_POS[α] .- SUBLAT_POS[β]
+                δ = sublat[α] .- sublat[β]
                 phase = exp(-1im * dot(k, R_cart .+ δ))
                 tmat[α, β] += phase * Hk[α, β]
             end

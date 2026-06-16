@@ -296,7 +296,9 @@ function RectLat4x6()
     @assert length(sites) == Ns "格点数错误: $(length(sites))"
     site_idx = Dict(s => i for (i,s) in enumerate(sites))
 
-    a1 = (1.0, 0.0);  a2 = (-0.5, sqrt(3)/2)
+    # 与本地 ED 保持同一套三角晶格基矢约定：
+    # a1=(1,0), a2=(1/2,sqrt(3)/2)。
+    a1 = (1.0, 0.0);  a2 = (0.5, sqrt(3)/2)
     area = a1[1]*a2[2] - a1[2]*a2[1]
     b1 = (2π*a2[2]/area, -2π*a2[1]/area)
     b2 = (-2π*a1[2]/area,  2π*a1[1]/area)
@@ -329,9 +331,9 @@ function RectLat4x6()
     G2_sc = b2c ./ 6
     kpoints = [(m%4) .* G1_sc .+ (m÷4) .* G2_sc for m in 0:11]
 
-    d1 = [(1,0),(-1,0),(1,1),(-1,-1),(0,1),(0,-1)]
-    d2 = [(2,1),(-2,-1),(1,2),(-1,-2),(1,-1),(-1,1)]
-    d3 = [(2,0),(-2,0),(0,2),(0,-2),(2,2),(-2,-2)]
+    d1 = [(1,0),(-1,0),(0,1),(0,-1),(-1,1),(1,-1)]
+    d2 = [(1,1),(-1,-1),(-1,2),(1,-2),(-2,1),(2,-1)]
+    d3 = [(2,0),(-2,0),(0,2),(0,-2),(-2,2),(2,-2)]
     function make_nb(ds)
         M = Matrix{Int}(undef, Ns, 6)
         for (si,(ix,iy)) in enumerate(sites)

@@ -35,7 +35,7 @@ function structure_factor_at(coeffs::Dict{Int64,ComplexF64},
     eiqr = Vector{ComplexF64}(undef, Ns)
     phase_sum = zero(ComplexF64)           # Σ_i e^{iq·ri}
     for (s, (ix, iy)) in enumerate(lat.sites)
-        rx, ry = site_uc_pos(ix, iy)      # 用原胞 Bravais 位置，保证 n(q+G)=n(q)
+        rx, ry = site_uc_pos(lat, ix, iy) # 用原胞 Bravais 位置，保证 n(q+G)=n(q)
         eiqr[s]   = cis(qx*rx + qy*ry)
         phase_sum += eiqr[s]
     end
@@ -85,7 +85,7 @@ function print_rspace_report(occ::Vector{Float64}, lat::GenLat, Np::Int)
     println("  site   (ix, iy)    rx       ry      ⟨n_i⟩     δn=⟨n_i⟩-n̄")
     println("-"^60)
     for (s, (ix, iy)) in enumerate(lat.sites)
-        rx, ry = site_phys_pos(ix, iy)
+        rx, ry = site_phys_pos(lat, ix, iy)
         @printf("  %3d   (%2d,%2d)  %6.3f  %6.3f   %.6f   %+.6f\n",
                 s, ix, iy, rx, ry, occ[s], occ[s]-n̄)
     end

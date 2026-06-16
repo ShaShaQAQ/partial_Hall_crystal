@@ -63,7 +63,7 @@ print_rspace_report(occ, lat, Np)
 open("rspace_Np$(Np).dat", "w") do f
     println(f, "# site  ix  iy  rx  ry  <n_i>  [4x6 Np=$Np V1=$V1 t'=$t3]")
     for (s, (ix, iy)) in enumerate(lat.sites)
-        rx, ry = site_phys_pos(ix, iy)
+        rx, ry = site_phys_pos(lat, ix, iy)
         @printf(f, "%d  %d  %d  %.6f  %.6f  %.8f\n", s, ix, iy, rx, ry, occ[s])
     end
 end
@@ -112,8 +112,8 @@ println("精细结构因子 → sq_fine_Np$(Np).dat")
 # ============================================================
 
 # ── 图 1：实空间密度图 ──
-rxs = [site_phys_pos(ix, iy)[1] for (ix, iy) in lat.sites]
-rys = [site_phys_pos(ix, iy)[2] for (ix, iy) in lat.sites]
+rxs = [site_phys_pos(lat, ix, iy)[1] for (ix, iy) in lat.sites]
+rys = [site_phys_pos(lat, ix, iy)[2] for (ix, iy) in lat.sites]
 n̄   = Np / lat.Ns
 
 p1 = scatter(rxs, rys;
