@@ -33,6 +33,7 @@
 **Files:**
 - Create: `dmrg/CylinderModelCore.jl`
 - Modify: `dmrg/DMRGFullModel.jl`
+- Create: `dmrg/test_model_core_extraction.jl`
 - Test: `dmrg/test_convergence_logic.jl`
 - Test: `dmrg/test_flux_merge.jl`
 - Test: `dmrg/test_flux_segment_checkpoint.jl`
@@ -49,7 +50,37 @@ julia --project=. dmrg/test_flux_segment_checkpoint.jl
 
 Expected: 4, 6, and 9 passing assertions respectively.
 
-- [ ] **Step 2: Create the shared model module**
+- [ ] **Step 2: Write and run a failing shared-core boundary test**
+
+Create `dmrg/test_model_core_extraction.jl`:
+
+```julia
+using Test
+
+include("DMRGFullModel.jl")
+using .DMRGFullModel
+
+@testset "shared cylinder model core" begin
+  @test isdefined(DMRGFullModel, :CylinderModelCore)
+  if isdefined(DMRGFullModel, :CylinderModelCore)
+    @test DMRGFullModel.CylinderModelParams ===
+          DMRGFullModel.CylinderModelCore.CylinderModelParams
+    tR = DMRGFullModel.CylinderModelCore.hopping_matrices_from_get_Hk(1.0, 0.2)
+    @test length(tR) == 11
+    @test maximum(abs(first(k)) for k in keys(tR)) == 2
+  end
+end
+```
+
+Run:
+
+```bash
+julia --project=. dmrg/test_model_core_extraction.jl
+```
+
+Expected: FAIL only because `DMRGFullModel.CylinderModelCore` does not yet exist.
+
+- [ ] **Step 3: Create the shared model module**
 
 Create `dmrg/CylinderModelCore.jl` with the exact public surface:
 
@@ -130,7 +161,7 @@ end
 end
 ```
 
-- [ ] **Step 3: Replace duplicated finite definitions with shared imports**
+- [ ] **Step 4: Replace duplicated finite definitions with shared imports**
 
 At the top of `dmrg/DMRGFullModel.jl`, replace the shared lattice/hopping includes and duplicated `CylinderModelParams`, `NB_DISPS`, `reciprocal_vectors`, and `hopping_matrices_from_get_Hk` definitions with:
 
@@ -146,7 +177,7 @@ include("../shared/basis.jl")
 
 Keep every finite export and call signature unchanged.
 
-- [ ] **Step 4: Run finite regression tests and model-range check**
+- [ ] **Step 5: Run the new boundary test and all finite regressions**
 
 Run:
 
@@ -154,15 +185,15 @@ Run:
 julia --project=. dmrg/test_convergence_logic.jl
 julia --project=. dmrg/test_flux_merge.jl
 julia --project=. dmrg/test_flux_segment_checkpoint.jl
-julia --project=. -e 'include("dmrg/DMRGFullModel.jl"); using .DMRGFullModel; tR=DMRGFullModel.hopping_matrices_from_get_Hk(1.0,0.2); @assert length(tR)==11; @assert maximum(abs(first(k)) for k in keys(tR))==2'
+julia --project=. dmrg/test_model_core_extraction.jl
 ```
 
-Expected: all finite tests pass; the hopping check exits zero.
+Expected: all finite and shared-core tests pass.
 
-- [ ] **Step 5: Commit the extraction**
+- [ ] **Step 6: Commit the extraction**
 
 ```bash
-git add dmrg/CylinderModelCore.jl dmrg/DMRGFullModel.jl
+git add dmrg/CylinderModelCore.jl dmrg/DMRGFullModel.jl dmrg/test_model_core_extraction.jl
 git commit -m "refactor: extract shared cylinder model core"
 ```
 
