@@ -59,12 +59,14 @@ function linear_site(c::InfiniteCylinderConfig, x::Int, y::Int)
 end
 
 function site_coordinates(c::InfiniteCylinderConfig, n::Int)
-    x, y = fldmod(n - 1, c.Ly)
+    zero_based = Base.Checked.checked_sub(n, 1)
+    x, y = fldmod(zero_based, c.Ly)
     return x, y
 end
 
 function canonical_site(c::InfiniteCylinderConfig, n::Int)
-    cell, offset = fldmod(n - 1, sites_per_cell(c))
+    zero_based = Base.Checked.checked_sub(n, 1)
+    cell, offset = fldmod(zero_based, sites_per_cell(c))
     return offset + 1, cell
 end
 

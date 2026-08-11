@@ -59,6 +59,8 @@ end
 
     c = InfiniteCylinderConfig()
     @test_throws OverflowError linear_site(c, typemax(Int), 0)
+    @test_throws OverflowError site_coordinates(c, typemin(Int))
+    @test_throws OverflowError canonical_site(c, typemin(Int))
 end
 
 @testset "exact occupied-site patterns" begin
