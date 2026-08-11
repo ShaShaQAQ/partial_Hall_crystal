@@ -1,0 +1,27 @@
+name = "InfiniteCylinderDMRG"
+uuid = "bb119d70-e6e4-4ad4-a0fd-2dc1be8dca26"
+version = "0.1.0"
+
+[deps]
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+ITensorInfiniteMPS = "1dc1fb26-a137-4954-ae60-1bd4106e95ad"
+ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
+ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+[compat]
+HDF5 = "0.17"
+ITensorMPS = "=0.3.45"
+ITensors = "=0.9.30"
+KrylovKit = "0.10"
+julia = "1.10, 1.11, 1.12"
+
+[sources]
+ITensorInfiniteMPS = {url = "https://github.com/ITensor/ITensorInfiniteMPS.jl.git", rev = "765f2777703bc1138b009adbed1b97bde1973402"}
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
