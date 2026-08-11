@@ -33,3 +33,17 @@ dmrg/**/pumping*.dat
 dmrg/**/job_config.env
 dmrg/**/segment_jobs.tsv
 dmrg/*raw_unwrapped.svg
+
+# LaTeX build artifacts
+dmrg/report/*.aux
+dmrg/report/*.bbl
+dmrg/report/*.bcf
+dmrg/report/*.blg
+dmrg/report/*.fdb_latexmk
+dmrg/report/*.fls
+dmrg/report/*.log
+dmrg/report/*.out
+dmrg/report/*.run.xml
+dmrg/report/*.synctex.gz
+dmrg/report/*.toc
+dmrg/report/*.pdf
