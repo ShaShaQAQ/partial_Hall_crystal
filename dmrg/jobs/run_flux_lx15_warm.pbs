@@ -1,0 +1,73 @@
+#!/bin/bash
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/flux_lx15_warm.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+CONFIG="dmrg/warm_configs/${PBS_JOBNAME}.env"
+if [ ! -r "$CONFIG" ]; then
+  echo "Missing warm trajectory config: $CONFIG"
+  exit 2
+fi
+
+# shellcheck disable=SC1090
+. "$CONFIG"
+
+THREADS=${THREADS:-24}
+if [ "$THREADS" -gt 24 ]; then
+  echo "THREADS=$THREADS exceeds node ppn=24"
+  exit 2
+fi
+
+mkdir -p "$OUTROOT" "$OUTROOT/logs" dmrg/logs
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS="$THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Warm flux job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "PBS_JOBNAME=${PBS_JOBNAME:-none}"
+echo "Config: $CONFIG"
+echo "OUTROOT=$OUTROOT DIRECTION=$DIRECTION STEPS_PER_2PI=$STEPS_PER_2PI CYCLES=$CYCLES THREADS=$THREADS SEED=$SEED"
+
+julia -t "$THREADS" --project=. dmrg/run_flux_pump_warm.jl \
+  --Lx=15 --Ly=6 --Np=15 \
+  --cycles="$CYCLES" \
+  --steps_per_2pi="$STEPS_PER_2PI" \
+  --direction="$DIRECTION" \
+  --seed="$SEED" \
+  --t1=1.0 --t3=0.2 \
+  --V1=1.0 --V2=0.0 --V3=0.0 \
+  --threaded_blocksparse=true \
+  --blas_threads=1 \
+  --disable_strided_threads=true \
+  --max_sweeps="$MAX_SWEEPS" \
+  --retry_sweeps="$RETRY_SWEEPS" \
+  --max_retries="$MAX_RETRIES" \
+  --min_sweeps="$MIN_SWEEPS" \
+  --target_maxdim=2000 \
+  --stable_sweeps="$STABLE_SWEEPS" \
+  --maxdim=200,400,800,1200,1600,2000 \
+  --cutoff=1e-9 \
+  --energy_tol="$ENERGY_TOL" \
+  --density_tol="$DENSITY_TOL" \
+  --truncerr_tol="$TRUNCERR_TOL" \
+  --require_converged="$REQUIRE_CONVERGED" \
+  --output="$OUTROOT" \
+  > "$OUTROOT/logs/trajectory.${PBS_JOBID:-manual}.log" 2>&1
+
+test -s "$OUTROOT/pumping.dat"
+
+echo "Warm flux job finished at $(date)"
+echo "Pumping data: $OUTROOT/pumping.dat"

@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N phc_flux_lx15_merge
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/flux_lx15_merge.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+STEPS=${STEPS:-12}
+OUTROOT=${OUTROOT:-dmrg/flux_Lx15_chi2000_pointnodes_steps${STEPS}}
+
+if [ -r "$OUTROOT/job_config.env" ]; then
+  # shellcheck disable=SC1090
+  . "$OUTROOT/job_config.env"
+fi
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Merge job started at $(date)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "STEPS=$STEPS OUTROOT=$OUTROOT"
+
+for m in $(seq 0 "$STEPS"); do
+  point_dir=$(printf "%s/phi_%03d" "$OUTROOT" "$m")
+  test -s "$point_dir/summary.dat"
+  test -s "$point_dir/density.dat"
+done
+
+julia --project=. dmrg/merge_flux_pump.jl \
+  --input="$OUTROOT" \
+  --Lx=15 --Ly=6 \
+  --steps="$STEPS"
+
+echo "Merge job finished at $(date)"
+echo "Pumping data: $OUTROOT/pumping.dat"

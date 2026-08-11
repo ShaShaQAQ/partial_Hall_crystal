@@ -1,0 +1,96 @@
+#!/bin/bash
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+CONFIG="dmrg/segment_configs/${PBS_JOBNAME}.env"
+if [ ! -r "$CONFIG" ]; then
+  echo "Missing segmented flux config: $CONFIG"
+  exit 2
+fi
+
+# shellcheck disable=SC1090
+. "$CONFIG"
+
+THREADS=${THREADS:-24}
+if [ "$THREADS" -gt 24 ]; then
+  echo "THREADS=$THREADS exceeds node ppn=24"
+  exit 2
+fi
+
+mkdir -p "$OUTROOT" "$OUTROOT/logs" "$OUTROOT/checkpoints" dmrg/logs
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS="$THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+printf -v START_PAD "%03d" "$START_STEP"
+printf -v END_PAD "%03d" "$END_STEP"
+LOGFILE="$OUTROOT/logs/segment_${START_PAD}_${END_PAD}.${PBS_JOBID:-manual}.log"
+
+echo "Segmented flux job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "PBS_JOBNAME=${PBS_JOBNAME:-none}"
+echo "Config: $CONFIG"
+echo "OUTROOT=$OUTROOT DIRECTION=$DIRECTION STEPS_PER_2PI=$STEPS_PER_2PI CYCLES=$CYCLES START_STEP=$START_STEP END_STEP=$END_STEP THREADS=$THREADS SEED=$SEED"
+echo "Log: $LOGFILE"
+
+args=(
+  --Lx="${LX:-15}"
+  --Ly="${LY:-6}"
+  --Np="${NP:-15}"
+  --cycles="$CYCLES"
+  --steps_per_2pi="$STEPS_PER_2PI"
+  --direction="$DIRECTION"
+  --start_step="$START_STEP"
+  --end_step="$END_STEP"
+  --checkpoint_in="${CHECKPOINT_IN:-auto}"
+  --seed="$SEED"
+  --t1="${T1:-1.0}"
+  --t3="${T3:-0.2}"
+  --V1="${V1:-1.0}"
+  --V2="${V2:-0.0}"
+  --V3="${V3:-0.0}"
+  --threaded_blocksparse=true
+  --blas_threads=1
+  --disable_strided_threads=true
+  --max_sweeps="$MAX_SWEEPS"
+  --retry_sweeps="$RETRY_SWEEPS"
+  --max_retries="$MAX_RETRIES"
+  --min_sweeps="$MIN_SWEEPS"
+  --target_maxdim="${TARGET_MAXDIM:-2000}"
+  --stable_sweeps="$STABLE_SWEEPS"
+  --maxdim="${MAXDIM:-200,400,800,1200,1600,2000}"
+  --cutoff="${CUTOFF:-1e-9}"
+  --energy_tol="$ENERGY_TOL"
+  --density_tol="$DENSITY_TOL"
+  --truncerr_tol="$TRUNCERR_TOL"
+  --require_converged="$REQUIRE_CONVERGED"
+  --output="$OUTROOT"
+)
+
+if [ -n "${PHI_START:-}" ]; then
+  args+=(--phi_start="$PHI_START")
+fi
+if [ -n "${DPHI:-}" ]; then
+  args+=(--dphi="$DPHI")
+fi
+
+julia -t "$THREADS" --project=. dmrg/run_flux_pump_segment.jl "${args[@]}" > "$LOGFILE" 2>&1
+
+test -s "$OUTROOT/pumping.dat"
+test -s "$OUTROOT/checkpoints/state_${END_PAD}.jls"
+
+echo "Segmented flux job finished at $(date)"
+echo "Segment pumping data: $OUTROOT/pumping_segment_${START_PAD}_${END_PAD}.dat"
+echo "Merged pumping data: $OUTROOT/pumping.dat"

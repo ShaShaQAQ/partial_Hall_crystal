@@ -1,0 +1,108 @@
+#!/bin/bash
+#PBS -N phc_flux_lx15_pump
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/flux_lx15_parallel.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+STEPS=${STEPS:-12}
+WORKERS=${WORKERS:-4}
+THREADS_PER_WORKER=${THREADS_PER_WORKER:-6}
+TOTAL_THREADS=$((WORKERS * THREADS_PER_WORKER))
+if [ "$TOTAL_THREADS" -gt 24 ]; then
+  echo "WORKERS * THREADS_PER_WORKER = $TOTAL_THREADS exceeds 24"
+  exit 2
+fi
+
+OUTROOT=${OUTROOT:-dmrg/flux_Lx15_chi2000_parallel_w${WORKERS}x${THREADS_PER_WORKER}_steps${STEPS}}
+mkdir -p "$OUTROOT/logs" dmrg/logs
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+cleanup_failed_job() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "Job failed with status $status; stopping remaining flux point processes"
+    for pid in $(jobs -rp); do
+      kill "$pid" 2>/dev/null || true
+    done
+  fi
+}
+trap cleanup_failed_job EXIT
+
+echo "Job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "STEPS=$STEPS WORKERS=$WORKERS THREADS_PER_WORKER=$THREADS_PER_WORKER OUTROOT=$OUTROOT"
+
+run_point() {
+  local m="$1"
+  local point_dir
+  point_dir=$(printf "%s/phi_%03d" "$OUTROOT" "$m")
+  mkdir -p "$point_dir"
+  export JULIA_NUM_THREADS="$THREADS_PER_WORKER"
+  echo "[step $m] start $(date)"
+  julia -t "$THREADS_PER_WORKER" --project=. dmrg/run_flux_point.jl \
+    --Lx=15 --Ly=6 --Np=15 \
+    --steps="$STEPS" --step="$m" \
+    --t1=1.0 --t3=0.2 \
+    --V1=1.0 --V2=0.0 --V3=0.0 \
+    --threaded_blocksparse=true \
+    --blas_threads=1 \
+    --disable_strided_threads=true \
+    --adaptive=true \
+    --nsweeps=30 \
+    --max_sweeps=30 \
+    --min_sweeps=6 \
+    --target_maxdim=2000 \
+    --stable_sweeps=3 \
+    --maxdim=200,400,800,1200,1600,2000 \
+    --cutoff=1e-9 \
+    --energy_tol=1e-6 \
+    --density_tol=2e-5 \
+    --truncerr_tol=5e-8 \
+    --output="$point_dir" \
+    > "$OUTROOT/logs/phi_$(printf "%03d" "$m").log" 2>&1
+  test -s "$point_dir/summary.dat"
+  test -s "$point_dir/density.dat"
+  echo "[step $m] done $(date)"
+}
+
+wait_for_one_point() {
+  if wait -n; then
+    return 0
+  else
+    status=$?
+    echo "A flux point failed with status $status"
+    return "$status"
+  fi
+}
+
+for m in $(seq 0 "$STEPS"); do
+  while [ "$(jobs -rp | wc -l)" -ge "$WORKERS" ]; do
+    wait_for_one_point
+  done
+  run_point "$m" &
+done
+
+while [ "$(jobs -rp | wc -l)" -gt 0 ]; do
+  wait_for_one_point
+done
+
+echo "All flux points finished at $(date)"
+julia --project=. dmrg/merge_flux_pump.jl \
+  --input="$OUTROOT" \
+  --Lx=15 --Ly=6 \
+  --steps="$STEPS"
+
+echo "Job finished at $(date)"
