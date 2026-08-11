@@ -7,7 +7,12 @@ using .CylinderModelCore:
     reciprocal_vectors,
     hopping_matrices_from_get_Hk
 
+using ITensors
+using ITensorMPS
+using ITensorInfiniteMPS
+
 include("Configuration.jl")
+include("Hamiltonian.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -22,6 +27,19 @@ export CylinderModelParams,
     linear_site,
     site_coordinates,
     canonical_site,
-    default_occupied_sites
+    default_occupied_sites,
+    InfiniteHoppingTerm,
+    InfiniteInteractionTerm,
+    normalize_directed,
+    normalize_undirected,
+    build_infinite_hoppings,
+    build_infinite_interactions,
+    build_infinite_model_terms,
+    hamiltonian_is_hermitian,
+    canonical_term_dict,
+    tile_to_finite_window,
+    finite_term_parity,
+    infinite_opsum,
+    build_infinite_mpo
 
 end
