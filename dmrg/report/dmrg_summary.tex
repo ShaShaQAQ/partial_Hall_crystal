@@ -76,9 +76,10 @@ terms that cross the open \(x\) boundary and has physical edges. The ED--DMRG
 agreement above validates the cylinder MPO and sign/index conventions; it does
 not imply equality to the torus spectrum.
 
-\section{Lx=15 Production Run}
+\section{Lx=15 Warm-Start Spectral-Flow Run}
 
-The main charge-pump production run used
+The Lx=15 spectral-flow data below are from the warm-start production campaign,
+not from the small Lx=4 ED--DMRG benchmark. The run used
 \[
   L_x=15,\quad L_y=6,\quad N_s=90,\quad N_{\mathrm{uc}}=45,\quad
   N_p=15,\quad \nu=N_p/N_{\mathrm{uc}}=1/3 .
@@ -86,19 +87,25 @@ The main charge-pump production run used
 
 \begin{table}[h]
 \centering
-\caption{Production DMRG settings for the Lx=15 charge pump.}
-\begin{tabular}{ll}
+\small
+\caption{Production DMRG settings for the Lx=15 warm-start spectral flow.}
+\begin{tabular}{p{0.28\linewidth}p{0.62\linewidth}}
 \toprule
 Item & Value \\
 \midrule
-Campaign directory & \texttt{dmrg/flux\_Lx15\_pump\_prod\_20260710\_170505} \\
-Flux direction & \(y\)-cycle twist on the cylinder \\
+Campaign directory & \path{dmrg/flux_Lx15_pump_prod_20260710_170505} \\
+Geometry & Open \(x\), periodic \(y\), full two-band real-space cylinder \\
+Hamiltonian parameters & \(t_1=1.0,\ t_3=0.2,\ V_1=1.0,\ V_2=V_3=0.0\) \\
+Flux direction & \(y\)-cycle twist \(\Phi_y\) on the cylinder \\
+Warm-start protocol & Segmented checkpointed trajectories; branch refinements start from \path{forward_pi12/checkpoints/state_017.jls} \\
+Plotted grids & \path{forward_pi12}: \(\Delta\Phi=\pi/12\); \path{branch_from_fwd17_pi24}: \(\Delta\Phi=\pi/24\); \path{branch_from_fwd17_pi36}: \(\Delta\Phi=\pi/36\) near the jump \\
+Seeds & 1234 for \path{forward_pi12}, 1357 for \path{branch_from_fwd17_pi24}, 9753 for \path{branch_from_fwd17_pi36} \\
 Max bond dimensions & \(200,400,800,1200,1600,2000\) \\
 Cutoff & \(10^{-9}\) \\
-Energy tolerance & \(10^{-6}\) \\
-Density tolerance & \(2\times10^{-5}\) \\
-Truncation-error tolerance & \(5\times10^{-8}\) \\
+Sweep control & \(\texttt{max\_sweeps}=40\), \(\texttt{retry\_sweeps}=40\), \(\texttt{max\_retries}=2\), \(\texttt{min\_sweeps}=4\), \(\texttt{stable\_sweeps}=3\) \\
+Convergence gate & \(\Delta E\le 10^{-6}\), max density change \(\le 2\times10^{-5}\), truncation error \(\le 5\times10^{-8}\), with \(\texttt{REQUIRE\_CONVERGED=true}\) \\
 Threading target & 24 CPU cores per node on W003 \\
+Plotted-point status & 48/48 plotted points have \(\texttt{converged=true}\); worst diagnostics are \(\Delta E=1.87403\times10^{-7}\), density change \(1.48122\times10^{-5}\), truncation error \(5.868\times10^{-9}\) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -118,126 +125,132 @@ particle number is fixed.
 
 \section{Flux Insertion Result}
 
-The charge-pump plot data were generated from
+The figure uses the raw \(\texttt{cumulative\_mid}\) column from the following
+files under
 \begin{center}
-\small\path{/home/public/shajy/partial_Hall_crystal/dmrg/flux_Lx15_pump_prod_20260710_170505/plots/charge_pump_plot_data.csv}.
+\small\path{/home/public/shajy/partial_Hall_crystal/dmrg/flux_Lx15_pump_prod_20260710_170505}.
 \end{center}
-The plotted campaign contains 48 converged points from three trajectories:
 \begin{itemize}
-  \item \path{forward_pi12}
-  \item \path{branch_from_fwd17_pi24}
-  \item \path{branch_from_fwd17_pi36}
+  \item \path{forward_pi12/pumping.dat}
+  \item \path{branch_from_fwd17_pi24/pumping.dat}
+  \item \path{branch_from_fwd17_pi36/pumping.dat}
 \end{itemize}
+No sector unwrapping, branch relabeling, or manual \(1/3\) shift is applied.
 
 \begin{table}[h]
 \centering
-\caption{Selected points from the forward \(\Delta\Phi=\pi/12\) trajectory.}
-\begin{tabular}{rrrr}
+\caption{Selected raw points from the Lx=15 warm-start spectral-flow data.}
+\begin{tabular}{llrrr}
 \toprule
-\(\phitwopi\) & Step & Raw \(\qmid\) & Unwrapped \(\qmid\) \\
+\(\phitwopi\) & Series & Step & Raw \(\qmid\) & Energy \\
 \midrule
-0.000000 & 0  & 0.000000000 & 0.000000000 \\
-0.250000 & 6  & 0.082319845 & 0.082319845 \\
-0.500000 & 12 & 0.166481976 & 0.166481976 \\
-0.750000 & 18 & 0.254744645 & 0.254744645 \\
-0.791667 & 19 & 0.269989638 & 0.269989638 \\
-0.833333 & 20 & -0.054694482 & 0.278638851 \\
-1.000000 & 24 & -0.000000131 & 0.333333202 \\
+0.000000 & \path{forward_pi12} & 0  & 0.000000000 & \(-35.0036151955\) \\
+0.500000 & \path{forward_pi12} & 12 & 0.166481976 & \(-34.9065831468\) \\
+0.750000 & \path{forward_pi12} & 18 & 0.254744645 & \(-34.8726423200\) \\
+0.791667 & \path{forward_pi12} & 19 & 0.269989638 & \(-34.8696299183\) \\
+0.805556 & \path{branch_from_fwd17_pi36} & 24 & 0.275054113 & \(-34.8686784085\) \\
+0.819444 & \path{branch_from_fwd17_pi36} & 25 & -0.059271363 & \(-34.9843387311\) \\
+1.000000 & \path{forward_pi12} & 24 & -0.000000131 & \(-35.0036151660\) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure}[p]
+\begin{figure}[h]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
     width=0.94\linewidth,
-    height=0.36\linewidth,
+    height=0.52\linewidth,
     xmin=0, xmax=1,
-    ymin=-0.10, ymax=0.36,
+    ymin=-0.09, ymax=0.35,
     xlabel={\(\phitwopi\)},
     ylabel={raw \(\qmid\)},
     grid=both,
     legend style={at={(0.02,0.98)},anchor=north west,font=\small},
+    legend cell align={left},
 ]
-\addplot[draw=none,fill=black!12] coordinates {
-  (0.791667,-0.10) (0.833333,-0.10) (0.833333,0.36) (0.791667,0.36)
+\addplot[forget plot,draw=none,fill=black!10] coordinates {
+  (0.805556,-0.09) (0.819444,-0.09) (0.819444,0.35) (0.805556,0.35)
 } \closedcycle;
-\addplot[dashed,thick] coordinates {(0,0) (1,0.333333333)};
-\addlegendentry{ideal \(Q=\phitwopi/3\)}
+\addplot[dashed,thick,gray!70!black] coordinates {(0,0) (1,0.333333333)};
+\addlegendentry{\(\nu=1/3\) guide}
 \addplot[blue,thick,mark=*] coordinates {
-  (0,0)
-  (0.25,0.082319845)
-  (0.5,0.166481976)
-  (0.708333,0.239594793)
-  (0.75,0.254744645)
-  (0.791667,0.269989638)
-  (0.833333,-0.054694482)
-  (0.875,-0.040987639)
-  (0.916667,-0.027309661)
-  (0.958333,-0.013650770)
-  (1.0,-0.000000131)
+  (0.000000,0.000000000000)
+  (0.041667,0.013653577203)
+  (0.083333,0.027321412226)
+  (0.125000,0.041013687529)
+  (0.166667,0.054739402328)
+  (0.208333,0.068506101876)
+  (0.250000,0.082319845336)
+  (0.291667,0.096185540981)
+  (0.333333,0.110107556282)
+  (0.375000,0.124090620428)
+  (0.416667,0.138140885842)
+  (0.458333,0.152267148419)
+  (0.500000,0.166481976122)
+  (0.541667,0.180802468817)
+  (0.583333,0.195250318056)
+  (0.625000,0.209850354519)
+  (0.666667,0.224626783225)
+  (0.708333,0.239594793140)
+  (0.750000,0.254744645424)
+  (0.791667,0.269989638488)
+  (0.833333,-0.054694481836)
+  (0.875000,-0.040987638755)
+  (0.916667,-0.027309661164)
+  (0.958333,-0.013650769530)
+  (1.000000,-0.000000130997)
 };
-\addlegendentry{forward raw}
+\addlegendentry{\(\Delta\Phi=\pi/12\)}
+\addplot[red!70!black,thick,mark=square*] coordinates {
+  (0.729167,0.247152214355)
+  (0.750000,0.254748775556)
+  (0.770833,0.262371248861)
+  (0.791667,0.269995119594)
+  (0.812500,-0.061561451232)
+  (0.833333,-0.054694553046)
+  (0.854167,-0.047836927420)
+  (0.875000,-0.040987644795)
+  (0.895833,-0.034145620002)
+  (0.916667,-0.027309657901)
+  (0.937500,-0.020478489426)
+  (0.958333,-0.013650771527)
+  (0.979167,-0.006825127140)
+  (1.000000,-0.000000128455)
+};
+\addlegendentry{\(\Delta\Phi=\pi/24\)}
+\addplot[green!50!black,thick,mark=triangle*] coordinates {
+  (0.722222,0.244629032651)
+  (0.736111,0.249681784414)
+  (0.750000,0.254749923131)
+  (0.763889,0.259830565970)
+  (0.777778,0.264917559155)
+  (0.791667,0.270000671593)
+  (0.805556,0.275054113004)
+  (0.819444,-0.059271363022)
+  (0.833333,-0.054694553579)
+};
+\addlegendentry{\(\Delta\Phi=\pi/36\)}
 \end{axis}
 \end{tikzpicture}
-
-\vspace{0.8cm}
-
-\begin{tikzpicture}
-\begin{axis}[
-    width=0.94\linewidth,
-    height=0.36\linewidth,
-    xmin=0, xmax=1,
-    ymin=-0.02, ymax=0.38,
-    xlabel={\(\phitwopi\)},
-    ylabel={unwrapped \(\qmid\)},
-    grid=both,
-    legend style={at={(0.02,0.98)},anchor=north west,font=\small},
-]
-\addplot[draw=none,fill=black!12] coordinates {
-  (0.791667,-0.02) (0.833333,-0.02) (0.833333,0.38) (0.791667,0.38)
-} \closedcycle;
-\addplot[dashed,thick] coordinates {(0,0) (1,0.333333333)};
-\addlegendentry{ideal \(Q=\phitwopi/3\)}
-\addplot[blue,thick,mark=*] coordinates {
-  (0,0)
-  (0.25,0.082319845)
-  (0.5,0.166481976)
-  (0.708333,0.239594793)
-  (0.75,0.254744645)
-  (0.791667,0.269989638)
-  (0.833333,0.278638851)
-  (0.875,0.292345695)
-  (0.916667,0.306023672)
-  (0.958333,0.319682564)
-  (1.0,0.333333202)
-};
-\addlegendentry{forward unwrapped}
-\end{axis}
-\end{tikzpicture}
-\caption{Summary charge-pump curves. The gray band marks the branch-switch window
-\(0.791667 \le \phitwopi \le 0.833333\). The lower panel unwraps the
-post-switch sector by adding \(1/3\) to the raw charge.}
-\label{fig:charge-pump-summary}
+\caption{Raw Lx=15 warm-start spectral-flow charge data. The gray band marks the
+narrowest observed raw jump window, \(0.805556 \le \phitwopi \le 0.819444\),
+from the \(\Delta\Phi=\pi/36\) refinement. Colored points are the unmodified
+\(\texttt{cumulative\_mid}\) data; no \(1/3\) branch offset or sector unwrapping
+is applied.}
+\label{fig:charge-pump-raw}
 \end{figure}
 
-\section{Branch-Switch Interpretation}
+\section{Raw Branch-Jump Note}
 
-The raw charge jumps from about \(0.270\) to about \(-0.055\), a change close to
-\(-1/3\). The unwrapped curve assumes this is a topological-sector switch and
-adds \(1/3\) after the jump:
-\[
-  Q_{\mathrm{unwrapped}} =
-  \begin{cases}
-    Q_{\mathrm{raw}} + 1/3, & \phitwopi > 0.78 \ \mathrm{and}\ Q_{\mathrm{raw}}<0.08,\\
-    Q_{\mathrm{raw}}, & \mathrm{otherwise}.
-  \end{cases}
-\]
-This produces \(Q_{\mathrm{unwrapped}}(2\pi)\simeq 0.3333332\), consistent with
-one-third charge pumping. This is a useful summary plot, but the branch
-assignment should eventually be supported by overlap tracking or entanglement
-spectrum flow.
+The raw charge increases smoothly to \(\qmid\simeq 0.275054\) at
+\(\phitwopi=0.805556\), then jumps to \(\qmid\simeq -0.059271\) at
+\(\phitwopi=0.819444\). The jump size is close to \(-1/3\), but this note leaves
+the data in the sector where DMRG actually converged. With open boundaries and a
+near-degenerate ground-state manifold, this raw discontinuity should be treated
+as a branch switch candidate, not as an already-unwrapped smooth pump curve.
+Supporting a sector assignment requires additional diagnostics such as MPS
+overlaps, entanglement-spectrum flow, or an explicit state-tracking protocol.
 
 \section{Open Checks}
 

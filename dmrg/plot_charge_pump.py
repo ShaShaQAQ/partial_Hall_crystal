@@ -38,12 +38,6 @@ class PumpPoint:
     def x(self):
         return self.phi / (2.0 * math.pi)
 
-    @property
-    def q_unwrapped(self):
-        if self.x > 0.78 and self.q_mid < 0.08:
-            return self.q_mid + 1.0 / 3.0
-        return self.q_mid
-
 
 SERIES = [
     ("forward_pi12", "forward, dphi=pi/12", "#1f77b4", "circle"),
@@ -87,7 +81,7 @@ def detect_switch_window(series_points):
                 windows.append((prev.x, curr.x))
     if not windows:
         return None
-    return min(w[0] for w in windows), max(w[1] for w in windows)
+    return min(windows, key=lambda window: window[1] - window[0])
 
 
 def write_plot_data(path, series_points):
@@ -101,7 +95,6 @@ def write_plot_data(path, series_points):
                 "phi_over_2pi",
                 "energy",
                 "q_mid_raw",
-                "q_mid_unwrapped",
                 "sweeps",
                 "attempts",
                 "converged",
@@ -117,7 +110,6 @@ def write_plot_data(path, series_points):
                     "%.16g" % point.x,
                     "%.16g" % point.energy,
                     "%.16g" % point.q_mid,
-                    "%.16g" % point.q_unwrapped,
                     point.sweeps,
                     point.attempts,
                     str(point.converged).lower(),
@@ -160,7 +152,6 @@ def draw_panel(
     ydomain,
     loaded,
     switch_window,
-    use_unwrapped,
 ):
     left = 96
     top = panel["top"]
@@ -211,7 +202,7 @@ def draw_panel(
     parts.append('<line x1="%d" y1="%.2f" x2="%d" y2="%.2f" stroke="#aaa" stroke-width="1"/>' % (left, ymap(1.0 / 3.0), left + width, ymap(1.0 / 3.0)))
 
     for _rel, label, color, marker, points in loaded:
-        values = [(p.x, p.q_unwrapped if use_unwrapped else p.q_mid) for p in points]
+        values = [(p.x, p.q_mid) for p in points]
         parts.append(
             '<polyline points="%s" fill="none" stroke="%s" stroke-width="2.2"/>'
             % (polyline(values, xmap, ymap), color)
@@ -224,7 +215,7 @@ def draw_panel(
         '<text x="28" y="%.2f" class="axis-label" text-anchor="middle" transform="rotate(-90 28 %.2f)">%s</text>'
         % (top + height / 2, top + height / 2, escape(ylabel))
     )
-    if switch_window is not None and not use_unwrapped:
+    if switch_window is not None:
         sx = xmap(0.5 * (switch_window[0] + switch_window[1]))
         sy = ymap(0.02)
         parts.append('<text x="%.2f" y="%.2f" class="note" text-anchor="middle">sector jump</text>' % (sx, sy + 34))
@@ -233,7 +224,7 @@ def draw_panel(
 
 def write_svg(path, loaded, switch_window):
     width = 1050
-    height = 760
+    height = 430
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="0 0 %d %d">' % (width, height, width, height),
         "<defs>",
@@ -249,23 +240,12 @@ def write_svg(path, loaded, switch_window):
 
     draw_panel(
         parts,
-        {"top": 86, "xlabel": False},
-        "Lx=15, Ly=6, nu=1/3: raw flux-insertion charge pump",
+        {"top": 86, "xlabel": True},
+        "Lx=15, Ly=6, nu=1/3: raw warm-start flux-insertion charge",
         "raw Q_mid",
         (-0.10, 0.36),
         loaded,
         switch_window,
-        False,
-    )
-    draw_panel(
-        parts,
-        {"top": 445, "xlabel": True},
-        "Same data unwrapped by one 1/3 topological sector after the jump",
-        "unwrapped Q_mid",
-        (-0.02, 0.38),
-        loaded,
-        switch_window,
-        True,
     )
 
     legend_x = 680
@@ -312,7 +292,7 @@ def main():
 
     write_plot_data(outdir / "charge_pump_plot_data.csv", all_points)
     switch_window = detect_switch_window([points for _rel, _label, _color, _marker, points in loaded])
-    svg = outdir / "charge_pump_raw_unwrapped.svg"
+    svg = outdir / "charge_pump_raw.svg"
     write_svg(svg, loaded, switch_window)
 
     print("campaign=%s" % campaign)
