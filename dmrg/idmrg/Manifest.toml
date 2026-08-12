@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "8a828e000e93602e0932fff5a64c0c8dadfbceac"
+project_hash = "9bb449e5317ed829aac482e6c4b69a7b6488f0c3"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -359,7 +359,7 @@ uuid = "313cdc1a-70c2-5d6a-ae34-0150d3930a38"
 version = "1.1.1"
 
 [[deps.InfiniteCylinderDMRG]]
-deps = ["HDF5", "ITensorInfiniteMPS", "ITensorMPS", "ITensors", "KrylovKit", "LinearAlgebra", "Printf", "Random", "Statistics"]
+deps = ["HDF5", "ITensorInfiniteMPS", "ITensorMPS", "ITensors", "KrylovKit", "LinearAlgebra", "Printf", "Random", "Statistics", "TOML"]
 path = "."
 uuid = "bb119d70-e6e4-4ad4-a0fd-2dc1be8dca26"
 version = "0.1.0"
