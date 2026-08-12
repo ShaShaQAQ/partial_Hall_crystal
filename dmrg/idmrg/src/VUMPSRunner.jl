@@ -153,30 +153,62 @@ struct VUMPSResult
     reason::String
 end
 
-function unit_cell_energy(energy::Real, nsites::Integer)
-    nsites > 0 || throw(ArgumentError("site count must be positive"))
-    isfinite(energy) || throw(ArgumentError("energy estimate must be finite"))
-    return Float64(energy) * nsites
+function _validate_imaginary_tolerance(imaginary_tol::Real)
+    isfinite(imaginary_tol) && imaginary_tol >= 0 ||
+        throw(ArgumentError("imaginary_tol must be finite and nonnegative"))
+    return Float64(imaginary_tol)
 end
 
-function unit_cell_energy(energies::AbstractVector{<:Real}, nsites::Integer)
+function _numerically_real_energy(energy::Number, imaginary_tol::Float64)
+    isfinite(real(energy)) && isfinite(imag(energy)) ||
+        throw(ArgumentError("energy estimate must be finite"))
+    abs(imag(energy)) <= imaginary_tol ||
+        throw(ArgumentError("energy estimate has imaginary part larger than imaginary_tol"))
+    real_energy = Float64(real(energy))
+    isfinite(real_energy) ||
+        throw(ArgumentError("energy estimate does not fit finite Float64 output"))
+    return real_energy
+end
+
+function unit_cell_energy(
+    energy::Number,
+    nsites::Integer;
+    imaginary_tol::Real=1e-12,
+)
+    nsites > 0 || throw(ArgumentError("site count must be positive"))
+    tolerance = _validate_imaginary_tolerance(imaginary_tol)
+    cell_energy = _numerically_real_energy(energy, tolerance) * nsites
+    isfinite(cell_energy) ||
+        throw(ArgumentError("unit-cell energy does not fit finite Float64 output"))
+    return cell_energy
+end
+
+function unit_cell_energy(
+    energies::AbstractVector{<:Number},
+    nsites::Integer;
+    imaginary_tol::Real=1e-12,
+)
     nsites > 0 || throw(ArgumentError("site count must be positive"))
     length(energies) == nsites ||
         throw(ArgumentError("energy vector must contain one estimate per MPS site"))
-    all(isfinite, energies) ||
-        throw(ArgumentError("energy estimates must be finite"))
-    return sum(Float64, energies)
+    tolerance = _validate_imaginary_tolerance(imaginary_tol)
+    cell_energy = sum(energy -> _numerically_real_energy(energy, tolerance), energies)
+    isfinite(cell_energy) ||
+        throw(ArgumentError("unit-cell energy does not fit finite Float64 output"))
+    return cell_energy
 end
 
 function vumps_iteration(
     H,
     psi::InfiniteCanonicalMPS;
     vumps_tol::Real,
+    imaginary_tol::Real=1e-12,
     solver_tol=(x -> x / 100),
     eager::Bool=true,
 )
     isfinite(vumps_tol) && vumps_tol > 0 ||
         throw(ArgumentError("vumps_tol must be finite and positive"))
+    tolerance = _validate_imaginary_tolerance(imaginary_tol)
     eps_left = fill(Float64(vumps_tol), nsites(psi))
     eps_right = fill(Float64(vumps_tol), nsites(psi))
     result = nothing
@@ -195,8 +227,8 @@ function vumps_iteration(
     n = nsites(newpsi)
     return (
         psi=newpsi,
-        energy_left=unit_cell_energy(energy_left, n),
-        energy_right=unit_cell_energy(energy_right, n),
+        energy_left=unit_cell_energy(energy_left, n; imaginary_tol=tolerance),
+        energy_right=unit_cell_energy(energy_right, n; imaginary_tol=tolerance),
         eps_left,
         eps_right,
         elapsed_seconds,
@@ -230,6 +262,7 @@ function _validate_vumps_schedule(
     energy_tol::Real,
     energy_mismatch_tol::Real,
     stable_iterations::Integer,
+    imaginary_tol::Real,
 )
     targets = collect(maxdim_schedule)
     isempty(targets) && throw(ArgumentError("maxdim_schedule must not be empty"))
@@ -247,6 +280,7 @@ function _validate_vumps_schedule(
     _validate_convergence_parameters(
         vumps_tol, energy_tol, energy_mismatch_tol, stable_iterations
     )
+    _validate_imaginary_tolerance(imaginary_tol)
     return Int.(targets)
 end
 
@@ -260,6 +294,7 @@ function run_vumps(
     energy_tol::Real=10 * vumps_tol,
     energy_mismatch_tol::Real=10 * vumps_tol,
     stable_iterations::Integer=2,
+    imaginary_tol::Real=1e-12,
     solver_tol=(x -> x / 100),
     eager::Bool=true,
 )
@@ -271,6 +306,7 @@ function run_vumps(
         energy_tol,
         energy_mismatch_tol,
         stable_iterations,
+        imaginary_tol,
     )
     records = VUMPSRecord[]
     current = psi
@@ -286,6 +322,7 @@ function run_vumps(
                 H,
                 current;
                 vumps_tol,
+                imaginary_tol,
                 solver_tol,
                 eager,
             )

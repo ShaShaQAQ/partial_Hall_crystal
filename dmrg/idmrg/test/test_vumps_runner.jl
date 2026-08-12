@@ -121,6 +121,47 @@ end
     @test step.energy_right isa Float64
     @test isfinite(step.elapsed_seconds)
     @test step.elapsed_seconds >= 0
+    @test_throws ArgumentError vumps_iteration(
+        H, psi; vumps_tol=1e-5, imaginary_tol=-1e-12
+    )
+end
+
+@testset "actual cylinder complex-energy boundary" begin
+    cfg = InfiniteCylinderConfig(; Ly=2, x_period=3)
+    params = CylinderModelParams(; t1=1.0, t3=0.2, V1=1.0, V2=0.0, V3=0.0)
+    sites, _, psi = initial_infinite_mps(cfg)
+    H = build_infinite_mpo(cfg, params, sites)
+
+    result = run_vumps(
+        H,
+        psi;
+        maxdim_schedule=[1],
+        cutoff=1e-8,
+        max_iterations=1,
+        vumps_tol=1e-5,
+        energy_tol=1e-4,
+        energy_mismatch_tol=1e-4,
+        stable_iterations=2,
+        imaginary_tol=1e-12,
+    )
+    @test !result.converged
+    @test length(result.records) == 1
+    @test result.records[1].stage == 1
+    @test result.records[1].iteration == 1
+    @test isfinite(result.records[1].energy_left)
+    @test isfinite(result.records[1].energy_right)
+    @test result.records[1].energy_left ≈ 0.4 atol=1e-12
+    @test result.records[1].energy_right ≈ 0.4 atol=1e-12
+    @test result.records[1].energy_mismatch <= 1e-12
+    @test_throws ArgumentError run_vumps(
+        H,
+        psi;
+        maxdim_schedule=[1],
+        cutoff=1e-8,
+        max_iterations=1,
+        vumps_tol=1e-5,
+        imaginary_tol=Inf,
+    )
 end
 
 @testset "checked subspace expansion" begin
@@ -220,7 +261,38 @@ end
 
     @test unit_cell_energy(2.5, 6) == 15.0
     @test unit_cell_energy([1.0, 2.0, 3.0], 3) == 6.0
+    @test unit_cell_energy(2.5 + 1e-13im, 6; imaginary_tol=1e-12) == 15.0
+    @test unit_cell_energy(
+        ComplexF64[1.0 + 1e-13im, 2.0 - 2e-13im, 3.0],
+        3;
+        imaginary_tol=1e-12,
+    ) == 6.0
     @test_throws ArgumentError unit_cell_energy([1.0, 2.0], 3)
     @test_throws ArgumentError unit_cell_energy(Float64[], 3)
     @test_throws ArgumentError unit_cell_energy(Inf, 3)
+    @test_throws ArgumentError unit_cell_energy(floatmax(Float64), 2)
+    @test_throws ArgumentError unit_cell_energy(
+        [floatmax(Float64), floatmax(Float64)], 2
+    )
+    @test_throws ArgumentError unit_cell_energy(
+        BigFloat(floatmax(Float64)) * 2, 1
+    )
+    @test_throws ArgumentError unit_cell_energy(
+        2.5 + 2e-12im, 6; imaginary_tol=1e-12
+    )
+    @test_throws ArgumentError unit_cell_energy(
+        ComplexF64[1.0, 2.0 + 2e-12im, 3.0], 3; imaginary_tol=1e-12
+    )
+    for invalid_energy in (ComplexF64(Inf, 0.0), ComplexF64(0.0, Inf), ComplexF64(NaN, 0.0))
+        @test_throws ArgumentError unit_cell_energy(invalid_energy, 3)
+        @test_throws ArgumentError unit_cell_energy([invalid_energy], 1)
+    end
+    for invalid_tol in (-1e-12, NaN, Inf)
+        @test_throws ArgumentError unit_cell_energy(
+            1.0 + 0.0im, 1; imaginary_tol=invalid_tol
+        )
+        @test_throws ArgumentError unit_cell_energy(
+            ComplexF64[1.0], 1; imaginary_tol=invalid_tol
+        )
+    end
 end
