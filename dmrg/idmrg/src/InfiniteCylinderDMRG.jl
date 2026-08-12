@@ -13,6 +13,7 @@ using ITensorInfiniteMPS
 
 include("Configuration.jl")
 include("Hamiltonian.jl")
+include("VUMPSRunner.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -40,6 +41,17 @@ export CylinderModelParams,
     tile_to_finite_window,
     finite_term_parity,
     infinite_opsum,
-    build_infinite_mpo
+    build_infinite_mpo,
+    initial_infinite_mps,
+    centered_site_charges,
+    validate_centered_site_charges,
+    link_dimensions,
+    vumps_converged,
+    VUMPSRecord,
+    VUMPSResult,
+    unit_cell_energy,
+    vumps_iteration,
+    expand_subspace,
+    run_vumps
 
 end
