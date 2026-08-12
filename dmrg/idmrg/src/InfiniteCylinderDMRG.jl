@@ -10,10 +10,12 @@ using .CylinderModelCore:
 using ITensors
 using ITensorMPS
 using ITensorInfiniteMPS
+using KrylovKit
 
 include("Configuration.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
+include("Observables.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -52,6 +54,17 @@ export CylinderModelParams,
     unit_cell_energy,
     vumps_iteration,
     expand_subspace,
-    run_vumps
+    run_vumps,
+    EnergyData,
+    DensityRow,
+    EntanglementLevel,
+    EntanglementSector,
+    EntanglementData,
+    NeutralTransferData,
+    normalize_energy,
+    energy_data,
+    density_data,
+    entanglement_data,
+    neutral_transfer_data
 
 end
