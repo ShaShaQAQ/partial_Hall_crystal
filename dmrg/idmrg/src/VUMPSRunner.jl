@@ -1,3 +1,33 @@
+function _configuration_signature(c::InfiniteCylinderConfig)
+    signature =
+        "IC$(c.Ly)x$(c.x_period)n$(c.filling_num)d$(c.filling_den)"
+    ncodeunits(signature) <= 16 || throw(
+        ArgumentError(
+            "cylinder configuration signature exceeds the ITensor 16-character tag limit"
+        )
+    )
+    signature_tags = TagSet(signature)
+    length(signature_tags) == 1 || throw(
+        ArgumentError("cylinder configuration signature must form exactly one ITensor tag")
+    )
+    return signature
+end
+
+function _tag_configuration_sites(sites, c::InfiniteCylinderConfig)
+    signature = _configuration_signature(c)
+    tagged = Index[]
+    sizehint!(tagged, length(sites))
+    for site in sites
+        hastags(site, "Site") ||
+            throw(ArgumentError("centered site index is missing the generic Site tag"))
+        configured_site = replacetags(site, "Site" => signature)
+        hastags(configured_site, signature) && !hastags(configured_site, "Site") ||
+            throw(ArgumentError("failed to bind cylinder configuration to site index"))
+        push!(tagged, configured_site)
+    end
+    return CelledVector(tagged, translator(sites))
+end
+
 function initial_infinite_mps(
     c::InfiniteCylinderConfig; occupied_sites=default_occupied_sites(c)
 )
@@ -14,7 +44,8 @@ function initial_infinite_mps(
     length(occupied) == length(pattern) ||
         throw(ArgumentError("initial pattern contains duplicate occupied sites"))
     initstate(n::Integer) = mod1(n, nsites) in occupied ? "Occ" : "Emp"
-    sites = infsiteinds("Fermion", nsites; initstate, conserve_qns=true)
+    centered_sites = infsiteinds("Fermion", nsites; initstate, conserve_qns=true)
+    sites = _tag_configuration_sites(centered_sites, c)
     validate_centered_site_charges(c, sites)
     return sites, initstate, InfMPS(sites, initstate)
 end

@@ -10,8 +10,30 @@ using InfiniteCylinderDMRG
     @test energy.per_x == -6.0
     @test energy.per_unit_cell == -2.0
     @test energy.per_site == -1.0
+    for nonfinite_energy in (
+        NaN,
+        Inf,
+        -Inf,
+        BigFloat(floatmax(Float64)) * 2,
+    )
+        @test_throws ArgumentError normalize_energy(cfg, nonfinite_energy)
+    end
 
     sites, _, psi = initial_infinite_mps(cfg)
+    signature = InfiniteCylinderDMRG._configuration_signature(cfg)
+    @test all(hastags(site, signature) for site in sites)
+    @test all(!hastags(site, "Site") for site in sites)
+    flux_cfg = InfiniteCylinderConfig(; Ly=6, x_period=1, phi_y=0.37π)
+    @test InfiniteCylinderDMRG._configuration_signature(flux_cfg) == signature
+    oversized_signature_cfg = InfiniteCylinderConfig(
+        2,
+        1,
+        typemax(Int),
+        typemax(Int),
+        0.0,
+    )
+    @test_throws ArgumentError initial_infinite_mps(oversized_signature_cfg)
+
     params = CylinderModelParams(; t1=1.0, t3=0.2, V1=1.0, V2=0.4, V3=0.3)
     H = build_infinite_mpo(cfg, params, sites)
     raw_energy = sum(real, expect(psi, H))
@@ -24,9 +46,19 @@ using InfiniteCylinderDMRG
         [site_coordinates(cfg, site) for site in 1:sites_per_cell(cfg)]
     @test [row.density for row in densities] ==
         [site in default_occupied_sites(cfg) ? 1.0 : 0.0 for site in 1:sites_per_cell(cfg)]
-    mismatched_cfg = InfiniteCylinderConfig(; Ly=6, x_period=3)
-    @test_throws ArgumentError energy_data(psi, H, mismatched_cfg)
-    @test_throws ArgumentError density_data(psi, mismatched_cfg)
+    size_mismatch = InfiniteCylinderConfig(; Ly=6, x_period=3)
+    @test_throws ArgumentError energy_data(psi, H, size_mismatch)
+    @test_throws ArgumentError density_data(psi, size_mismatch)
+
+    same_size_mismatches = (
+        InfiniteCylinderConfig(; Ly=2, x_period=3),
+        InfiniteCylinderConfig(6, 1, 2, 3, 0.0),
+    )
+    for mismatch in same_size_mismatches
+        @test_throws ArgumentError energy_data(psi, H, mismatch)
+        @test_throws ArgumentError density_data(psi, mismatch)
+        @test_throws ArgumentError entanglement_data(psi, mismatch; cut_x=1)
+    end
 
     entanglement = entanglement_data(psi, cfg; cut_x=1)
     @test isapprox(

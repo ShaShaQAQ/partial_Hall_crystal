@@ -56,6 +56,8 @@ end
 
 function normalize_energy(c::InfiniteCylinderConfig, energy_per_cell::Real)
     energy = Float64(energy_per_cell)
+    isfinite(energy) ||
+        throw(ArgumentError("energy per cell must be finite after Float64 conversion"))
     return EnergyData(
         energy,
         energy / c.x_period,
@@ -67,6 +69,11 @@ end
 function _validate_observable_cell(psi, c::InfiniteCylinderConfig)
     nsites(psi) == sites_per_cell(c) || throw(
         ArgumentError("MPS cell size does not match the cylinder configuration")
+    )
+    expected_signature = _configuration_signature(c)
+    sites = siteinds(only, psi.AL)
+    all(site -> hastags(site, expected_signature), sites) || throw(
+        ArgumentError("MPS site indices do not match the cylinder configuration")
     )
     return nothing
 end
