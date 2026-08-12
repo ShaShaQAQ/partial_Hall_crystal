@@ -154,9 +154,10 @@ struct VUMPSResult
 end
 
 function _validate_imaginary_tolerance(imaginary_tol::Real)
-    isfinite(imaginary_tol) && imaginary_tol >= 0 ||
+    tolerance = Float64(imaginary_tol)
+    isfinite(tolerance) && tolerance >= 0 ||
         throw(ArgumentError("imaginary_tol must be finite and nonnegative"))
-    return Float64(imaginary_tol)
+    return tolerance
 end
 
 function _numerically_real_energy(energy::Number, imaginary_tol::Float64)

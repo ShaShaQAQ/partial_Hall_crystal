@@ -287,7 +287,8 @@ end
         @test_throws ArgumentError unit_cell_energy(invalid_energy, 3)
         @test_throws ArgumentError unit_cell_energy([invalid_energy], 1)
     end
-    for invalid_tol in (-1e-12, NaN, Inf)
+    oversized_tol = BigFloat(floatmax(Float64)) * 2
+    for invalid_tol in (-1e-12, NaN, Inf, oversized_tol)
         @test_throws ArgumentError unit_cell_energy(
             1.0 + 0.0im, 1; imaginary_tol=invalid_tol
         )
