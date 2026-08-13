@@ -10,6 +10,7 @@ const SMOKE_OUTPUT_FILENAMES = Set([
     "convergence.tsv",
     "expansion.tsv",
     "density.tsv",
+    "ring_density.tsv",
     "entanglement_spectrum.tsv",
     "schmidt_sectors.tsv",
     "transfer_spectrum.tsv",
@@ -119,9 +120,20 @@ function assert_smoke_contract(settings::SinglePointSettings, result)
         "filling_den" => config.filling_den,
         "phi_y" => config.phi_y,
         "sites_per_cell" => sites_per_cell(config),
+        "unit_cells_per_cell" => unit_cells_per_cell(config),
         "particles_per_cell" => particles_per_cell(config),
+        "physical_site_density" => Float64(physical_site_density(config)),
         "charge_scale" => charge_scale(config),
         "signature" => InfiniteCylinderDMRG._configuration_signature(config),
+    )
+    ring_rows = parse_tsv(joinpath(output, "ring_density.tsv"))
+    @test length(ring_rows) == config.x_period
+    @test all(row -> row["valid"] == "true", ring_rows)
+    @test isapprox(
+        sum(parse(Float64, row["density_total"]) for row in ring_rows),
+        particles_per_cell(config);
+        atol=1e-10,
+        rtol=0,
     )
     @test summary["dependencies"]["itensor_infinite_mps_commit"] ==
         InfiniteCylinderDMRG.ITENSOR_INFINITE_MPS_COMMIT

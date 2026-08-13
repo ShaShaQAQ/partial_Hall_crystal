@@ -39,6 +39,18 @@ using Random
     H = build_infinite_mpo(cfg, params, sites)
     raw_energy = sum(real, expect(psi, H))
     @test energy_data(psi, H, cfg) == normalize_energy(cfg, raw_energy)
+    @test InfiniteCylinderDMRG._observable_energy_per_cell(
+        ComplexF64[-1 + 1e-14im, -2 - 0.5e-14im];
+        imaginary_tol=1e-12,
+    ) == -3.0
+    @test_throws ArgumentError InfiniteCylinderDMRG._observable_energy_per_cell(
+        ComplexF64[-1 + 1e-6im];
+        imaginary_tol=1e-12,
+    )
+    @test_throws ArgumentError InfiniteCylinderDMRG._observable_energy_per_cell(
+        ComplexF64[-1];
+        imaginary_tol=-1,
+    )
 
     densities = density_data(psi, cfg)
     @test length(densities) == sites_per_cell(cfg)

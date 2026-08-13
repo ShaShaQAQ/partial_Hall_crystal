@@ -549,13 +549,13 @@ struct CandidateSelection
     fidelities::Vector{Union{Nothing,MixedTransferFidelity}}
 end
 
-function _selectable_candidate(candidate::BranchCandidate)
-    return candidate.converged && candidate.valid && isfinite(candidate.energy.per_site)
+function _ground_selectable_candidate(candidate::BranchCandidate)
+    return candidate.converged && isfinite(candidate.energy.per_site)
 end
 
 function _ground_candidate_selection(candidates::Vector{BranchCandidate})
-    valid_indices = findall(_selectable_candidate, candidates)
-    isempty(valid_indices) && throw(ArgumentError("no converged valid candidate is available"))
+    valid_indices = findall(_ground_selectable_candidate, candidates)
+    isempty(valid_indices) && throw(ArgumentError("no converged finite-energy candidate is available"))
     selected_index = first(valid_indices)
     selected_energy = candidates[selected_index].energy.per_site
     for index in Iterators.drop(valid_indices, 1)
@@ -569,7 +569,7 @@ function _ground_candidate_selection(candidates::Vector{BranchCandidate})
         candidates,
         selected_index,
         :ground,
-        "selected 1-based candidate $selected_index by minimum valid converged energy per site",
+        "selected 1-based candidate $selected_index by minimum finite energy per site among converged candidates",
         fill(nothing, length(candidates)),
     )
 end
@@ -588,7 +588,7 @@ function _adiabatic_candidate_selection(
     selected_index = 0
     selected_fidelity = -Inf
     for (index, candidate) in pairs(candidates)
-        _selectable_candidate(candidate) || continue
+        candidate.converged || continue
         fidelity = mixed_transfer_fidelity(
             previous_state,
             candidate.psi,
@@ -619,10 +619,12 @@ end
     select_candidate(candidates; mode, previous_state=nothing, config=nothing, kwargs...)
 
 Retain all candidates and return a 1-based selected index. `:ground` chooses the
-first deterministic minimum among converged, valid energy densities. `:adiabatic`
-requires a previous state and configuration and chooses the first deterministic
-maximum valid mixed-transfer fidelity. Candidate entanglement and raw charges are
-never shifted, unwrapped, or otherwise modified.
+first deterministic finite-energy minimum among converged candidates.
+`:adiabatic` requires a previous state and configuration and chooses the first
+deterministic maximum valid mixed-transfer fidelity among converged candidates.
+Ancillary observable validity does not change eligibility. Candidate
+entanglement and raw charges are never shifted, unwrapped, or otherwise
+modified.
 """
 function select_candidate(
     candidates::AbstractVector{<:BranchCandidate};

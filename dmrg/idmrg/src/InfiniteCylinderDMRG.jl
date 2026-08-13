@@ -104,6 +104,7 @@ export CylinderModelParams,
     run_single_point,
     SCAN_SUMMARY_HEADER,
     BRANCH_EVENTS_HEADER,
+    SECTOR_GAUGE_HEADER,
     FluxScanRunResult,
     run_flux_scan
 

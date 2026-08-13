@@ -457,7 +457,9 @@ function _summary_data(
             "filling_den" => c.filling_den,
             "phi_y" => c.phi_y,
             "sites_per_cell" => sites_per_cell(c),
+            "unit_cells_per_cell" => unit_cells_per_cell(c),
             "particles_per_cell" => particles_per_cell(c),
+            "physical_site_density" => Float64(physical_site_density(c)),
             "charge_scale" => charge_scale(c),
             "signature" => _configuration_signature(c),
         ),
@@ -549,6 +551,19 @@ function write_output_files(
             (
                 (row.site, row.x, row.y, row.density, row_valid) for
                 (row, row_valid) in zip(densities, density_validities)
+            ),
+        ),
+        "ring_density.tsv" => _render_tsv(
+            "x\tdensity_total\tvalid",
+            (
+                (
+                    x,
+                    sum(row.density for row in densities if row.x == x),
+                    all(
+                        density_validities[index] for
+                        index in eachindex(densities) if densities[index].x == x
+                    ),
+                ) for x in 0:(c.x_period - 1)
             ),
         ),
         "entanglement_spectrum.tsv" => _render_tsv(

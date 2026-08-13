@@ -266,6 +266,51 @@ struct FluxScanSettings
     spectrum_levels::Int
 end
 
+const BRANCH_CUT_X = 1
+
+function _scan_metadata(settings::FluxScanSettings)
+    c = settings.point.config
+    dependencies = _toml_value(_runtime_dependencies())
+    dependencies["itensor_infinite_mps_commit"] = ITENSOR_INFINITE_MPS_COMMIT
+    return Dict{String,Any}(
+        "format" => "infinite_cylinder_vumps_scan_v1",
+        "algorithm" => "VUMPS",
+        "configuration" => Dict(
+            "Ly" => c.Ly,
+            "x_period" => c.x_period,
+            "filling_num" => c.filling_num,
+            "filling_den" => c.filling_den,
+            "sites_per_cell" => sites_per_cell(c),
+            "unit_cells_per_cell" => unit_cells_per_cell(c),
+            "particles_per_cell" => particles_per_cell(c),
+            "physical_site_density" => Float64(physical_site_density(c)),
+            "charge_scale" => charge_scale(c),
+            "signature" => _configuration_signature(c),
+        ),
+        "scan" => Dict(
+            "phi_start" => c.phi_y,
+            "phi_stop" => settings.phi_stop,
+            "phi_steps" => settings.phi_steps,
+        ),
+        "branch" => Dict(
+            "mode" => string(settings.branch_mode),
+            "cut_x" => BRANCH_CUT_X,
+            "fidelity_drop_tol" => settings.fidelity_drop_tol,
+            "charge_jump_tol" => settings.charge_jump_tol,
+            "sector_tol" => settings.sector_tol,
+            "spectrum_tol" => settings.spectrum_tol,
+            "spectrum_levels" => settings.spectrum_levels,
+        ),
+        "initialization" => Dict(
+            "occupied_sites" => copy(settings.point.occupied_sites),
+            "cold_patterns" => copy.(settings.cold_patterns),
+            "seed" => settings.point.seed,
+        ),
+        "optimization" => _toml_value(_optimization_metadata(settings.point)),
+        "dependencies" => dependencies,
+    )
+end
+
 function _parse_cold_patterns(value::AbstractString, c::InfiniteCylinderConfig)
     isempty(value) && return Vector{Int}[]
     patterns = Vector{Int}[]
@@ -357,6 +402,7 @@ flux_grid(settings::FluxScanSettings) =
 
 struct FluxCandidateData
     label::String
+    cut_x::Int
     energy_raw::Float64
     raw_schmidt_polarization::Float64
     sector_weights::Dict{Int,Float64}
@@ -378,6 +424,7 @@ function FluxCandidateData(
     raw_schmidt_polarization::Real,
     sector_weights::AbstractDict,
     spectrum_levels;
+    cut_x::Integer=1,
     converged::Bool=true,
     valid::Bool=true,
     energy_valid::Bool=isfinite(energy_raw),
@@ -389,6 +436,9 @@ function FluxCandidateData(
     reason::AbstractString=valid ? "valid candidate" : "invalid candidate",
 )
     isempty(strip(label)) && throw(ArgumentError("flux candidate label must not be empty"))
+    !(cut_x isa Bool) && cut_x > 0 || throw(
+        ArgumentError("flux candidate cut_x must be positive")
+    )
     weights = Dict{Int,Float64}()
     for (charge, weight) in sector_weights
         charge isa Integer && !(charge isa Bool) || throw(
@@ -399,6 +449,7 @@ function FluxCandidateData(
     levels = NamedTuple[level for level in spectrum_levels]
     return FluxCandidateData(
         String(label),
+        Int(cut_x),
         Float64(energy_raw),
         Float64(raw_schmidt_polarization),
         weights,
@@ -415,19 +466,18 @@ function FluxCandidateData(
     )
 end
 
-_selectable(candidate::FluxCandidateData) =
-    candidate.converged && candidate.valid && candidate.energy_valid && isfinite(candidate.energy_raw)
-
 function select_flux_candidate_data(candidates; mode)
     isempty(candidates) && throw(ArgumentError("candidate list must not be empty"))
     mode in (:ground, :adiabatic) || throw(ArgumentError("unsupported branch mode: $mode"))
     selected = 0
     best = mode === :ground ? Inf : -Inf
     for (index, candidate) in pairs(candidates)
-        _selectable(candidate) || continue
         value = if mode === :ground
+            candidate.converged && candidate.energy_valid &&
+                isfinite(candidate.energy_raw) || continue
             candidate.energy_raw
         else
+            candidate.converged || continue
             candidate.fidelity_valid && isfinite(candidate.fidelity_to_previous) || continue
             0 <= candidate.fidelity_to_previous <= 1 || continue
             candidate.fidelity_to_previous
@@ -469,31 +519,109 @@ function flux_scan_row(
     candidate::FluxCandidateData,
     selected_candidate::Integer;
     reference_polarization::Real,
+    x_period::Integer,
+    selection_mode::Symbol,
+    ground_energy::Real,
+    ground_energy_valid::Bool,
     selection_valid::Bool=true,
     selection_reason::AbstractString="selected by requested branch mode",
 )
-    polarization_valid = candidate.valid && candidate.polarization_valid &&
+    !(x_period isa Bool) && x_period > 0 || throw(
+        ArgumentError("x_period must be positive")
+    )
+    selection_mode in (:ground, :adiabatic) || throw(
+        ArgumentError("selection_mode must be ground or adiabatic")
+    )
+    polarization_valid = candidate.converged && candidate.polarization_valid &&
         isfinite(candidate.raw_schmidt_polarization) && isfinite(reference_polarization)
     delta = polarization_valid ?
         candidate.raw_schmidt_polarization - Float64(reference_polarization) : NaN
+    energy_delta_valid = candidate.converged && candidate.energy_valid &&
+        isfinite(candidate.energy_raw) && ground_energy_valid && isfinite(ground_energy)
+    energy_delta = energy_delta_valid ?
+        candidate.energy_raw - Float64(ground_energy) : NaN
+    fidelity_valid = candidate.converged && candidate.fidelity_valid &&
+        isfinite(candidate.fidelity_to_previous) &&
+        0 <= candidate.fidelity_to_previous <= 1
+    fidelity_density_valid = fidelity_valid && candidate.fidelity_to_previous > 0
+    fidelity_density = fidelity_density_valid ?
+        -log(candidate.fidelity_to_previous) / Int(x_period) : NaN
     return (
         point=Int(point),
         phi_y=Float64(phi_y),
         selected_candidate=Int(selected_candidate),
         selected_label=candidate.label,
+        selection_mode=string(selection_mode),
+        cut_x=candidate.cut_x,
         selection_valid,
         selection_reason=String(selection_reason),
         converged=candidate.converged,
         valid=candidate.valid,
         energy_raw=candidate.energy_raw,
         energy_valid=candidate.energy_valid && isfinite(candidate.energy_raw),
+        energy_delta_to_ground_raw=energy_delta,
+        energy_delta_to_ground_valid=energy_delta_valid,
         raw_schmidt_polarization=candidate.raw_schmidt_polarization,
         polarization_valid,
         delta_raw_schmidt_polarization=delta,
         fidelity_raw=candidate.fidelity_to_previous,
-        fidelity_valid=candidate.fidelity_valid && isfinite(candidate.fidelity_to_previous),
+        fidelity_valid,
+        fidelity_density_x_raw=fidelity_density,
+        fidelity_density_x_valid=fidelity_density_valid,
         reason=candidate.reason,
     )
+end
+
+function _same_flux_sector_gauge_rows(point::Integer, phi_y::Real, candidates)
+    cold = filter(candidate -> startswith(candidate.label, "cold_"), candidates)
+    rows = NamedTuple[]
+    for first_index in 1:(length(cold) - 1), second_index in (first_index + 1):length(cold)
+        first_candidate = cold[first_index]
+        second_candidate = cold[second_index]
+        alignment = try
+            first_candidate.cut_x == second_candidate.cut_x || throw(
+                ArgumentError("candidate branch cuts do not match")
+            )
+            first_candidate.sector_valid && second_candidate.sector_valid ||
+                throw(ArgumentError("candidate sector table is invalid"))
+            best_sector_shift(
+                first_candidate.sector_weights,
+                second_candidate.sector_weights,
+            )
+        catch error
+            error isa InterruptException && rethrow()
+            push!(
+                rows,
+                (
+                    point=Int(point),
+                    phi_y=Float64(phi_y),
+                    cut_x=first_candidate.cut_x,
+                    first_label=first_candidate.label,
+                    second_label=second_candidate.label,
+                    sector_shift_raw=0,
+                    sector_distance_raw=NaN,
+                    valid=false,
+                    reason="same-flux sector alignment failed: $(sprint(showerror, error))",
+                ),
+            )
+            continue
+        end
+        push!(
+            rows,
+            (
+                point=Int(point),
+                phi_y=Float64(phi_y),
+                cut_x=first_candidate.cut_x,
+                first_label=first_candidate.label,
+                second_label=second_candidate.label,
+                sector_shift_raw=alignment.shift,
+                sector_distance_raw=alignment.distance,
+                valid=true,
+                reason="diagnostic shift is added to second candidate raw-QN keys only for comparison",
+            ),
+        )
+    end
+    return rows
 end
 
 function _energy_crossing(previous, current)
@@ -596,7 +724,8 @@ Base.@kwdef struct SinglePointOperations
     state_sites::Function = psi -> siteinds(only, psi.AL)
     build_hamiltonian::Function = build_infinite_mpo
     optimize::Function = _default_optimize
-    energy::Function = energy_data
+    energy::Function = (psi, H, config, settings) ->
+        energy_data(psi, H, config; imaginary_tol=settings.imaginary_tol)
     density::Function = density_data
     entanglement::Function = (psi, config, cut_x) ->
         entanglement_data(psi, config; cut_x)
@@ -813,7 +942,7 @@ function _single_point_observables(
     config = settings.config
     reasons = String[]
     energy = _observable_or_fallback(
-        () -> operations.energy(result.psi, H, config),
+        () -> operations.energy(result.psi, H, config, settings),
         () -> EnergyData(NaN, NaN, NaN, NaN),
         "energy",
         reasons,
@@ -953,14 +1082,17 @@ function _reject_checkpoint_restart(settings::SinglePointSettings)
 end
 
 const SCAN_SUMMARY_HEADER =
-    "point\tphi_y\tselected_candidate\tselected_label\tselection_valid\tselection_reason\tconverged\tvalid\tenergy_raw\tenergy_valid\traw_schmidt_polarization\tpolarization_valid\tdelta_raw_schmidt_polarization\tfidelity_raw\tfidelity_valid\treason"
+    "point\tphi_y\tselected_candidate\tselected_label\tselection_mode\tcut_x\tselection_valid\tselection_reason\tconverged\tvalid\tenergy_raw\tenergy_valid\tenergy_delta_to_ground_raw\tenergy_delta_to_ground_valid\traw_schmidt_polarization\tpolarization_valid\tdelta_raw_schmidt_polarization\tfidelity_raw\tfidelity_valid\tfidelity_density_x_raw\tfidelity_density_x_valid\treason"
 const BRANCH_EVENTS_HEADER =
     "from_point\tto_point\tfrom_phi_y\tto_phi_y\tfidelity_raw\tfidelity_valid\tcharge_step_raw\tcharge_step_valid\tsector_distance_raw\tsector_distance_valid\tsector_shift_raw\tsector_shift_valid\tspectrum_distance_raw\tspectrum_distance_valid\tenergy_crossing_raw\tenergy_crossing_valid\tfidelity_drop_tol\tcharge_jump_tol\tsector_tol\tspectrum_tol\tspectrum_levels\tflag_fidelity\tflag_charge\tflag_sector\tflag_spectrum\tflag_energy_crossing\tflags_valid"
+const SECTOR_GAUGE_HEADER =
+    "point\tphi_y\tcut_x\tfirst_label\tsecond_label\tsector_shift_raw\tsector_distance_raw\tvalid\treason"
 
 struct FluxScanRunResult
     settings::FluxScanSettings
     rows::Vector{NamedTuple}
     events::Vector{NamedTuple}
+    sector_gauge::Vector{NamedTuple}
     candidates::Vector{Vector{FluxCandidateData}}
     selected_results::Vector{SinglePointRunResult}
 end
@@ -989,6 +1121,7 @@ function _candidate_data(result::SinglePointRunResult, label; fidelity=nothing)
         isnothing(entanglement) ? NaN : entanglement.raw_schmidt_polarization,
         sector_weights,
         spectrum;
+        cut_x=isnothing(entanglement) ? BRANCH_CUT_X : entanglement.cut_x,
         converged=result.optimization.converged,
         valid=result.valid,
         energy_valid=all(isfinite, (
@@ -1043,6 +1176,25 @@ function _write_scan_table(path, header, rows)
     return path
 end
 
+function _write_scan_metadata(path, settings::FluxScanSettings)
+    _atomic_replace(path) do temporary
+        open(temporary, "w") do io
+            write(io, _render_summary(_scan_metadata(settings)))
+        end
+    end
+    return path
+end
+
+function _ground_energy(candidates)
+    valid = filter(
+        candidate -> candidate.converged && candidate.energy_valid &&
+            isfinite(candidate.energy_raw),
+        candidates,
+    )
+    isempty(valid) && return (value=NaN, valid=false)
+    return (value=minimum(candidate.energy_raw for candidate in valid), valid=true)
+end
+
 function run_flux_scan(
     settings::FluxScanSettings;
     operations::SinglePointOperations=SinglePointOperations(),
@@ -1059,6 +1211,7 @@ function run_flux_scan(
     reference_polarization = NaN
     rows = NamedTuple[]
     events = NamedTuple[]
+    sector_gauge = NamedTuple[]
     all_candidates = Vector{FluxCandidateData}[]
     selected_results = SinglePointRunResult[]
 
@@ -1126,6 +1279,7 @@ function run_flux_scan(
         end
         selected_result = point_results[selected_index]
         selected_candidate = point_candidates[selected_index]
+        ground_energy = _ground_energy(point_candidates)
         if point == 1
             reference_polarization = selected_candidate.raw_schmidt_polarization
         end
@@ -1135,6 +1289,10 @@ function run_flux_scan(
             selected_candidate,
             selected_index;
             reference_polarization,
+            x_period=config.x_period,
+            selection_mode=mode,
+            ground_energy=ground_energy.value,
+            ground_energy_valid=ground_energy.valid,
             selection_valid,
             selection_reason,
         )
@@ -1155,6 +1313,10 @@ function run_flux_scan(
             )
         end
         push!(rows, row)
+        append!(
+            sector_gauge,
+            _same_flux_sector_gauge_rows(point, phi_y, point_candidates),
+        )
         push!(all_candidates, point_candidates)
         push!(selected_results, selected_result)
         warm_state = selected_result.optimization.psi
@@ -1164,7 +1326,23 @@ function run_flux_scan(
     mkpath(settings.point.output)
     _write_scan_table(joinpath(settings.point.output, "scan_summary.tsv"), SCAN_SUMMARY_HEADER, rows)
     _write_scan_table(joinpath(settings.point.output, "branch_events.tsv"), BRANCH_EVENTS_HEADER, events)
-    scan = FluxScanRunResult(settings, rows, events, all_candidates, selected_results)
+    _write_scan_table(
+        joinpath(settings.point.output, "sector_gauge.tsv"),
+        SECTOR_GAUGE_HEADER,
+        sector_gauge,
+    )
+    _write_scan_metadata(
+        joinpath(settings.point.output, "scan_metadata.toml"),
+        settings,
+    )
+    scan = FluxScanRunResult(
+        settings,
+        rows,
+        events,
+        sector_gauge,
+        all_candidates,
+        selected_results,
+    )
     all(result -> result.valid, selected_results) &&
         all(row -> row.selection_valid, rows) ||
         settings.point.allow_nonconverged || throw(

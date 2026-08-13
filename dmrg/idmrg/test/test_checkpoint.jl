@@ -254,6 +254,7 @@ end
             "expansion.tsv" =>
                 "stage\ttarget\tbefore\tafter\tprogressed\telapsed_seconds",
             "density.tsv" => "site\tx\ty\tdensity\tvalid",
+            "ring_density.tsv" => "x\tdensity_total\tvalid",
             "entanglement_spectrum.tsv" =>
                 "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge\tvalid",
             "schmidt_sectors.tsv" =>
@@ -280,6 +281,10 @@ end
         @test summary["valid"] === true
         @test summary["converged"] === true
         @test summary["configuration"]["phi_y"] === cfg.phi_y
+        @test summary["configuration"]["unit_cells_per_cell"] ==
+            unit_cells_per_cell(cfg)
+        @test summary["configuration"]["physical_site_density"] ==
+            Float64(physical_site_density(cfg))
         @test summary["energy"]["per_cell"] === energy.per_cell
         @test summary["observables"]["transfer_valid"] === true
         @test summary["entanglement"][1]["cut_x"] == entanglements[1].cut_x
@@ -316,6 +321,9 @@ end
         @test parse(Int, density_fields[3]) == densities[1].y
         @test parse(Float64, density_fields[4]) == densities[1].density
         @test density_fields[5] == "true"
+        ring_fields =
+            split(readlines(joinpath(directory, "ring_density.tsv"))[2], '\t')
+        @test ring_fields == ["0", "1.0", "true"]
         entanglement_fields = split(
             readlines(joinpath(directory, "entanglement_spectrum.tsv"))[2], '\t'
         )

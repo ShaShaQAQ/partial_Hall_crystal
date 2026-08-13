@@ -178,16 +178,33 @@ julia --threads=24 --project=dmrg/idmrg dmrg/idmrg/bin/run_flux_scan.jl \
 
 The backslash before the semicolon protects it from the shell. At every flux
 point, `candidate_warm` and all requested `candidate_cold_NN` directories are
-retained. `ground` selects the lowest valid converged energy per site;
-`adiabatic` selects the highest valid mixed-transfer fidelity to the previous
-selected state. The first point is necessarily selected by energy because
-there is no previous state.
+retained. `ground` selects the lowest finite energy per site among converged
+candidates; `adiabatic` selects the highest valid mixed-transfer fidelity among
+converged candidates. A failure of an ancillary observable such as the neutral
+transfer spectrum remains visible in that candidate's validity fields but does
+not change energy/fidelity eligibility. The first point is necessarily selected
+by energy because there is no previous state.
 
 The scan constructs one site-index set and reuses those exact indices for all
 warm and cold candidates in memory. That identity is required by mixed
 transfer matrices. Each candidate still receives its own checkpoint and text
 files. `scan_summary.tsv` records the selected raw trajectory, while
 `branch_events.tsv` records raw adjacent-point diagnostics and thresholds.
+Every branch diagnostic uses `cut_x=1`, stored explicitly. The summary also
+stores the selected energy difference from the lowest converged finite energy
+at the same flux and both fidelity forms,
+
+```text
+fidelity_raw             = fidelity_cell
+fidelity_density_x_raw   = -log(fidelity_cell)/x_period.
+```
+
+`scan_metadata.toml` records the flux grid, geometry, model, optimization,
+branch mode, fixed cut, thresholds, patterns, seed, and runtime provenance even
+for a one-point scan with no adjacent event. `sector_gauge.tsv` compares every
+pair of explicit cold candidates at the same flux and fixed cut under the best
+integer raw-QN shift. The shift is evidence only and is never applied to either
+candidate's stored sector weights or polarization.
 
 ## Finite/infinite mapping
 
@@ -262,11 +279,17 @@ runs the official `ITensorMPS.orthogonalize` canonicalization and verifies cell
 size, exact site identities, link dimensions, QN flux, and center equations.
 Only a validated canonical state can be written to HDF5.
 
+The final Hamiltonian expectation first sums its complex per-cell estimates,
+then requires the total imaginary component to be no larger than
+`imaginary_tol`. A materially complex expectation is invalid; it is not made
+real by discarding its imaginary part.
+
 ## Observables
 
 A valid single-point output includes:
 
-- site-resolved density for every `(x,y)` in the reference cell;
+- site-resolved density for every `(x,y)` in the reference cell and the total
+  density of every `x` ring;
 - charge-resolved entanglement spectra at every physical cut after a complete
   `Ly` ring (one cut for `xp1`, three for `xp3`);
 - singular values, probabilities, entanglement energies, raw Schmidt QNs,
@@ -294,7 +317,8 @@ two eigenpairs converge with acceptable residuals. Mixed fidelity likewise
 comes from a normalized dominant mixed-transfer eigenvalue and is reported per
 MPS cell. For comparisons across different `x_period`, a useful derived
 quantity is `-log(fidelity_cell)/x_period`; the current scan tables store the
-raw per-cell fidelity.
+raw per-cell fidelity and this derived per-ring density with separate validity
+fields.
 
 ## Raw charge and branch policy
 
@@ -320,6 +344,7 @@ summary.toml
 convergence.tsv
 expansion.tsv
 density.tsv
+ring_density.tsv
 entanglement_spectrum.tsv
 schmidt_sectors.tsv
 transfer_spectrum.tsv
@@ -336,6 +361,11 @@ pinned backend commit. The TSV files are the analysis contract and retain raw
 numbers with explicit `valid`/`converged` fields. A nonconverged or invalid run
 still writes its raw text and canonical checkpoint before the default nonzero
 exit.
+
+A flux-scan root contains `scan_metadata.toml`, `scan_summary.tsv`,
+`branch_events.tsv`, `sector_gauge.tsv`, and one directory per retained
+candidate at every flux. All tables preserve raw quantities and attach
+independent validity fields; no derived sector alignment rewrites them.
 
 HDF5 format `infinite_cylinder_vumps_v1` stores the canonical infinite state
 and these compatibility attributes exactly:

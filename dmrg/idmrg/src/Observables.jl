@@ -78,9 +78,26 @@ function _validate_observable_cell(psi, c::InfiniteCylinderConfig)
     return nothing
 end
 
-function energy_data(psi, H, c::InfiniteCylinderConfig)
+function _observable_energy_per_cell(
+    estimates;
+    imaginary_tol::Real=1e-12,
+)
+    tolerance = _validate_imaginary_tolerance(imaginary_tol)
+    total = sum(estimates)
+    return _numerically_real_energy(total, tolerance)
+end
+
+function energy_data(
+    psi,
+    H,
+    c::InfiniteCylinderConfig;
+    imaginary_tol::Real=1e-12,
+)
     _validate_observable_cell(psi, c)
-    return normalize_energy(c, sum(real, expect(psi, H)))
+    return normalize_energy(
+        c,
+        _observable_energy_per_cell(expect(psi, H); imaginary_tol),
+    )
 end
 
 function density_data(psi, c::InfiniteCylinderConfig)

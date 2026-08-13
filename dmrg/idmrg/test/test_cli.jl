@@ -393,6 +393,14 @@ end
     @test defaults.sector_tol == 0.1
     @test defaults.spectrum_tol == 0.5
     @test defaults.spectrum_levels == 20
+    metadata = InfiniteCylinderDMRG._scan_metadata(defaults)
+    @test metadata["branch"]["mode"] == "ground"
+    @test metadata["branch"]["cut_x"] == 1
+    @test metadata["branch"]["fidelity_drop_tol"] == 1e-3
+    @test metadata["branch"]["charge_jump_tol"] == 0.1
+    @test metadata["branch"]["sector_tol"] == 0.1
+    @test metadata["branch"]["spectrum_tol"] == 0.5
+    @test metadata["branch"]["spectrum_levels"] == 20
 
     bad_cases = [
         ([arguments; "--phi_start=0"], "duplicate option --phi_start"),
@@ -448,12 +456,81 @@ end
     @test select_flux_candidate_data(tied; mode=:ground) == 1
     @test select_flux_candidate_data(tied; mode=:adiabatic) == 1
 
-    first_row = flux_scan_row(1, 0.0, previous[1], 1; reference_polarization=0.20)
-    next_row = flux_scan_row(2, 0.5, current[1], 1; reference_polarization=0.20)
+    first_row = flux_scan_row(
+        1,
+        0.0,
+        previous[1],
+        1;
+        reference_polarization=0.20,
+        x_period=3,
+        selection_mode=:ground,
+        ground_energy=-1.0,
+        ground_energy_valid=true,
+    )
+    next_row = flux_scan_row(
+        2,
+        0.5,
+        current[1],
+        1;
+        reference_polarization=0.20,
+        x_period=3,
+        selection_mode=:adiabatic,
+        ground_energy=-1.1,
+        ground_energy_valid=true,
+    )
     @test first_row.delta_raw_schmidt_polarization == 0.0
     @test next_row.raw_schmidt_polarization == -0.25
     @test next_row.delta_raw_schmidt_polarization == -0.45
     @test next_row.polarization_valid
+    @test first_row.cut_x == 1
+    @test first_row.selection_mode == "ground"
+    @test next_row.selection_mode == "adiabatic"
+    @test next_row.energy_delta_to_ground_raw ≈ 0.3
+    @test next_row.energy_delta_to_ground_valid
+    @test next_row.fidelity_density_x_raw ≈ -log(0.7) / 3
+    @test next_row.fidelity_density_x_valid
+
+    gauge_rows = InfiniteCylinderDMRG._same_flux_sector_gauge_rows(
+        2,
+        0.5,
+        [
+            current[1],
+            FluxCandidateData(
+                "cold_01",
+                -1.1,
+                0.1,
+                Dict(2 => 0.2, 3 => 0.8),
+                levels_a,
+            ),
+            FluxCandidateData(
+                "cold_02",
+                -1.0,
+                0.2,
+                Dict(0 => 0.2, 1 => 0.8),
+                levels_a,
+            ),
+        ],
+    )
+    @test length(gauge_rows) == 1
+    @test only(gauge_rows).first_label == "cold_01"
+    @test only(gauge_rows).second_label == "cold_02"
+    @test only(gauge_rows).sector_shift_raw == 2
+    @test only(gauge_rows).sector_distance_raw ≈ 0.0
+    @test only(gauge_rows).valid
+    cut_mismatch = InfiniteCylinderDMRG._same_flux_sector_gauge_rows(
+        2,
+        0.5,
+        [
+            FluxCandidateData(
+                "cold_01", -1.1, 0.1, Dict(0 => 1.0), levels_a; cut_x=1
+            ),
+            FluxCandidateData(
+                "cold_02", -1.0, 0.2, Dict(0 => 1.0), levels_a; cut_x=2
+            ),
+        ],
+    )
+    @test !only(cut_mismatch).valid
+    @test occursin("cuts do not match", only(cut_mismatch).reason)
 
     event = flux_branch_event(
         first_row,
@@ -520,6 +597,53 @@ end
     @test select_flux_candidate_data([current[1], raw_nonconverged]; mode=:ground) == 1
     @test select_flux_candidate_data([current[1], raw_nonconverged]; mode=:adiabatic) == 1
 
+    ancillary_invalid = FluxCandidateData(
+        "ancillary_invalid",
+        -2.0,
+        NaN,
+        Dict{Int,Float64}(),
+        NamedTuple[];
+        converged=true,
+        valid=false,
+        energy_valid=true,
+        polarization_valid=false,
+        sector_valid=false,
+        spectrum_valid=false,
+        fidelity_to_previous=0.99,
+        fidelity_valid=true,
+        reason="neutral transfer failed",
+    )
+    @test select_flux_candidate_data([current[1], ancillary_invalid]; mode=:ground) == 2
+    @test select_flux_candidate_data([current[1], ancillary_invalid]; mode=:adiabatic) == 2
+    ancillary_row = flux_scan_row(
+        2,
+        0.5,
+        FluxCandidateData(
+            "ancillary_invalid",
+            -2.0,
+            0.25,
+            Dict(0 => 1.0),
+            levels_a;
+            converged=true,
+            valid=false,
+            energy_valid=true,
+            polarization_valid=true,
+            sector_valid=true,
+            spectrum_valid=true,
+            fidelity_to_previous=0.9,
+            fidelity_valid=true,
+            reason="neutral transfer failed",
+        ),
+        1;
+        reference_polarization=0.2,
+        x_period=1,
+        selection_mode=:adiabatic,
+        ground_energy=-2.0,
+        ground_energy_valid=true,
+    )
+    @test ancillary_row.polarization_valid
+    @test ancillary_row.delta_raw_schmidt_polarization ≈ 0.05
+
     invalid_crossing = flux_branch_event(
         first_row,
         next_row,
@@ -563,8 +687,8 @@ function fake_single_point_operations(events; converged=true, transfer_valid=tru
             push!(events, (:optimize, H[2]))
             VUMPSResult(psi, VUMPSRecord[], converged, converged ? "converged" : "stopped")
         end,
-        energy=(psi, H, config) -> begin
-            push!(events, (:energy, H[2]))
+        energy=(psi, H, config, settings) -> begin
+            push!(events, (:energy, H[2], settings.imaginary_tol))
             normalize_energy(config, -1.0 - H[2])
         end,
         density=(psi, config) -> begin
@@ -685,7 +809,7 @@ end
             "--maxdim=1",
             "--output=$(joinpath(directory, "scan"))",
             "--branch_mode=adiabatic",
-            "--cold_patterns=2",
+            "--cold_patterns=2;3",
             "--allow_nonconverged=true",
         ])
         events = Any[]
@@ -697,15 +821,25 @@ end
         @test scan.rows[end].phi_y == 1.0
         @test all(row -> row.delta_raw_schmidt_polarization == 0.0, scan.rows)
         @test all(row -> row.selected_label == "warm", scan.rows)
+        @test [row.selection_mode for row in scan.rows] ==
+            ["ground", "adiabatic", "adiabatic"]
+        @test all(row -> row.cut_x == 1, scan.rows)
+        @test scan.rows[1].fidelity_density_x_valid === false
+        @test all(row -> row.fidelity_density_x_valid, scan.rows[2:end])
+        @test all(row -> row.energy_delta_to_ground_valid, scan.rows)
+        @test all(row -> row.energy_delta_to_ground_raw == 0.0, scan.rows)
+        @test length(scan.sector_gauge) == 3
+        @test all(row -> row.valid, scan.sector_gauge)
 
         builds = filter(event -> event[1] === :build, events)
         @test length(builds) == 3
         @test all(event -> event[3] == builds[1][3], builds)
         @test count(event -> event[1] === :initialize, events) == 1
         @test only(filter(event -> event[1] === :initialize, events))[3] == [1]
-        @test count(event -> event[1] === :fidelity, events) == 4
+        @test count(event -> event[1] === :fidelity, events) == 6
 
-        for point in 0:2, candidate in ("candidate_warm", "candidate_cold_01")
+        for point in 0:2, candidate in
+            ("candidate_warm", "candidate_cold_01", "candidate_cold_02")
             candidate_directory = joinpath(
                 settings.point.output,
                 "phi_$(lpad(point, 3, '0'))",
@@ -716,16 +850,63 @@ end
         end
         summary_lines = readlines(joinpath(settings.point.output, "scan_summary.tsv"))
         event_lines = readlines(joinpath(settings.point.output, "branch_events.tsv"))
+        gauge_lines = readlines(joinpath(settings.point.output, "sector_gauge.tsv"))
+        metadata = TOML.parsefile(joinpath(settings.point.output, "scan_metadata.toml"))
         @test first(summary_lines) == SCAN_SUMMARY_HEADER
         @test first(event_lines) == BRANCH_EVENTS_HEADER
+        @test first(gauge_lines) == SECTOR_GAUGE_HEADER
         @test length(summary_lines) == 4
         @test length(event_lines) == 3
+        @test length(gauge_lines) == 4
+        @test metadata["branch"]["mode"] == "adiabatic"
+        @test metadata["branch"]["cut_x"] == 1
+        @test metadata["scan"]["phi_steps"] == 3
         @test occursin("selected_candidate", first(summary_lines))
+        @test occursin("selection_mode", first(summary_lines))
+        @test occursin("fidelity_density_x_raw", first(summary_lines))
+        @test occursin("energy_delta_to_ground_raw", first(summary_lines))
         @test occursin("raw_schmidt_polarization", first(summary_lines))
         @test occursin("fidelity_raw", first(event_lines))
         @test occursin("fidelity_valid", first(event_lines))
         @test occursin("spectrum_levels", first(event_lines))
         @test !occursin("unwrap", read(joinpath(settings.point.output, "scan_summary.tsv"), String))
+    end
+end
+
+@testset "one-point scan persists metadata without branch events" begin
+    mktempdir() do directory
+        settings = parse_flux_scan_args([
+            "--Ly=6",
+            "--x_period=1",
+            "--filling_num=1",
+            "--filling_den=3",
+            "--phi_start=0",
+            "--phi_stop=0",
+            "--phi_steps=1",
+            "--maxdim=1",
+            "--output=$(joinpath(directory, "single_flux"))",
+            "--branch_mode=adiabatic",
+        ])
+        scan = run_flux_scan(
+            settings;
+            operations=fake_single_point_operations(Any[]),
+        )
+        @test length(scan.rows) == 1
+        @test isempty(scan.events)
+        metadata = TOML.parsefile(
+            joinpath(settings.point.output, "scan_metadata.toml")
+        )
+        @test metadata["branch"]["mode"] == "adiabatic"
+        @test metadata["branch"]["cut_x"] == 1
+        @test metadata["scan"] == Dict(
+            "phi_start" => 0.0,
+            "phi_stop" => 0.0,
+            "phi_steps" => 1,
+        )
+        @test readlines(joinpath(settings.point.output, "branch_events.tsv")) ==
+            [BRANCH_EVENTS_HEADER]
+        @test readlines(joinpath(settings.point.output, "sector_gauge.tsv")) ==
+            [SECTOR_GAUGE_HEADER]
     end
 end
 

@@ -216,7 +216,7 @@ end
     ground = select_candidate(candidates; mode=:ground)
     @test ground isa CandidateSelection
     @test ground.mode == :ground
-    @test ground.selected_index == 3
+    @test ground.selected_index == 1
     @test ground.candidates == candidates
     @test all(isnothing, ground.fidelities)
     @test occursin("minimum", ground.reason)
@@ -231,7 +231,7 @@ end
     @test adiabatic.mode == :adiabatic
     @test adiabatic.selected_index == 2
     @test adiabatic.candidates == candidates
-    @test adiabatic.fidelities[1] === nothing
+    @test adiabatic.fidelities[1] isa MixedTransferFidelity
     @test adiabatic.fidelities[2] isa MixedTransferFidelity
     @test adiabatic.fidelities[2].valid
     @test adiabatic.fidelities[2].fidelity_cell ≈ 1.0 atol=1e-10
@@ -260,9 +260,8 @@ end
     @test tied_adiabatic.selected_index == 1
 
     @test_throws ArgumentError select_candidate(BranchCandidate[]; mode=:ground)
-    @test_throws ArgumentError select_candidate(
-        [candidates[1], candidates[4]]; mode=:ground
-    )
+    @test select_candidate([candidates[1], candidates[4]]; mode=:ground).selected_index == 1
+    @test_throws ArgumentError select_candidate([candidates[4]]; mode=:ground)
     @test_throws ArgumentError select_candidate(candidates; mode=:adiabatic)
     @test_throws ArgumentError select_candidate(
         candidates; mode=:adiabatic, previous_state=previous
