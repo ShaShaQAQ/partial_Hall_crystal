@@ -24,6 +24,19 @@ The scripts are written for the W003 PBS environment and assume 24 CPU cores per
 
 Large or generated DMRG outputs are intentionally ignored by git, including checkpoints, logs, density profiles, cumulative charge files, pumping data, and plotted artifacts. Keep production results on the cluster or archive them separately.
 
+## Infinite cylinder
+
+The [`idmrg/`](idmrg/) directory is a separate-project infinite-cylinder
+workflow. Its numerical algorithm is VUMPS on an infinite MPS, not traditional
+growth iDMRG. It reuses the finite real-space Hamiltonian and transverse twist
+convention but has its own pinned experimental ITensorInfiniteMPS environment,
+commands, convergence criteria, observables, and HDF5 checkpoint contract.
+
+See [`idmrg/README.md`](idmrg/README.md) for installation, exact CLI examples,
+finite/infinite parameter mapping, raw flux-branch policy, smoke status, and
+known backend limitations. Always invoke it with `--project=dmrg/idmrg`; do not
+add its unregistered backend to the finite root project.
+
 ## Quick checks
 
 From the repository root:

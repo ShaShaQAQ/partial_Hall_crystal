@@ -1,0 +1,382 @@
+# Infinite-cylinder VUMPS workflow
+
+This directory contains the infinite-cylinder companion to the finite DMRG
+workflow in [`dmrg/`](../). Despite the historical directory name `idmrg`, the
+algorithm is **VUMPS on an infinite MPS**, not traditional growth-based iDMRG.
+Programs and output metadata therefore use the name `VUMPS`.
+
+The implementation uses the official but experimental and unregistered
+[`ITensorInfiniteMPS.jl`](https://github.com/ITensor/ITensorInfiniteMPS.jl)
+backend. It is isolated from the finite-DMRG environment and pinned in
+`Manifest.toml` to:
+
+- ITensorInfiniteMPS 0.2.2, commit
+  `765f2777703bc1138b009adbed1b97bde1973402`;
+- ITensors 0.9.30;
+- ITensorMPS 0.3.45;
+- KrylovKit 0.10.4;
+- HDF5 0.17.3.
+
+This stack is work in progress. Checkpoints and the adapter to the backend's
+iteration interface should not be assumed compatible with another commit or
+package resolution.
+
+## Environment and tests
+
+Run commands below from the repository root. Instantiate only the isolated
+environment:
+
+```bash
+julia --project=dmrg/idmrg -e 'using Pkg; Pkg.instantiate()'
+```
+
+The fast test suite can be run directly or through `Pkg.test()`:
+
+```bash
+julia --project=dmrg/idmrg dmrg/idmrg/test/runtests.jl
+julia --project=dmrg/idmrg -e 'using Pkg; Pkg.test()'
+```
+
+Neither command changes the root finite-DMRG environment.
+
+## Geometry, Hamiltonian, and filling
+
+The MPS is infinite and untwisted along `x`. It repeats a finite reference cell
+of `x_period` rings. Each ring has `Ly` physical sites and is periodic along
+`y`. The site order is
+
+```text
+i(x,y) = x*Ly + y + 1,    0 <= x < x_period, 0 <= y < Ly.
+```
+
+The infinite and finite programs reuse the full two-band real-space
+Hamiltonian: the hopping matrices determined by `t1` and `t3`, and density
+interactions `V1`, `V2`, and `V3`. A hopping path that winds `w_y` times around
+the periodic direction receives the same twist factor as finite DMRG,
+
+```text
+exp(i*w_y*phi_y).
+```
+
+Thus `phi_y` is the total transverse twist in radians, not `phi_y/(2*pi)`.
+The Hamiltonian is `2*pi` periodic.
+
+There are two physical sites in each microscopic two-band unit cell. Therefore
+
+```text
+sites_per_cell      = x_period*Ly
+unit_cells_per_cell = x_period*Ly/2
+Np_cell             = filling_num*unit_cells_per_cell/filling_den.
+```
+
+`Ly` must be positive and even, `x_period` must be positive, and `Np_cell` must
+be an integer. Invalid cells are rejected before sites or the Hamiltonian are
+built. At filling `1/3`:
+
+| Geometry | Physical sites | Microscopic two-site cells | `Np_cell` |
+|---|---:|---:|---:|
+| `Ly=6, x_period=1` | 6 | 3 | 1 |
+| `Ly=6, x_period=3` | 18 | 9 | 3 |
+| `Ly=2, x_period=3` | 6 | 3 | 1 |
+
+`Ly=2, x_period=1` is invalid because it would contain one third of a particle.
+The `Ly=2` valid cell is useful only as a backend smoke geometry; transverse
+wrapping is geometrically degenerate there.
+
+The default product occupation pattern is deterministic. For example, the
+default occupied sites are `[1]` for `Ly=6, x_period=1` and `[1,7,13]` for
+`Ly=6, x_period=3`. A flux scan can add explicit cold product candidates with
+`--cold_patterns`; semicolons separate candidates and commas separate occupied
+sites within a candidate. There is currently no `--seed` CLI option. Krylov
+transfer solves use a random initial tensor, so bitwise reproducibility of
+their iteration path is not promised even though the product candidates and
+selection tie-breaking are deterministic.
+
+## Single-point commands
+
+Every argument uses `--key=value` syntax. This minimal backend check is the
+smallest valid `1/3` cell:
+
+```bash
+julia --project=dmrg/idmrg dmrg/idmrg/bin/run_vumps.jl \
+  --Ly=2 --x_period=3 --filling_num=1 --filling_den=3 \
+  --t1=1.0 --t3=0.2 --V1=1.0 --V2=0.0 --V3=0.0 \
+  --phi_y=0.0 --maxdim=1,4,8 --cutoff=1e-8 \
+  --vumps_tol=1e-5 --maxiter=50 --transfer_tol=1e-8 \
+  --output=dmrg/idmrg/output/minimal_Ly2_xp3
+```
+
+For production studies at `Ly=6`, compare both admissible translation cells.
+The following matched commands are starting templates, not evidence that bond
+dimension 512 is sufficient or that either state is the production ground
+state:
+
+```bash
+julia --threads=24 --project=dmrg/idmrg dmrg/idmrg/bin/run_vumps.jl \
+  --Ly=6 --x_period=1 --filling_num=1 --filling_den=3 \
+  --t1=1.0 --t3=0.2 --V1=1.0 --V2=0.0 --V3=0.0 \
+  --phi_y=0.0 --maxdim=1,4,16,64,256,512 --cutoff=1e-10 \
+  --vumps_tol=1e-7 --energy_tol=1e-6 --mismatch_tol=1e-6 \
+  --stability=3 --maxiter=100 --transfer_tol=1e-10 \
+  --threads=24 --output=dmrg/idmrg/output/Ly6_xp1
+
+julia --threads=24 --project=dmrg/idmrg dmrg/idmrg/bin/run_vumps.jl \
+  --Ly=6 --x_period=3 --filling_num=1 --filling_den=3 \
+  --t1=1.0 --t3=0.2 --V1=1.0 --V2=0.0 --V3=0.0 \
+  --phi_y=0.0 --maxdim=1,4,16,64,256,512 --cutoff=1e-10 \
+  --vumps_tol=1e-7 --energy_tol=1e-6 --mismatch_tol=1e-6 \
+  --stability=3 --maxiter=100 --transfer_tol=1e-10 \
+  --threads=24 --output=dmrg/idmrg/output/Ly6_xp3
+```
+
+The `x_period=1` ansatz enforces one-ring translation symmetry and can suppress
+crystalline order. The `x_period=3` result has three physical transverse cuts
+and can expose period-three density structure. Compare energies using the same
+normalization, convergence tolerances, and adequately converged bond
+dimensions; do not compare the raw per-cell energies of unequal cells.
+
+Useful optional single-point keys are `--checkpoint`, `--transfer_neigs`,
+`--imaginary_tol`, and `--allow_nonconverged`. The parser also exposes
+`--load`, but optimization restart from a saved QN checkpoint is not currently
+a supported production path; see the reproduced backend limitation below. By
+default the checkpoint is `<output>/state.h5`, `transfer_neigs=4`,
+`stability=2`, and both energy tolerances are `10*vumps_tol`. The default
+behavior exits nonzero if VUMPS or a required observable is invalid. Setting
+`--allow_nonconverged=true` permits a zero exit but does not change validity
+fields or fabricate observables.
+
+## Raw flux scan
+
+`run_flux_scan.jl` uses `--phi_start`, `--phi_stop`, and `--phi_steps`; it does
+not accept the single-point `--phi_y` or `--checkpoint` keys. This example
+scans one flux quantum on the larger `Ly=6` cell, keeps two explicit cold
+patterns in addition to the warm candidate, and selects the adiabatic branch
+after the first point:
+
+```bash
+julia --threads=24 --project=dmrg/idmrg dmrg/idmrg/bin/run_flux_scan.jl \
+  --Ly=6 --x_period=3 --filling_num=1 --filling_den=3 \
+  --t1=1.0 --t3=0.2 --V1=1.0 --V2=0.0 --V3=0.0 \
+  --phi_start=0.0 --phi_stop=6.283185307179586 --phi_steps=73 \
+  --maxdim=1,4,16,64,256,512 --cutoff=1e-10 \
+  --vumps_tol=1e-7 --energy_tol=1e-6 --mismatch_tol=1e-6 \
+  --stability=3 --maxiter=100 --transfer_tol=1e-10 --threads=24 \
+  --branch_mode=adiabatic --cold_patterns=1,7,13\;2,8,14 \
+  --output=dmrg/idmrg/output/flux_Ly6_xp3
+```
+
+The backslash before the semicolon protects it from the shell. At every flux
+point, `candidate_warm` and all requested `candidate_cold_NN` directories are
+retained. `ground` selects the lowest valid converged energy per site;
+`adiabatic` selects the highest valid mixed-transfer fidelity to the previous
+selected state. The first point is necessarily selected by energy because
+there is no previous state.
+
+The scan constructs one site-index set and reuses those exact indices for all
+warm and cold candidates in memory. That identity is required by mixed
+transfer matrices. Each candidate still receives its own checkpoint and text
+files. `scan_summary.tsv` records the selected raw trajectory, while
+`branch_events.tsv` records raw adjacent-point diagnostics and thresholds.
+
+## Finite/infinite mapping
+
+The production finite campaign summarized in `dmrg/report/dmrg_summary.tex`
+used the following parameters. Infinite entries describe the two `Ly=6`
+comparison cells above.
+
+| Quantity | Finite `Lx=15` DMRG | Infinite VUMPS |
+|---|---|---|
+| `Lx` | 15 | omitted; `x` is infinite |
+| `Ly` | 6 | 6 |
+| Size | `Ns=90` | `sites_per_cell=6` (`xp1`) or 18 (`xp3`) |
+| Two-site cells | `Nuc=45` | 3 (`xp1`) or 9 (`xp3`) per MPS cell |
+| Particles at `1/3` | total `Np=15` | `Np_cell=1` (`xp1`) or 3 (`xp3`) |
+| Boundaries | open `x`, periodic/twisted `y` | infinite `x`, same periodic/twisted `y` |
+| Model | `t1=1, t3=.2, V1=1, V2=V3=0` | identical full real-space model |
+| Bond control | sweep `maxdim=200,400,800,1200,1600,2000` | staged subspace-expansion caps, e.g. `1,4,...,512` |
+| Truncation | `cutoff=1e-9` | expansion `cutoff`; template `1e-10` |
+| Convergence | `dE<=1e-6`, density change `<=2e-5`, truncation error `<=5e-8`, 3 stable sweeps | canonical residual, `dE`, and left/right energy mismatch; template `1e-7,1e-6,1e-6`, 3 stable iterations |
+| Energy | finite total energy | four energy densities below |
+| Pump observable | cumulative density transfer from an open edge | raw Schmidt-charge polarization at a fixed cut |
+| State comparison | finite-state overlap | mixed-transfer fidelity per infinite MPS cell |
+
+If `e_cell` is the Hamiltonian contribution anchored in one repeating MPS
+cell, output stores all four normalizations:
+
+```text
+energy.per_cell      = e_cell
+energy.per_x         = e_cell/x_period
+energy.per_unit_cell = e_cell/unit_cells_per_cell
+energy.per_site      = e_cell/sites_per_cell.
+```
+
+Use `per_x`, `per_unit_cell`, or `per_site` consistently when comparing
+`x_period=1` and `x_period=3`. A finite total energy is not directly comparable
+to any of these; use a separately established finite bulk energy estimator.
+
+## Optimization and convergence records
+
+At each entry in `--maxdim`, the runner first attempts QN-conserving subspace
+expansion and then performs VUMPS iterations. A schedule entry is an expansion
+cap, not a guarantee that every QN bond reaches that number. Expansion is
+accepted only when at least one actual bond satisfies
+`after_dimension[i] > before_dimension[i]`; an unchanged cell is an error.
+QN constraints commonly make growth nonuniform. The guard compares every bond
+before and after expansion, while the current text output records only
+`maxlinkdim` at each subsequent VUMPS iteration, not every before/after vector.
+
+`convergence.tsv` distinguishes three independent conditions:
+
+- `precision_error=max(eps_left,eps_right)` is the VUMPS canonical residual and
+  must be less than `vumps_tol`;
+- `delta_energy` is the change in the average of left and right cell-energy
+  estimates and must be less than `energy_tol`;
+- `energy_mismatch=abs(energy_left-energy_right)` must be less than
+  `mismatch_tol`.
+
+All three must hold for `stability` consecutive iterations at every stage.
+The `eps_left`/`eps_right` values are not Krylov eigensolver residuals. Transfer
+matrix eigenpair residuals appear separately in `transfer_spectrum.tsv` and
+are checked against `transfer_tol`.
+
+Before returning either a converged or nonconverged result, the implementation
+runs the official `ITensorMPS.orthogonalize` canonicalization and verifies cell
+size, exact site identities, link dimensions, QN flux, and center equations.
+Only a validated canonical state can be written to HDF5.
+
+## Observables
+
+A valid single-point output includes:
+
+- site-resolved density for every `(x,y)` in the reference cell;
+- charge-resolved entanglement spectra at every physical cut after a complete
+  `Ly` ring (one cut for `xp1`, three for `xp3`);
+- singular values, probabilities, entanglement energies, raw Schmidt QNs,
+  converted physical excess charges, sector weights, entropy, and raw
+  Schmidt-charge polarization;
+- the neutral transfer spectrum and its explicit Krylov residuals;
+- normalized mixed-transfer fidelity per complete MPS cell during scans.
+
+Centered QNs use `charge_scale=sites_per_cell/gcd(sites_per_cell,Np_cell)`.
+For a consistently oriented left Schmidt index,
+`physical_excess_charge=raw_charge/charge_scale`. The charge is an excess
+relative to the cell background; a raw QN must not be labeled as a particle
+number.
+
+The correlation length uses the two leading eigenvalues found in the **neutral
+QN channel** of a transfer matrix spanning one complete MPS cell:
+
+```text
+xi_cell = -1/log(abs(lambda2/lambda1))
+xi_x    = x_period*xi_cell.
+```
+
+It is not a maximization over all charge sectors. The result is invalid unless
+two eigenpairs converge with acceptable residuals. Mixed fidelity likewise
+comes from a normalized dominant mixed-transfer eigenvalue and is reported per
+MPS cell. For comparisons across different `x_period`, a useful derived
+quantity is `-log(fidelity_cell)/x_period`; the current scan tables store the
+raw per-cell fidelity.
+
+## Raw charge and branch policy
+
+The finite `Lx=15` cumulative charge is raw data. In particular, the refined
+finite trajectory jumps from raw `cumulative_mid=0.275054113` at
+`Phi_y/(2*pi)=0.805556` to `-0.059271363` at `0.819444`. The infinite workflow
+uses raw Schmidt-charge polarization and does not add `1/3` or perform modulo
+unwrapping.
+
+An integer raw-QN shift that best aligns two cold candidates is a comparison
+diagnostic only. It is written as sector evidence and is never applied to raw
+Schmidt QNs, sector weights, polarization, or pump data. A branch-switch
+interpretation requires combined mixed-fidelity, Schmidt-sector,
+charge-resolved entanglement-spectrum, and retained candidate-energy evidence;
+no single jump flag relabels the data.
+
+## Output and checkpoint contract
+
+A single-point directory contains:
+
+```text
+summary.toml
+convergence.tsv
+density.tsv
+entanglement_spectrum.tsv
+schmidt_sectors.tsv
+transfer_spectrum.tsv
+state.h5
+```
+
+`summary.toml` is the scalar contract. It records `algorithm="VUMPS"`, the
+complete geometry and filling, `phi_y`, charge scale and configuration
+signature, model and optimization settings, backend commit, convergence,
+validity, energy normalizations, entropy/polarization summaries, and neutral
+correlation length. The TSV files are the analysis contract and retain raw
+numbers with explicit `valid`/`converged` fields. A nonconverged or invalid run
+still writes its raw text and canonical checkpoint before the default nonzero
+exit.
+
+HDF5 format `infinite_cylinder_vumps_v1` stores the canonical infinite state
+and these compatibility attributes exactly:
+
+```text
+format, backend_commit,
+Ly, x_period, filling_num, filling_den, phi_y,
+sites_per_cell, particles_per_cell, charge_scale,
+configuration_signature.
+```
+
+Load validates the pinned backend, derived arithmetic, configuration signature,
+canonical tensors, and exact equality of `Ly`, `x_period`, filling, and
+`phi_y`. Model couplings and optimization settings are in `summary.toml`, not
+HDF5 compatibility metadata, so the caller must also check them before reusing
+a state. Because `phi_y` is strict, a checkpoint at one flux cannot seed a
+different flux. Flux-scan warm states instead stay in memory and reuse the
+exact same site indices while the Hamiltonian twist changes.
+
+## Smoke status and known limitations
+
+The opt-in smoke tests were run with Julia 1.12.5 and the pinned backend. The
+ignored summaries currently report:
+
+| Smoke | Status | Final energy per site | Neutral `xi_cell` | Charge scale |
+|---|---|---:|---:|---:|
+| `Ly=2, x_period=3` | converged and valid | -0.3953571006 | 0.1360013040 | 6 |
+| `Ly=6, x_period=1` | converged and valid | -0.2539604335 | 0.2779948039 | 6 |
+
+Both used `maxdim=1,4,8`, demonstrated actual QN bond growth, produced valid
+charge-resolved and neutral-transfer data, and passed HDF5 reload comparisons.
+They are data-contract tests, not production phase results. Run them locally
+with:
+
+```bash
+IDMRG_RUN_SMOKE=true julia --project=dmrg/idmrg dmrg/idmrg/test/runtests.jl
+```
+
+The 24-core W003 PBS wrapper runs the minimal smoke first and the `Ly=6` smoke
+only after it succeeds:
+
+```bash
+qsub dmrg/idmrg/jobs/run_smoke.pbs
+```
+
+Known pinned-backend limitations and guards are:
+
+- QN subspace expansion may grow only a subset of bonds. The runner checks
+  actual per-bond progress and errors if no bond grows; a requested `maxdim`
+  remains a cap rather than an attained dimension.
+- Final canonicalization uses the official ITensorMPS routine and is validated
+  before checkpointing.
+- With the pinned backend, loading the fresh canonical `Ly=6` smoke checkpoint
+  and requesting further QN subspace expansion reproduces an upstream failure:
+  direct-sum link indices have opposite directions (`Out` versus `In`). Even a
+  no-expansion VUMPS restart reaches final re-canonicalization and reproduces a
+  related direction mismatch. `load_checkpoint` remains validated for
+  observable/reload checks, but the CLI's `--load` optimization path is not a
+  safe production restart at this pinned commit. Start a fresh deterministic
+  or explicit cold product candidate instead, and retain both candidates for
+  comparison.
+- VUMPS can converge to metastable branches, `x_period=1` can suppress broken
+  translation symmetry, the reported correlation length covers only the
+  neutral channel, and checkpoint representation compatibility is tied to the
+  pinned commit.
