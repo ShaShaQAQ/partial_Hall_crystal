@@ -287,6 +287,12 @@ function load_checkpoint(path::AbstractString, c::InfiniteCylinderConfig)
             psi = try
                 read(file, "state", InfiniteCanonicalMPS)
             catch error
+                error isa InterruptException && rethrow()
+                error isa ErrorException && throw(
+                    CheckpointFormatError(
+                        "could not read canonical state: $(sprint(showerror, error))"
+                    ),
+                )
                 throw(_checkpoint_format_error("could not read canonical state", error))
             end
             _validate_checkpoint_state(psi, c)
@@ -358,6 +364,44 @@ function _validated_output_shapes(
     return nothing
 end
 
+function _entanglement_cut_valid(converged::Bool, data::EntanglementData)
+    return converged &&
+           isfinite(data.entropy) &&
+           isfinite(data.raw_schmidt_polarization) &&
+           !isempty(data.levels) &&
+           !isempty(data.sectors) &&
+           all(
+        level -> all(
+            isfinite,
+            (
+                level.singular_value,
+                level.probability,
+                level.entanglement_energy,
+                level.physical_charge,
+            ),
+        ),
+        data.levels,
+    ) &&
+           all(
+        sector -> all(isfinite, (sector.physical_charge, sector.weight)), data.sectors
+    )
+end
+
+function _transfer_row_valid(
+    converged::Bool,
+    transfer::NeutralTransferData,
+    level::Int,
+    value::Complex,
+)
+    row_converged = level <= transfer.converged
+    return converged &&
+           transfer.valid &&
+           row_converged &&
+           isfinite(value) &&
+           isfinite(transfer.phases[level]) &&
+           isfinite(transfer.residual_norms[level])
+end
+
 function _summary_data(
     c::InfiniteCylinderConfig,
     result::VUMPSResult,
@@ -372,31 +416,13 @@ function _summary_data(
         isfinite,
         (energy.per_cell, energy.per_x, energy.per_unit_cell, energy.per_site),
     )
-    density_valid = result.converged && all(row -> isfinite(row.density), densities)
-    entanglement_valid = result.converged && !isempty(entanglements) && all(
-        data ->
-            isfinite(data.entropy) &&
-            isfinite(data.raw_schmidt_polarization) &&
-            !isempty(data.levels) &&
-            !isempty(data.sectors) &&
-            all(
-                level -> all(
-                    isfinite,
-                    (
-                        level.singular_value,
-                        level.probability,
-                        level.entanglement_energy,
-                        level.physical_charge,
-                    ),
-                ),
-                data.levels,
-            ) &&
-            all(
-                sector -> all(isfinite, (sector.physical_charge, sector.weight)),
-                data.sectors,
-            ),
-        entanglements,
-    )
+    density_validities = [result.converged && isfinite(row.density) for row in densities]
+    density_valid = all(density_validities)
+    entanglement_validities = [
+        _entanglement_cut_valid(result.converged, data) for data in entanglements
+    ]
+    entanglement_valid =
+        !isempty(entanglement_validities) && all(entanglement_validities)
     transfer_valid =
         result.converged &&
         transfer.valid &&
@@ -406,7 +432,6 @@ function _summary_data(
         all(isfinite, transfer.residual_norms) &&
         all(isfinite, (transfer.ratio, transfer.xi_cell, transfer.xi_x))
     valid = energy_valid && density_valid && entanglement_valid && transfer_valid
-    maybe(validity, value) = validity ? value : NaN
 
     dependency_table = _toml_value(dependencies)
     dependency_table["itensor_infinite_mps_commit"] = ITENSOR_INFINITE_MPS_COMMIT
@@ -414,12 +439,10 @@ function _summary_data(
         Dict(
             "cut_x" => data.cut_x,
             "bond" => data.bond,
-            "valid" => entanglement_valid,
-            "entropy" => maybe(entanglement_valid, data.entropy),
-            "raw_schmidt_polarization" => maybe(
-                entanglement_valid, data.raw_schmidt_polarization
-            ),
-        ) for data in entanglements
+            "valid" => cut_valid,
+            "entropy" => data.entropy,
+            "raw_schmidt_polarization" => data.raw_schmidt_polarization,
+        ) for (data, cut_valid) in zip(entanglements, entanglement_validities)
     ]
     return Dict{String,Any}(
         "format" => TEXT_OUTPUT_FORMAT,
@@ -440,19 +463,19 @@ function _summary_data(
         ),
         "energy" => Dict(
             "valid" => energy_valid,
-            "per_cell" => maybe(energy_valid, energy.per_cell),
-            "per_x" => maybe(energy_valid, energy.per_x),
-            "per_unit_cell" => maybe(energy_valid, energy.per_unit_cell),
-            "per_site" => maybe(energy_valid, energy.per_site),
+            "per_cell" => energy.per_cell,
+            "per_x" => energy.per_x,
+            "per_unit_cell" => energy.per_unit_cell,
+            "per_site" => energy.per_site,
         ),
         "observables" => Dict(
             "density_valid" => density_valid,
             "entanglement_valid" => entanglement_valid,
             "transfer_valid" => transfer_valid,
             "transfer_reason" => transfer.reason,
-            "neutral_transfer_ratio" => maybe(transfer_valid, transfer.ratio),
-            "correlation_length_neutral_cell" => maybe(transfer_valid, transfer.xi_cell),
-            "correlation_length_neutral_x" => maybe(transfer_valid, transfer.xi_x),
+            "neutral_transfer_ratio" => transfer.ratio,
+            "correlation_length_neutral_cell" => transfer.xi_cell,
+            "correlation_length_neutral_x" => transfer.xi_x,
         ),
         "entanglement" => entanglement_summary,
         "optimization" => _toml_value(optimization),
@@ -482,10 +505,10 @@ function write_output_files(
         optimization,
         dependencies,
     )
-    transfer_valid = summary["observables"]["transfer_valid"]
-    density_valid = summary["observables"]["density_valid"]
-    entanglement_valid = summary["observables"]["entanglement_valid"]
-    measured(validity, value) = validity ? value : NaN
+    density_validities = [result.converged && isfinite(row.density) for row in densities]
+    entanglement_validities = [
+        _entanglement_cut_valid(result.converged, data) for data in entanglements
+    ]
 
     contents = [
         "summary.toml" => _render_summary(summary),
@@ -509,39 +532,43 @@ function write_output_files(
             ),
         ),
         "density.tsv" => _render_tsv(
-            "site\tx\ty\tdensity",
+            "site\tx\ty\tdensity\tvalid",
             (
-                (row.site, row.x, row.y, measured(density_valid, row.density)) for
-                row in densities
+                (row.site, row.x, row.y, row.density, row_valid) for
+                (row, row_valid) in zip(densities, density_validities)
             ),
         ),
         "entanglement_spectrum.tsv" => _render_tsv(
-            "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge",
+            "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge\tvalid",
             (
                 (
                     level.cut_x,
                     level.bond,
                     level.level,
-                    measured(entanglement_valid, level.singular_value),
-                    measured(entanglement_valid, level.probability),
-                    measured(entanglement_valid, level.entanglement_energy),
+                    level.singular_value,
+                    level.probability,
+                    level.entanglement_energy,
                     level.qn,
                     level.raw_charge,
-                    measured(entanglement_valid, level.physical_charge),
-                ) for data in entanglements for level in data.levels
+                    level.physical_charge,
+                    cut_valid,
+                ) for (data, cut_valid) in
+                    zip(entanglements, entanglement_validities) for level in data.levels
             ),
         ),
         "schmidt_sectors.tsv" => _render_tsv(
-            "cut_x\tbond\tqn\traw_charge\tphysical_charge\tweight",
+            "cut_x\tbond\tqn\traw_charge\tphysical_charge\tweight\tvalid",
             (
                 (
                     sector.cut_x,
                     sector.bond,
                     sector.qn,
                     sector.raw_charge,
-                    measured(entanglement_valid, sector.physical_charge),
-                    measured(entanglement_valid, sector.weight),
-                ) for data in entanglements for sector in data.sectors
+                    sector.physical_charge,
+                    sector.weight,
+                    cut_valid,
+                ) for (data, cut_valid) in
+                    zip(entanglements, entanglement_validities) for sector in data.sectors
             ),
         ),
         "transfer_spectrum.tsv" => _render_tsv(
@@ -554,8 +581,8 @@ function write_output_files(
                     abs(value),
                     transfer.phases[level],
                     transfer.residual_norms[level],
-                    transfer_valid && level <= transfer.converged,
-                    transfer_valid,
+                    level <= transfer.converged,
+                    _transfer_row_valid(result.converged, transfer, level, value),
                 ) for (level, value) in enumerate(transfer.eigenvalues)
             ),
         ),

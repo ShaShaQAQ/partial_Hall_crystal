@@ -123,6 +123,18 @@ end
         zero_error = captured_exception(() -> load_checkpoint(zero_state, cfg))
         @test zero_error isa CheckpointFormatError
         @test occursin("center", sprint(showerror, zero_error))
+
+        invalid_backend_state = joinpath(directory, "invalid_backend_state.h5")
+        cp(path, invalid_backend_state)
+        h5open(invalid_backend_state, "r+") do file
+            state = file["state"]
+            delete_attribute(state, "type")
+            attributes(state)["type"] = "NotInfiniteCanonicalMPS"
+        end
+        backend_error =
+            captured_exception(() -> load_checkpoint(invalid_backend_state, cfg))
+        @test backend_error isa CheckpointFormatError
+        @test occursin("could not read canonical state", sprint(showerror, backend_error))
     end
 end
 
@@ -227,11 +239,11 @@ end
         expected_headers = Dict(
             "convergence.tsv" =>
                 "stage\titeration\tmaxlinkdim\tenergy_left\tenergy_right\tenergy_mismatch\tdelta_energy\teps_left\teps_right\tprecision_error\telapsed_seconds\tconverged",
-            "density.tsv" => "site\tx\ty\tdensity",
+            "density.tsv" => "site\tx\ty\tdensity\tvalid",
             "entanglement_spectrum.tsv" =>
-                "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge",
+                "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge\tvalid",
             "schmidt_sectors.tsv" =>
-                "cut_x\tbond\tqn\traw_charge\tphysical_charge\tweight",
+                "cut_x\tbond\tqn\traw_charge\tphysical_charge\tweight\tvalid",
             "transfer_spectrum.tsv" =>
                 "level\teigenvalue_real\teigenvalue_imag\tmagnitude\tphase\tresidual_norm\tconverged\tvalid",
         )
@@ -282,26 +294,29 @@ end
             "false",
         ]
         density_fields = split(readlines(joinpath(directory, "density.tsv"))[2], '\t')
-        @test length(density_fields) == 4
+        @test length(density_fields) == 5
         @test parse(Int, density_fields[1]) == densities[1].site
         @test parse(Int, density_fields[2]) == densities[1].x
         @test parse(Int, density_fields[3]) == densities[1].y
         @test parse(Float64, density_fields[4]) == densities[1].density
+        @test density_fields[5] == "true"
         entanglement_fields = split(
             readlines(joinpath(directory, "entanglement_spectrum.tsv"))[2], '\t'
         )
-        @test length(entanglement_fields) == 9
+        @test length(entanglement_fields) == 10
         @test parse(Int, entanglement_fields[1]) == entanglements[1].levels[1].cut_x
         @test parse(Int, entanglement_fields[2]) == entanglements[1].levels[1].bond
         @test parse(Int, entanglement_fields[3]) == entanglements[1].levels[1].level
         @test parse(Float64, entanglement_fields[4]) ==
             entanglements[1].levels[1].singular_value
+        @test entanglement_fields[10] == "true"
         sector_fields =
             split(readlines(joinpath(directory, "schmidt_sectors.tsv"))[2], '\t')
-        @test length(sector_fields) == 6
+        @test length(sector_fields) == 7
         @test parse(Int, sector_fields[1]) == entanglements[1].sectors[1].cut_x
         @test parse(Int, sector_fields[2]) == entanglements[1].sectors[1].bond
         @test parse(Float64, sector_fields[6]) == entanglements[1].sectors[1].weight
+        @test sector_fields[7] == "true"
         transfer_fields =
             split(readlines(joinpath(directory, "transfer_spectrum.tsv"))[2], '\t')
         @test length(transfer_fields) == 8
@@ -354,33 +369,57 @@ end
         @test invalid_summary["valid"] === false
         @test invalid_summary["converged"] === false
         @test invalid_summary["energy"]["valid"] === false
+        @test invalid_summary["energy"]["per_cell"] === energy.per_cell
+        @test invalid_summary["energy"]["per_x"] === energy.per_x
+        @test invalid_summary["energy"]["per_unit_cell"] === energy.per_unit_cell
+        @test invalid_summary["energy"]["per_site"] === energy.per_site
         @test invalid_summary["observables"]["density_valid"] === false
         @test invalid_summary["observables"]["entanglement_valid"] === false
         @test invalid_summary["observables"]["transfer_valid"] === false
         @test invalid_summary["entanglement"][1]["valid"] === false
-        @test isnan(invalid_summary["entanglement"][1]["entropy"])
-        @test isnan(
-            invalid_summary["entanglement"][1]["raw_schmidt_polarization"]
+        @test invalid_summary["entanglement"][1]["entropy"] ===
+            entanglements[1].entropy
+        @test invalid_summary["entanglement"][1]["raw_schmidt_polarization"] ===
+            entanglements[1].raw_schmidt_polarization
+        @test isequal(
+            invalid_summary["observables"]["neutral_transfer_ratio"],
+            invalid_transfer.ratio,
         )
-        @test isnan(
-            invalid_summary["observables"]["correlation_length_neutral_cell"]
+        @test isequal(
+            invalid_summary["observables"]["correlation_length_neutral_cell"],
+            invalid_transfer.xi_cell,
         )
-        invalid_transfer_text =
-            read(joinpath(invalid_directory, "transfer_spectrum.tsv"), String)
-        @test occursin("\tfalse\tfalse", invalid_transfer_text)
-        @test endswith(
-            readlines(joinpath(invalid_directory, "density.tsv"))[2], "\tNaN"
+        invalid_transfer_fields = split(
+            readlines(joinpath(invalid_directory, "transfer_spectrum.tsv"))[2], '\t'
         )
+        @test parse(Float64, invalid_transfer_fields[2]) ==
+            real(invalid_transfer.eigenvalues[1])
+        @test invalid_transfer_fields[7:8] == ["true", "false"]
+        invalid_density_fields =
+            split(readlines(joinpath(invalid_directory, "density.tsv"))[2], '\t')
+        @test parse(Float64, invalid_density_fields[4]) == densities[1].density
+        @test invalid_density_fields[5] == "false"
         invalid_entanglement_fields = split(
             readlines(joinpath(invalid_directory, "entanglement_spectrum.tsv"))[2],
             '\t',
         )
-        @test all(field -> field == "NaN", invalid_entanglement_fields[4:6])
-        @test invalid_entanglement_fields[9] == "NaN"
+        @test parse(Float64, invalid_entanglement_fields[4]) ==
+            entanglements[1].levels[1].singular_value
+        @test parse(Float64, invalid_entanglement_fields[5]) ==
+            entanglements[1].levels[1].probability
+        @test parse(Float64, invalid_entanglement_fields[6]) ==
+            entanglements[1].levels[1].entanglement_energy
+        @test parse(Float64, invalid_entanglement_fields[9]) ==
+            entanglements[1].levels[1].physical_charge
+        @test invalid_entanglement_fields[10] == "false"
         invalid_sector_fields = split(
             readlines(joinpath(invalid_directory, "schmidt_sectors.tsv"))[2], '\t'
         )
-        @test invalid_sector_fields[5:6] == ["NaN", "NaN"]
+        @test parse(Float64, invalid_sector_fields[5]) ==
+            entanglements[1].sectors[1].physical_charge
+        @test parse(Float64, invalid_sector_fields[6]) ==
+            entanglements[1].sectors[1].weight
+        @test invalid_sector_fields[7] == "false"
 
         original_level = entanglements[1].levels[1]
         invalid_level = EntanglementLevel(
@@ -418,6 +457,10 @@ end
         @test invalid_entanglement_summary["observables"]["entanglement_valid"] ===
             false
         @test invalid_entanglement_summary["entanglement"][1]["valid"] === false
+        @test isnan(invalid_entanglement_summary["entanglement"][1]["entropy"]) ==
+            isnan(invalid_entanglement.entropy)
+        @test invalid_entanglement_summary["entanglement"][1]["entropy"] ===
+            invalid_entanglement.entropy
 
         invalid_phase_transfer = NeutralTransferData(
             transfer.eigenvalues,
@@ -444,9 +487,94 @@ end
             TOML.parsefile(joinpath(invalid_phase_directory, "summary.toml"))
         @test invalid_phase_summary["valid"] === false
         @test invalid_phase_summary["observables"]["transfer_valid"] === false
-        @test occursin(
-            "\tfalse\tfalse",
-            read(joinpath(invalid_phase_directory, "transfer_spectrum.tsv"), String),
+        invalid_phase_lines =
+            readlines(joinpath(invalid_phase_directory, "transfer_spectrum.tsv"))
+        @test split(invalid_phase_lines[2], '\t')[7:8] == ["true", "false"]
+        @test split(invalid_phase_lines[3], '\t')[7:8] == ["true", "true"]
+
+        nan_densities = copy(densities)
+        first_density = densities[1]
+        nan_densities[1] = DensityRow(
+            first_density.site, first_density.x, first_density.y, NaN
         )
+        nan_density_directory = joinpath(directory, "nan_density")
+        write_output_files(
+            nan_density_directory,
+            cfg,
+            result,
+            energy,
+            nan_densities,
+            entanglements,
+            transfer,
+        )
+        nan_density_lines = readlines(joinpath(nan_density_directory, "density.tsv"))
+        @test split(nan_density_lines[2], '\t')[4:5] == ["NaN", "false"]
+        @test split(nan_density_lines[3], '\t')[5] == "true"
+
+        multi_cfg = InfiniteCylinderConfig(; Ly=2, x_period=3, phi_y=0.125)
+        _, _, multi_psi = initial_infinite_mps(multi_cfg)
+        multi_result =
+            VUMPSResult(multi_psi, records, true, "converged after 1 stage")
+        multi_energy = normalize_energy(multi_cfg, -1.26)
+        multi_densities = density_data(multi_psi, multi_cfg)
+        multi_entanglements = [
+            entanglement_data(multi_psi, multi_cfg; cut_x=1),
+            entanglement_data(multi_psi, multi_cfg; cut_x=2),
+        ]
+        bad_level = multi_entanglements[1].levels[1]
+        bad_cut = EntanglementData(
+            multi_entanglements[1].cut_x,
+            multi_entanglements[1].bond,
+            multi_entanglements[1].entropy,
+            multi_entanglements[1].raw_schmidt_polarization,
+            [
+                EntanglementLevel(
+                    bad_level.cut_x,
+                    bad_level.bond,
+                    bad_level.level,
+                    bad_level.singular_value,
+                    bad_level.probability,
+                    NaN,
+                    bad_level.qn,
+                    bad_level.raw_charge,
+                    bad_level.physical_charge,
+                );
+                multi_entanglements[1].levels[2:end]
+            ],
+            multi_entanglements[1].sectors,
+        )
+        multi_transfer = InfiniteCylinderDMRG._neutral_transfer_result(
+            multi_cfg,
+            ComplexF64[1.0, 0.5im],
+            [1e-12, 2e-12],
+            2;
+            residual_tolerance=1e-10,
+        )
+        multi_directory = joinpath(directory, "multi_cut")
+        write_output_files(
+            multi_directory,
+            multi_cfg,
+            multi_result,
+            multi_energy,
+            multi_densities,
+            [bad_cut, multi_entanglements[2]],
+            multi_transfer,
+        )
+        multi_summary = TOML.parsefile(joinpath(multi_directory, "summary.toml"))
+        @test multi_summary["observables"]["entanglement_valid"] === false
+        @test multi_summary["entanglement"][1]["valid"] === false
+        @test multi_summary["entanglement"][2]["valid"] === true
+        multi_level_lines =
+            readlines(joinpath(multi_directory, "entanglement_spectrum.tsv"))[2:end]
+        first_cut_flags = [
+            split(line, '\t')[10] for line in multi_level_lines if
+            parse(Int, split(line, '\t')[1]) == 1
+        ]
+        second_cut_flags = [
+            split(line, '\t')[10] for line in multi_level_lines if
+            parse(Int, split(line, '\t')[1]) == 2
+        ]
+        @test all(==("false"), first_cut_flags)
+        @test all(==("true"), second_cut_flags)
     end
 end
