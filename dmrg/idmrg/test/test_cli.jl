@@ -2,6 +2,11 @@ using Test
 using InfiniteCylinderDMRG
 using ITensors
 using ITensorMPS
+using ITensorInfiniteMPS
+using KrylovKit
+using HDF5
+using Random
+using TOML
 
 function argument_error_message(f)
     error = try
@@ -40,6 +45,8 @@ end
         "--output=out/single",
         "--checkpoint=out/checkpoint.h5",
         "--load=in/seed.h5",
+        "--occupied_sites=2",
+        "--seed=1234",
         "--allow_nonconverged=true",
     ]
     settings = parse_single_point_args(args)
@@ -61,6 +68,8 @@ end
     @test settings.output == "out/single"
     @test settings.checkpoint == "out/checkpoint.h5"
     @test settings.load == "in/seed.h5"
+    @test settings.occupied_sites == [2]
+    @test settings.seed == 1234
     @test settings.allow_nonconverged
     @test InfiniteCylinderDMRG._optimization_metadata(settings).model == (
         t1=1.25,
@@ -92,6 +101,8 @@ end
     @test defaults.threads == 1
     @test defaults.checkpoint == joinpath("out/defaults", "state.h5")
     @test isnothing(defaults.load)
+    @test defaults.occupied_sites == default_occupied_sites(defaults.config)
+    @test defaults.seed == 0
     @test !defaults.allow_nonconverged
 end
 
@@ -115,6 +126,12 @@ end
         ([valid; "--cutoff=Inf"], "--cutoff must be finite"),
         ([valid[1:5]; "--maxdim=1,1"; valid[7:end]], "strictly increasing"),
         ([valid[1:5]; "--maxdim="; valid[7:end]], "must not be empty"),
+        ([valid; "--seed=-1"], "--seed must be nonnegative"),
+        ([valid; "--seed=bad"], "--seed must be an integer"),
+        ([valid; "--occupied_sites="], "--occupied_sites must not be empty"),
+        ([valid; "--occupied_sites=1,2"], "particle count"),
+        ([valid; "--occupied_sites=7"], "outside"),
+        ([valid; "--occupied_sites=1,1"], "particle count"),
     ]
     for (arguments, message) in bad_cases
         @test occursin(message, argument_error_message(() -> parse_single_point_args(arguments)))
@@ -157,6 +174,100 @@ end
     )
 end
 
+@testset "checkpoint optimization restart is rejected before callbacks" begin
+    settings = parse_single_point_args([
+        "--Ly=6",
+        "--x_period=1",
+        "--filling_num=1",
+        "--filling_den=3",
+        "--phi_y=0",
+        "--maxdim=1",
+        "--output=unused",
+        "--load=checkpoint.h5",
+    ])
+    calls = Ref(0)
+    callback(args...) = (calls[] += 1; error("callback must not run"))
+    operations = SinglePointOperations(
+        configure_threads=callback,
+        initialize=callback,
+        load_state=callback,
+        state_sites=callback,
+        build_hamiltonian=callback,
+        optimize=callback,
+        energy=callback,
+        density=callback,
+        entanglement=callback,
+        transfer=callback,
+        fidelity=callback,
+        write_outputs=callback,
+        save_state=callback,
+        cold_state=callback,
+    )
+    error = try
+        run_single_point(settings; operations)
+        nothing
+    catch exception
+        exception
+    end
+    @test error isa WorkflowValidationError
+    message = sprint(showerror, error)
+    @test occursin("765f2777703bc1138b009adbed1b97bde1973402", message)
+    @test occursin("unsupported", lowercase(message))
+    @test occursin("audit", lowercase(message))
+    @test occursin("observable-only", lowercase(message))
+    @test occursin("fresh deterministic", lowercase(message))
+    @test occursin("cold", lowercase(message))
+    @test calls[] == 0
+end
+
+@testset "flux-scan checkpoint restart is rejected before callbacks" begin
+    settings = parse_flux_scan_args([
+        "--Ly=6",
+        "--x_period=1",
+        "--filling_num=1",
+        "--filling_den=3",
+        "--phi_start=0",
+        "--phi_stop=1",
+        "--phi_steps=2",
+        "--maxdim=1",
+        "--output=unused",
+        "--load=checkpoint.h5",
+    ])
+    calls = Ref(0)
+    callback(args...) = (calls[] += 1; error("callback must not run"))
+    operations = SinglePointOperations(
+        configure_threads=callback,
+        initialize=callback,
+        load_state=callback,
+        state_sites=callback,
+        build_hamiltonian=callback,
+        optimize=callback,
+        energy=callback,
+        density=callback,
+        entanglement=callback,
+        transfer=callback,
+        fidelity=callback,
+        write_outputs=callback,
+        save_state=callback,
+        cold_state=callback,
+    )
+    error = try
+        run_flux_scan(settings; operations)
+        nothing
+    catch exception
+        exception
+    end
+    @test error isa WorkflowValidationError
+    message = sprint(showerror, error)
+    @test occursin("765f2777703bc1138b009adbed1b97bde1973402", message)
+    @test occursin("unsupported", lowercase(message))
+    @test occursin("audit", lowercase(message))
+    @test occursin("observable-only", lowercase(message))
+    @test occursin("fresh deterministic", lowercase(message))
+    @test occursin("cold", lowercase(message))
+    @test calls[] == 0
+end
+
 @testset "safe CLI threading" begin
     configured = configure_cli_threads(1)
     @test configured.requested == 1
@@ -165,6 +276,60 @@ end
     @test !configured.blocksparse
     @test_throws ArgumentError configure_cli_threads(0)
     @test_throws ArgumentError configure_cli_threads(true)
+end
+
+@testset "deterministic runtime dependency metadata" begin
+    dependencies = InfiniteCylinderDMRG._runtime_dependencies()
+    @test dependencies == (
+        julia_version=string(VERSION),
+        itensor_infinite_mps_version=string(Base.pkgversion(ITensorInfiniteMPS)),
+        itensor_mps_version=string(Base.pkgversion(ITensorMPS)),
+        itensors_version=string(Base.pkgversion(ITensors)),
+        krylovkit_version=string(Base.pkgversion(KrylovKit)),
+        hdf5_version=string(Base.pkgversion(HDF5)),
+    )
+
+    mktempdir() do directory
+        settings = parse_single_point_args([
+            "--Ly=6",
+            "--x_period=1",
+            "--filling_num=1",
+            "--filling_den=3",
+            "--phi_y=0",
+            "--maxdim=1",
+            "--output=$directory",
+        ])
+        cfg = settings.config
+        _, _, psi = initial_infinite_mps(cfg)
+        result = VUMPSResult(psi, VUMPSRecord[], true, "converged")
+        InfiniteCylinderDMRG._default_write_outputs(
+            directory,
+            cfg,
+            result,
+            normalize_energy(cfg, -1.0),
+            density_data(psi, cfg),
+            [entanglement_data(psi, cfg; cut_x=1)],
+            InfiniteCylinderDMRG._neutral_transfer_result(
+                cfg,
+                ComplexF64[1.0, 0.5],
+                [1e-12, 1e-12],
+                2;
+                residual_tolerance=1e-10,
+            ),
+            settings,
+        )
+        summary = TOML.parsefile(joinpath(directory, "summary.toml"))
+        actual = summary["dependencies"]
+        @test actual["julia_version"] == string(VERSION)
+        @test actual["itensor_infinite_mps_version"] ==
+            string(Base.pkgversion(ITensorInfiniteMPS))
+        @test actual["itensor_mps_version"] == string(Base.pkgversion(ITensorMPS))
+        @test actual["itensors_version"] == string(Base.pkgversion(ITensors))
+        @test actual["krylovkit_version"] == string(Base.pkgversion(KrylovKit))
+        @test actual["hdf5_version"] == string(Base.pkgversion(HDF5))
+        @test actual["itensor_infinite_mps_commit"] ==
+            InfiniteCylinderDMRG.ITENSOR_INFINITE_MPS_COMMIT
+    end
 end
 
 @testset "guarded bin entry points" begin
@@ -383,9 +548,9 @@ end
 function fake_single_point_operations(events; converged=true, transfer_valid=true)
     return SinglePointOperations(
         configure_threads=threads -> push!(events, (:threads, threads)),
-        initialize=config -> begin
-            push!(events, (:initialize, config.phi_y))
-            sites, _, psi = initial_infinite_mps(config)
+        initialize=(config, occupied_sites) -> begin
+            push!(events, (:initialize, config.phi_y, copy(occupied_sites)))
+            sites, _, psi = initial_infinite_mps(config; occupied_sites)
             (; sites, psi)
         end,
         load_state=(path, config) -> error("unexpected load"),
@@ -410,12 +575,12 @@ function fake_single_point_operations(events; converged=true, transfer_valid=tru
             push!(events, (:entanglement, config.phi_y, cut_x))
             entanglement_data(psi, config; cut_x)
         end,
-        transfer=(psi, config, settings) -> begin
-            push!(events, (:transfer, config.phi_y))
+        transfer=(psi, config, settings, rng) -> begin
+            push!(events, (:transfer, config.phi_y, rand(rng, UInt64)))
             synthetic_transfer(config; valid=transfer_valid)
         end,
-        fidelity=(previous, current, config, settings) -> begin
-            push!(events, (:fidelity, config.phi_y))
+        fidelity=(previous, current, config, settings, rng) -> begin
+            push!(events, (:fidelity, config.phi_y, rand(rng, UInt64)))
             InfiniteCylinderDMRG._mixed_transfer_result(
                 0.9 + 0im,
                 1.0 + 0im,
@@ -460,6 +625,7 @@ end
         @test result.valid
         @test result.optimization.converged
         @test result.transfer.valid
+        @test (:initialize, 0.0, [1]) in events
         @test length(result.entanglements) == settings.config.x_period
         @test findfirst(event -> event[1] === :optimize, events) <
             findfirst(event -> event[1] === :energy, events) <
@@ -536,6 +702,7 @@ end
         @test length(builds) == 3
         @test all(event -> event[3] == builds[1][3], builds)
         @test count(event -> event[1] === :initialize, events) == 1
+        @test only(filter(event -> event[1] === :initialize, events))[3] == [1]
         @test count(event -> event[1] === :fidelity, events) == 4
 
         for point in 0:2, candidate in ("candidate_warm", "candidate_cold_01")

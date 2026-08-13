@@ -23,6 +23,8 @@ const SINGLE_POINT_KEYS = Set([
     "output",
     "checkpoint",
     "load",
+    "occupied_sites",
+    "seed",
     "allow_nonconverged",
 ])
 
@@ -53,6 +55,8 @@ struct SinglePointSettings
     output::String
     checkpoint::String
     load::Union{Nothing,String}
+    occupied_sites::Vector{Int}
+    seed::Int
     allow_nonconverged::Bool
 end
 
@@ -138,6 +142,29 @@ function _nonempty_path(value::AbstractString, key::String)
     return String(value)
 end
 
+function _parse_occupied_pattern(
+    value::AbstractString,
+    c::InfiniteCylinderConfig,
+    key::String,
+)
+    isempty(value) && throw(ArgumentError("--$key must not be empty"))
+    fields = split(value, ','; keepempty=true)
+    any(isempty, fields) && throw(
+        ArgumentError("--$key must be a comma-separated list of site integers")
+    )
+    pattern = [_parse_int_option(field, key) for field in fields]
+    length(pattern) == particles_per_cell(c) || throw(
+        ArgumentError("--$key particle count does not match the cylinder configuration")
+    )
+    all(site -> 1 <= site <= sites_per_cell(c), pattern) || throw(
+        ArgumentError("--$key site lies outside the reference cell")
+    )
+    length(unique(pattern)) == length(pattern) || throw(
+        ArgumentError("--$key contains a duplicate occupied site")
+    )
+    return pattern
+end
+
 function parse_single_point_args(args=ARGS)
     options = _parse_key_value_args(args, SINGLE_POINT_KEYS)
     foreach(key -> _required(options, key), SINGLE_POINT_REQUIRED_KEYS)
@@ -181,6 +208,11 @@ function parse_single_point_args(args=ARGS)
         _nonempty_path(options["checkpoint"], "checkpoint") :
         joinpath(output, "state.h5")
     load = haskey(options, "load") ? _nonempty_path(options["load"], "load") : nothing
+    occupied_sites = haskey(options, "occupied_sites") ?
+        _parse_occupied_pattern(options["occupied_sites"], config, "occupied_sites") :
+        default_occupied_sites(config)
+    seed = haskey(options, "seed") ? _parse_int_option(options["seed"], "seed") : 0
+    seed >= 0 || throw(ArgumentError("--seed must be nonnegative"))
     allow_nonconverged = haskey(options, "allow_nonconverged") ?
         _parse_bool_option(options["allow_nonconverged"], "allow_nonconverged") : false
 
@@ -201,6 +233,8 @@ function parse_single_point_args(args=ARGS)
         output,
         checkpoint,
         load,
+        occupied_sites,
+        seed,
         allow_nonconverged,
     )
 end
@@ -554,8 +588,8 @@ Base.showerror(io::IO, error::WorkflowValidationError) = print(io, error.message
 
 Base.@kwdef struct SinglePointOperations
     configure_threads::Function = configure_cli_threads
-    initialize::Function = config -> begin
-        sites, _, psi = initial_infinite_mps(config)
+    initialize::Function = (config, occupied_sites) -> begin
+        sites, _, psi = initial_infinite_mps(config; occupied_sites)
         (; sites, psi)
     end
     load_state::Function = load_checkpoint
@@ -566,14 +600,21 @@ Base.@kwdef struct SinglePointOperations
     density::Function = density_data
     entanglement::Function = (psi, config, cut_x) ->
         entanglement_data(psi, config; cut_x)
-    transfer::Function = (psi, config, settings) -> neutral_transfer_data(
+    transfer::Function = (psi, config, settings, rng) -> neutral_transfer_data(
         psi,
         config;
         neigs=settings.transfer_neigs,
         tol=settings.transfer_tol,
+        rng,
     )
-    fidelity::Function = (previous, current, config, settings) ->
-        mixed_transfer_fidelity(previous, current, config; tol=settings.transfer_tol)
+    fidelity::Function = (previous, current, config, settings, rng) ->
+        mixed_transfer_fidelity(
+            previous,
+            current,
+            config;
+            tol=settings.transfer_tol,
+            rng,
+        )
     write_outputs::Function = _default_write_outputs
     save_state::Function = save_checkpoint
     cold_state::Function = _default_cold_state
@@ -651,8 +692,45 @@ function _optimization_metadata(settings::SinglePointSettings)
         max_iterations=settings.max_iterations,
         stable_iterations=settings.stable_iterations,
         threads=settings.threads,
+        occupied_sites=settings.occupied_sites,
+        seed=settings.seed,
         allow_nonconverged=settings.allow_nonconverged,
     )
+end
+
+function _runtime_dependencies()
+    return (
+        julia_version=string(VERSION),
+        itensor_infinite_mps_version=string(Base.pkgversion(ITensorInfiniteMPS)),
+        itensor_mps_version=string(Base.pkgversion(ITensorMPS)),
+        itensors_version=string(Base.pkgversion(ITensors)),
+        krylovkit_version=string(Base.pkgversion(KrylovKit)),
+        hdf5_version=string(Base.pkgversion(HDF5)),
+    )
+end
+
+function _seed_word(value::Integer)
+    value >= 0 || throw(ArgumentError("seed stream integers must be nonnegative"))
+    return UInt64(value)
+end
+
+function _seed_word(value::Union{Symbol,AbstractString})
+    word = UInt64(0xcbf29ce484222325)
+    for byte in codeunits(string(value))
+        word = xor(word, UInt64(byte)) * UInt64(0x100000001b3)
+    end
+    return word
+end
+
+function _derived_seed(seed::Integer, tags...)
+    word = xor(_seed_word(seed), UInt64(0x9e3779b97f4a7c15))
+    for tag in tags
+        word = xor(
+            word,
+            _seed_word(tag) + UInt64(0x9e3779b97f4a7c15) + (word << 6) + (word >> 2),
+        )
+    end
+    return word
 end
 
 function _default_write_outputs(
@@ -674,7 +752,7 @@ function _default_write_outputs(
         entanglements,
         transfer;
         optimization=_optimization_metadata(settings),
-        dependencies=(julia_version=string(VERSION),),
+        dependencies=_runtime_dependencies(),
     )
 end
 
@@ -709,6 +787,8 @@ function _with_phi(settings::SinglePointSettings, phi_y::Real; output=settings.o
         String(output),
         String(checkpoint),
         nothing,
+        copy(settings.occupied_sites),
+        settings.seed,
         settings.allow_nonconverged,
     )
 end
@@ -728,6 +808,7 @@ function _single_point_observables(
     H,
     settings::SinglePointSettings,
     operations::SinglePointOperations,
+    transfer_rng::AbstractRNG,
 )
     config = settings.config
     reasons = String[]
@@ -757,7 +838,12 @@ function _single_point_observables(
         push!(entanglements, data)
     end
     transfer = _observable_or_fallback(
-        () -> operations.transfer(result.psi, config, settings),
+        () -> operations.transfer(
+            result.psi,
+            config,
+            settings,
+            transfer_rng,
+        ),
         () -> _invalid_neutral_transfer(
             ComplexF64[],
             Float64[],
@@ -794,9 +880,19 @@ function _run_prepared_point(
     H,
     psi,
     operations::SinglePointOperations,
+    ;
+    transfer_rng::AbstractRNG=Random.Xoshiro(
+        _derived_seed(settings.seed, :transfer),
+    ),
 )
     optimization = operations.optimize(H, psi, settings)
-    observables = _single_point_observables(optimization, H, settings, operations)
+    observables = _single_point_observables(
+        optimization,
+        H,
+        settings,
+        operations,
+        transfer_rng,
+    )
     valid = _required_observables_valid(optimization, observables)
     operations.write_outputs(
         settings.output,
@@ -836,17 +932,24 @@ function run_single_point(
     settings::SinglePointSettings;
     operations::SinglePointOperations=SinglePointOperations(),
 )
+    _reject_checkpoint_restart(settings)
     operations.configure_threads(settings.threads)
-    state = if isnothing(settings.load)
-        operations.initialize(settings.config)
-    else
-        psi = operations.load_state(settings.load, settings.config)
-        (; sites=operations.state_sites(psi), psi)
-    end
+    state = operations.initialize(settings.config, settings.occupied_sites)
     H = operations.build_hamiltonian(settings.config, settings.model, state.sites)
     return _enforce_workflow_validity(
         _run_prepared_point(settings, H, state.psi, operations)
     )
+end
+
+function _reject_checkpoint_restart(settings::SinglePointSettings)
+    if !isnothing(settings.load)
+        throw(
+            WorkflowValidationError(
+                "optimization restart from --load is unsupported by pinned backend commit $(ITENSOR_INFINITE_MPS_COMMIT); checkpoints are retained for checkpoint audit and observable-only reload validation. Start a fresh deterministic product state with --occupied_sites or use explicit fresh cold candidates instead.",
+            ),
+        )
+    end
+    return nothing
 end
 
 const SCAN_SUMMARY_HEADER =
@@ -910,9 +1013,10 @@ function _safe_fidelity(
     current,
     config,
     settings,
+    rng,
 )
     try
-        return operations.fidelity(previous, current, config, settings)
+        return operations.fidelity(previous, current, config, settings, rng)
     catch error
         error isa InterruptException && rethrow()
         return _invalid_mixed_transfer(
@@ -943,13 +1047,12 @@ function run_flux_scan(
     settings::FluxScanSettings;
     operations::SinglePointOperations=SinglePointOperations(),
 )
+    _reject_checkpoint_restart(settings.point)
     operations.configure_threads(settings.point.threads)
-    initial = if isnothing(settings.point.load)
-        operations.initialize(settings.point.config)
-    else
-        psi = operations.load_state(settings.point.load, settings.point.config)
-        (; sites=operations.state_sites(psi), psi)
-    end
+    initial = operations.initialize(
+        settings.point.config,
+        settings.point.occupied_sites,
+    )
     shared_sites = initial.sites
     warm_state = initial.psi
     previous_selected_state = nothing
@@ -985,7 +1088,15 @@ function run_flux_scan(
                 output=candidate_directory,
                 checkpoint=joinpath(candidate_directory, "state.h5"),
             )
-            candidate_result = _run_prepared_point(point_settings, H, state, operations)
+            candidate_result = _run_prepared_point(
+                point_settings,
+                H,
+                state,
+                operations;
+                transfer_rng=Random.Xoshiro(
+                    _derived_seed(settings.point.seed, :transfer, point, label),
+                ),
+            )
             push!(point_results, candidate_result)
             fidelity = isnothing(previous_selected_state) ? nothing :
                 _safe_fidelity(
@@ -994,6 +1105,9 @@ function run_flux_scan(
                     candidate_result.optimization.psi,
                     config,
                     point_settings,
+                    Random.Xoshiro(
+                        _derived_seed(settings.point.seed, :fidelity, point, label),
+                    ),
                 )
             push!(point_candidates, _candidate_data(candidate_result, label; fidelity))
         end

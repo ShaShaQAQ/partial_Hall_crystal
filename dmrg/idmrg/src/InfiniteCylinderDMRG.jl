@@ -13,6 +13,7 @@ using ITensorInfiniteMPS
 using KrylovKit
 using HDF5
 using TOML
+using Random
 
 include("Configuration.jl")
 include("Hamiltonian.jl")
@@ -55,6 +56,7 @@ export CylinderModelParams,
     link_dimensions,
     vumps_converged,
     VUMPSRecord,
+    SubspaceExpansionRecord,
     VUMPSResult,
     unit_cell_energy,
     vumps_iteration,

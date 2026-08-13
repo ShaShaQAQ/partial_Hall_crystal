@@ -208,7 +208,19 @@ end
                 true,
             ),
         ]
-        result = VUMPSResult(psi, records, true, "converged after 1 stage")
+        expansions = [
+            SubspaceExpansionRecord(
+                1,
+                4,
+                [1, 1, 1, 1, 1, 1],
+                [2, 2, 3, 3, 4, 4],
+                true,
+                0.125,
+            ),
+        ]
+        result = VUMPSResult(
+            psi, records, expansions, true, "converged after 1 stage"
+        )
         energy = normalize_energy(cfg, -1.26)
         densities = density_data(psi, cfg)
         entanglements = [entanglement_data(psi, cfg; cut_x=1)]
@@ -239,6 +251,8 @@ end
         expected_headers = Dict(
             "convergence.tsv" =>
                 "stage\titeration\tmaxlinkdim\tenergy_left\tenergy_right\tenergy_mismatch\tdelta_energy\teps_left\teps_right\tprecision_error\telapsed_seconds\tconverged",
+            "expansion.tsv" =>
+                "stage\ttarget\tbefore\tafter\tprogressed\telapsed_seconds",
             "density.tsv" => "site\tx\ty\tdensity\tvalid",
             "entanglement_spectrum.tsv" =>
                 "cut_x\tbond\tlevel\tsingular_value\tprobability\tentanglement_energy\tqn\traw_charge\tphysical_charge\tvalid",
@@ -255,6 +269,8 @@ end
         end
         @test occursin("\tfalse", read(joinpath(directory, "convergence.tsv"), String))
         @test occursin("\ttrue", read(joinpath(directory, "convergence.tsv"), String))
+        @test readlines(joinpath(directory, "expansion.tsv"))[2] ==
+            "1\t4\t1,1,1,1,1,1\t2,2,3,3,4,4\ttrue\t0.125"
 
         summary_path = joinpath(directory, "summary.toml")
         summary_text = read(summary_path, String)

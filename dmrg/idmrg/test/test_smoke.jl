@@ -8,6 +8,7 @@ const SMOKE_OUTPUT_ROOT = joinpath(@__DIR__, "..", "smoke_output")
 const SMOKE_OUTPUT_FILENAMES = Set([
     "summary.toml",
     "convergence.tsv",
+    "expansion.tsv",
     "density.tsv",
     "entanglement_spectrum.tsv",
     "schmidt_sectors.tsv",
@@ -94,6 +95,10 @@ function assert_smoke_contract(settings::SinglePointSettings, result)
     convergence = parse_tsv(joinpath(output, "convergence.tsv"))
     @test parse(Int, convergence[end]["maxlinkdim"]) > 1
     @test convergence[end]["converged"] == "true"
+    expansions = parse_tsv(joinpath(output, "expansion.tsv"))
+    @test !isempty(expansions)
+    @test all(row -> row["progressed"] == "true", expansions)
+    @test all(row -> !isempty(row["before"]) && !isempty(row["after"]), expansions)
     transfer_rows = parse_tsv(joinpath(output, "transfer_spectrum.tsv"))
     @test count(row -> row["converged"] == "true", transfer_rows) >= 2
     @test count(row -> row["valid"] == "true", transfer_rows) >= 2

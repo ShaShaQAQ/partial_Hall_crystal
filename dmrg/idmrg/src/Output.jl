@@ -531,6 +531,19 @@ function write_output_files(
                 ) for record in result.records
             ),
         ),
+        "expansion.tsv" => _render_tsv(
+            "stage\ttarget\tbefore\tafter\tprogressed\telapsed_seconds",
+            (
+                (
+                    record.stage,
+                    record.target,
+                    join(record.before, ','),
+                    join(record.after, ','),
+                    record.progressed,
+                    record.elapsed_seconds,
+                ) for record in result.expansions
+            ),
+        ),
         "density.tsv" => _render_tsv(
             "site\tx\ty\tdensity\tvalid",
             (

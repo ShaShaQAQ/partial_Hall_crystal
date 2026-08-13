@@ -427,8 +427,13 @@ function _mixed_transfer_map(psi1::InfiniteCanonicalMPS, psi2::InfiniteCanonical
     )
 end
 
-function _dominant_transfer_value(transfer; tol::Float64, kwargs...)
-    initial = random_itensor(QN(), dag(input_inds(transfer)))
+function _dominant_transfer_value(
+    transfer;
+    tol::Float64,
+    rng::AbstractRNG=Random.default_rng(),
+    kwargs...,
+)
+    initial = random_itensor(rng, QN(), dag(input_inds(transfer)))
     flux(initial) == QN() || error("neutral transfer initial tensor has nonzero flux")
     values, vectors, info = KrylovKit.eigsolve(
         transfer,
@@ -459,6 +464,7 @@ function mixed_transfer_fidelity(
     psi2::InfiniteCanonicalMPS,
     c::InfiniteCylinderConfig;
     tol::Real=1e-10,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     isfinite(tol) && tol > 0 || throw(ArgumentError("tol must be finite and positive"))
@@ -466,10 +472,14 @@ function mixed_transfer_fidelity(
     tolerance = Float64(tol)
     try
         mixed = _dominant_transfer_value(
-            _mixed_transfer_map(psi1, psi2); tol=tolerance, kwargs...
+            _mixed_transfer_map(psi1, psi2); tol=tolerance, rng, kwargs...
         )
-        self1 = _dominant_transfer_value(TransferMatrix(psi1.AL); tol=tolerance, kwargs...)
-        self2 = _dominant_transfer_value(TransferMatrix(psi2.AL); tol=tolerance, kwargs...)
+        self1 = _dominant_transfer_value(
+            TransferMatrix(psi1.AL); tol=tolerance, rng, kwargs...
+        )
+        self2 = _dominant_transfer_value(
+            TransferMatrix(psi2.AL); tol=tolerance, rng, kwargs...
+        )
         return _mixed_transfer_result(
             mixed.value,
             self1.value,

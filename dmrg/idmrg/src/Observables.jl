@@ -319,6 +319,7 @@ function neutral_transfer_data(
     neigs::Integer=4,
     tol::Real=1e-10,
     ratio_tolerance::Real=1e-10,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     !(neigs isa Bool) && neigs >= 2 ||
@@ -328,7 +329,7 @@ function neutral_transfer_data(
     _validate_observable_cell(psi, c)
 
     transfer = TransferMatrix(psi.AL)
-    initial = random_itensor(QN(), dag(input_inds(transfer)))
+    initial = random_itensor(rng, QN(), dag(input_inds(transfer)))
     flux(initial) == QN() || error("neutral transfer initial tensor has nonzero flux")
     values, vectors, info = KrylovKit.eigsolve(
         transfer,

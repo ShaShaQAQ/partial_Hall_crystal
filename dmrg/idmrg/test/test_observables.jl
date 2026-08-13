@@ -2,6 +2,7 @@ using Test
 using ITensors
 using ITensorMPS
 using InfiniteCylinderDMRG
+using Random
 
 @testset "observable helpers" begin
     cfg = InfiniteCylinderConfig(; Ly=6, x_period=1)
@@ -182,4 +183,21 @@ using InfiniteCylinderDMRG
     end
     @test_throws ArgumentError neutral_transfer_data(psi, cfg; neigs=1)
     @test_throws ArgumentError neutral_transfer_data(psi, cfg; tol=0.0)
+
+    seeded_first = neutral_transfer_data(
+        psi,
+        cfg;
+        neigs=2,
+        tol=1e-10,
+        rng=Random.Xoshiro(2026),
+    )
+    seeded_second = neutral_transfer_data(
+        psi,
+        cfg;
+        neigs=2,
+        tol=1e-10,
+        rng=Random.Xoshiro(2026),
+    )
+    @test seeded_first.eigenvalues == seeded_second.eigenvalues
+    @test seeded_first.residual_norms == seeded_second.residual_norms
 end

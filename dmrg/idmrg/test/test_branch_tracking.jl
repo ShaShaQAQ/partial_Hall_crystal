@@ -1,6 +1,7 @@
 using Test
 using ITensorInfiniteMPS: InfMPS
 using InfiniteCylinderDMRG
+using Random
 
 @testset "branch metrics" begin
     @test bhattacharyya_distance(Dict(0 => 1.0), Dict(0 => 1.0)) ≈ 0.0
@@ -293,6 +294,24 @@ end
     @test same.self_residual1 <= 1e-10
     @test same.self_residual2 <= 1e-10
     @test occursin("valid", same.reason)
+
+    seeded_same_first = mixed_transfer_fidelity(
+        psi1,
+        psi1,
+        cfg;
+        tol=1e-10,
+        rng=Random.Xoshiro(2026),
+    )
+    seeded_same_second = mixed_transfer_fidelity(
+        psi1,
+        psi1,
+        cfg;
+        tol=1e-10,
+        rng=Random.Xoshiro(2026),
+    )
+    @test seeded_same_first.mixed_value == seeded_same_second.mixed_value
+    @test seeded_same_first.self_value1 == seeded_same_second.self_value1
+    @test seeded_same_first.self_value2 == seeded_same_second.self_value2
 
     second_init(n::Integer) = mod1(n, sites_per_cell(cfg)) == 2 ? "Occ" : "Emp"
     psi2 = InfMPS(sites, second_init)

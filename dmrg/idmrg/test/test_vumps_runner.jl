@@ -264,6 +264,25 @@ end
     @test_throws ArgumentError expand_subspace(psi, H, 2; cutoff=0.0)
 end
 
+@testset "subspace expansion records" begin
+    before = [1, 2, 3]
+    after = [2, 3, 4]
+    record = try
+        SubspaceExpansionRecord(2, 8, before, after, true, 0.25)
+    catch error
+        error
+    end
+    @test record isa SubspaceExpansionRecord
+    before[1] = 99
+    after[end] = 99
+    @test record.stage == 2
+    @test record.target == 8
+    @test record.before == [1, 2, 3]
+    @test record.after == [2, 3, 4]
+    @test record.progressed
+    @test record.elapsed_seconds == 0.25
+end
+
 @testset "staged VUMPS runner" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
@@ -285,6 +304,7 @@ end
     @test stopped.records[1].stage == 1
     @test stopped.records[1].iteration == 1
     @test !stopped.records[1].converged
+    @test isempty(stopped.expansions)
 
     expanded_stop = run_vumps(
         H, psi; options..., maxdim_schedule=[2], max_iterations=1
@@ -292,6 +312,15 @@ end
     @test !expanded_stop.converged
     @test expanded_stop.records[1].stage == 1
     @test expanded_stop.records[1].maxlinkdim == 2
+    @test length(expanded_stop.expansions) == 1
+    expansion = only(expanded_stop.expansions)
+    @test expansion.stage == 1
+    @test expansion.target == 2
+    @test expansion.before == [1]
+    @test expansion.after == [2]
+    @test expansion.progressed
+    @test isfinite(expansion.elapsed_seconds)
+    @test expansion.elapsed_seconds >= 0
 
     converged = run_vumps(H, psi; options..., max_iterations=3)
     @test converged.converged
@@ -336,6 +365,7 @@ end
     @test result.records == [record]
     @test !result.converged
     @test result.reason == "maximum iterations reached"
+    @test isempty(result.expansions)
 
     @test unit_cell_energy(2.5, 6) == 15.0
     @test unit_cell_energy([1.0, 2.0, 3.0], 3) == 6.0

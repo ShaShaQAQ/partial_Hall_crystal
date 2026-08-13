@@ -150,12 +150,43 @@ struct VUMPSRecord
     converged::Bool
 end
 
+struct SubspaceExpansionRecord
+    stage::Int
+    target::Int
+    before::Vector{Int}
+    after::Vector{Int}
+    progressed::Bool
+    elapsed_seconds::Float64
+
+    function SubspaceExpansionRecord(
+        stage::Integer,
+        target::Integer,
+        before::Vector{Int},
+        after::Vector{Int},
+        progressed::Bool,
+        elapsed_seconds::Real,
+    )
+        return new(
+            Int(stage),
+            Int(target),
+            copy(before),
+            copy(after),
+            progressed,
+            Float64(elapsed_seconds),
+        )
+    end
+end
+
 struct VUMPSResult
     psi::InfiniteCanonicalMPS
     records::Vector{VUMPSRecord}
+    expansions::Vector{SubspaceExpansionRecord}
     converged::Bool
     reason::String
 end
+
+VUMPSResult(psi, records, converged, reason) =
+    VUMPSResult(psi, records, SubspaceExpansionRecord[], converged, reason)
 
 function _validate_imaginary_tolerance(imaginary_tol::Real)
     tolerance = Float64(imaginary_tol)
@@ -355,10 +386,28 @@ function run_vumps(
         imaginary_tol,
     )
     records = VUMPSRecord[]
+    expansions = SubspaceExpansionRecord[]
     current = psi
 
     for (stage, target) in enumerate(targets)
-        current = expand_subspace(current, H, target; cutoff)
+        before = link_dimensions(current)
+        if maximum(before) < target
+            elapsed_seconds = @elapsed current = expand_subspace(
+                current, H, target; cutoff
+            )
+            after = link_dimensions(current)
+            push!(
+                expansions,
+                SubspaceExpansionRecord(
+                    stage,
+                    target,
+                    before,
+                    after,
+                    _subspace_expansion_progressed(before, after),
+                    elapsed_seconds,
+                ),
+            )
+        end
         previous_energy = nothing
         stable_count = 0
         stage_converged = false
@@ -429,7 +478,7 @@ function run_vumps(
             reason =
                 "stage $stage reached maximum iterations ($max_iterations) without convergence"
             return VUMPSResult(
-                _canonicalize_vumps_state(current), records, false, reason
+                _canonicalize_vumps_state(current), records, expansions, false, reason
             )
         end
     end
@@ -439,6 +488,7 @@ function run_vumps(
     return VUMPSResult(
         _canonicalize_vumps_state(current),
         records,
+        expansions,
         true,
         "converged after $count $suffix",
     )
