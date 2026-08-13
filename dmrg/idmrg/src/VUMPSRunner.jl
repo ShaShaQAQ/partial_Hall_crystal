@@ -106,15 +106,19 @@ function vumps_converged(
     energy_tol::Real,
     energy_mismatch_tol::Real,
     stable_iterations::Integer=2,
+    energy_normalization_sites::Integer=1,
 )
     _validate_convergence_parameters(
         vumps_tol, energy_tol, energy_mismatch_tol, stable_iterations
     )
+    !(energy_normalization_sites isa Bool) && energy_normalization_sites > 0 || throw(
+        ArgumentError("energy_normalization_sites must be positive")
+    )
     diagnostics = (residual, delta_energy, energy_mismatch)
     return all(value -> isfinite(value) && value >= 0, diagnostics) &&
            residual < vumps_tol &&
-           delta_energy < energy_tol &&
-           energy_mismatch < energy_mismatch_tol &&
+           delta_energy / energy_normalization_sites < energy_tol &&
+           energy_mismatch / energy_normalization_sites < energy_mismatch_tol &&
            consecutive_iterations >= stable_iterations
 end
 
@@ -378,12 +382,13 @@ function run_vumps(
             eps_left = maximum(step.eps_left)
             eps_right = maximum(step.eps_right)
             precision_error = max(eps_left, eps_right)
+            energy_normalization_sites = nsites(current)
 
             stable_now =
                 all(isfinite, (precision_error, delta_energy, energy_mismatch)) &&
                 precision_error < vumps_tol &&
-                delta_energy < energy_tol &&
-                energy_mismatch < energy_mismatch_tol
+                delta_energy / energy_normalization_sites < energy_tol &&
+                energy_mismatch / energy_normalization_sites < energy_mismatch_tol
             stable_count = stable_now ? stable_count + 1 : 0
             converged = vumps_converged(
                 precision_error,
@@ -394,6 +399,7 @@ function run_vumps(
                 energy_tol,
                 energy_mismatch_tol,
                 stable_iterations,
+                energy_normalization_sites,
             )
             push!(
                 records,

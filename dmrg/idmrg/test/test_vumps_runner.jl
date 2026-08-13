@@ -103,6 +103,56 @@ using InfiniteCylinderDMRG
         energy_mismatch_tol=1e-4,
         stable_iterations=2,
     )
+
+    for energy_normalization_sites in (6, 18)
+        below_tol_per_site = 9e-5 * energy_normalization_sites
+        above_tol_per_site = 1.1e-4 * energy_normalization_sites
+        normalized = try
+            vumps_converged(
+                9e-6,
+                below_tol_per_site,
+                below_tol_per_site,
+                2;
+                vumps_tol=1e-5,
+                energy_tol=1e-4,
+                energy_mismatch_tol=1e-4,
+                stable_iterations=2,
+                energy_normalization_sites,
+            )
+        catch error
+            error
+        end
+        @test normalized === true
+        rejected = try
+            vumps_converged(
+                9e-6,
+                above_tol_per_site,
+                below_tol_per_site,
+                2;
+                vumps_tol=1e-5,
+                energy_tol=1e-4,
+                energy_mismatch_tol=1e-4,
+                stable_iterations=2,
+                energy_normalization_sites,
+            )
+        catch error
+            error
+        end
+        @test rejected === false
+    end
+    for invalid_sites in (true, 0, -1)
+        @test_throws ArgumentError vumps_converged(
+            9e-6,
+            8e-6,
+            8e-6,
+            2;
+            vumps_tol=1e-5,
+            energy_tol=1e-4,
+            energy_mismatch_tol=1e-4,
+            stable_iterations=2,
+            energy_normalization_sites=invalid_sites,
+        )
+    end
 end
 
 @testset "VUMPS state canonicalization boundary" begin
