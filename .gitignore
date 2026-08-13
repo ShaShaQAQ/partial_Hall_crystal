@@ -11,6 +11,7 @@ dmrg/logs/
 dmrg/output*/
 dmrg/smoke*/
 dmrg/*smoke*/
+dmrg/idmrg/smoke_output/
 dmrg/serialize_test/
 dmrg/segment_configs/
 dmrg/warm_configs/
