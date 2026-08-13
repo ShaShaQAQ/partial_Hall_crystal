@@ -73,8 +73,7 @@ end
 function default_occupied_sites(c::InfiniteCylinderConfig)
     np = particles_per_cell(c)
     n_sites = BigInt(sites_per_cell(c))
-    denominator = 2 * BigInt(np)
     return [
-        Int(fld((2 * BigInt(i) - 1) * n_sites, denominator)) + 1 for i in 1:np
+        Int(fld(BigInt(i - 1) * n_sites, BigInt(np))) + 1 for i in 1:np
     ]
 end

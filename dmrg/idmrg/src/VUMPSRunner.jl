@@ -250,9 +250,16 @@ function expand_subspace(
 
     expanded = subspace_expansion(psi, H; maxdim=target, cutoff)
     after = link_dimensions(expanded)
-    maximum(after) > maximum(before) ||
+    _subspace_expansion_progressed(before, after) ||
         error("subspace expansion made no progress toward target maxdim=$target")
     return expanded
+end
+
+function _subspace_expansion_progressed(before, after)
+    length(before) == length(after) || throw(
+        DimensionMismatch("subspace expansion changed the number of MPS links")
+    )
+    return any(after[index] > before[index] for index in eachindex(before, after))
 end
 
 function _validate_vumps_schedule(
@@ -283,6 +290,40 @@ function _validate_vumps_schedule(
     )
     _validate_imaginary_tolerance(imaginary_tol)
     return Int.(targets)
+end
+
+function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
+    expected_sites = siteinds(only, psi.AL)
+    expected_dims = link_dimensions(psi)
+    expected_flux = flux(psi.AL)
+    canonical = ITensorMPS.orthogonalize(psi.AL, :)
+
+    canonical isa InfiniteCanonicalMPS || error(
+        "VUMPS canonicalization did not return an InfiniteCanonicalMPS"
+    )
+    nsites(canonical) == nsites(psi) || error(
+        "VUMPS canonicalization changed the reference-cell size"
+    )
+    siteinds(only, canonical.AL) == expected_sites || error(
+        "VUMPS canonicalization changed the site index identities"
+    )
+    link_dimensions(canonical) == expected_dims || error(
+        "VUMPS canonicalization changed the link dimensions"
+    )
+    flux(canonical.AL) == expected_flux || error(
+        "VUMPS canonicalization changed the conserved QN flux"
+    )
+
+    for site in 1:nsites(canonical)
+        left_center = canonical.AL[site] * canonical.C[site]
+        right_center = canonical.C[site - 1] * canonical.AR[site]
+        scale = max(norm(left_center), norm(right_center), 1.0)
+        residual = norm(left_center - right_center) / scale
+        isfinite(residual) && residual <= 1e-10 || error(
+            "VUMPS canonicalization left a noncanonical center at site $site"
+        )
+    end
+    return canonical
 end
 
 function run_vumps(
@@ -381,11 +422,18 @@ function run_vumps(
         if !stage_converged
             reason =
                 "stage $stage reached maximum iterations ($max_iterations) without convergence"
-            return VUMPSResult(current, records, false, reason)
+            return VUMPSResult(
+                _canonicalize_vumps_state(current), records, false, reason
+            )
         end
     end
 
     count = length(targets)
     suffix = count == 1 ? "stage" : "stages"
-    return VUMPSResult(current, records, true, "converged after $count $suffix")
+    return VUMPSResult(
+        _canonicalize_vumps_state(current),
+        records,
+        true,
+        "converged after $count $suffix",
+    )
 end

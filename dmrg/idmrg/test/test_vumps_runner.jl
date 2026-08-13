@@ -105,6 +105,23 @@ using InfiniteCylinderDMRG
     )
 end
 
+@testset "VUMPS state canonicalization boundary" begin
+    cfg = InfiniteCylinderConfig(; Ly=2, x_period=3)
+    sites, _, psi = initial_infinite_mps(cfg)
+    inconsistent = copy(psi)
+    inconsistent.C[1] *= -1
+
+    repaired = InfiniteCylinderDMRG._canonicalize_vumps_state(inconsistent)
+    @test isnothing(InfiniteCylinderDMRG._validate_checkpoint_state(repaired, cfg))
+    @test siteinds(only, repaired.AL) == sites
+    @test link_dimensions(repaired) == link_dimensions(psi)
+    @test flux(repaired.AL) == QN()
+    @test all(
+        isapprox(before.density, after.density; atol=1e-12, rtol=0) for
+        (before, after) in zip(density_data(psi, cfg), density_data(repaired, cfg))
+    )
+end
+
 @testset "pinned VUMPS iteration boundary" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
@@ -153,6 +170,7 @@ end
     @test result.records[1].energy_left ≈ 0.4 atol=1e-12
     @test result.records[1].energy_right ≈ 0.4 atol=1e-12
     @test result.records[1].energy_mismatch <= 1e-12
+    @test isnothing(InfiniteCylinderDMRG._validate_checkpoint_state(result.psi, cfg))
     @test_throws ArgumentError run_vumps(
         H,
         psi;
@@ -165,6 +183,16 @@ end
 end
 
 @testset "checked subspace expansion" begin
+    @test InfiniteCylinderDMRG._subspace_expansion_progressed(
+        [1, 1, 2, 2, 2, 1], [1, 2, 2, 2, 2, 2]
+    )
+    @test !InfiniteCylinderDMRG._subspace_expansion_progressed(
+        [1, 1, 2, 2, 2, 1], [1, 1, 2, 2, 2, 1]
+    )
+    @test_throws DimensionMismatch InfiniteCylinderDMRG._subspace_expansion_progressed(
+        [1, 2], [1, 2, 3]
+    )
+
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
     psi = InfMPS(sites, initspin)

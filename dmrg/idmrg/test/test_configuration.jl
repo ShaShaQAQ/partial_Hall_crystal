@@ -64,6 +64,9 @@ end
 end
 
 @testset "exact occupied-site patterns" begin
+    @test default_occupied_sites(InfiniteCylinderConfig(; Ly=6, x_period=1)) == [1]
+    @test default_occupied_sites(InfiniteCylinderConfig(; Ly=2, x_period=3)) == [1]
+
     full = InfiniteCylinderConfig(; Ly=6, filling_num=2, filling_den=1)
     near_full = InfiniteCylinderConfig(; Ly=6, filling_num=5, filling_den=3)
 
