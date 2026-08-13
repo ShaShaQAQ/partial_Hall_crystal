@@ -85,12 +85,20 @@ wrapping is geometrically degenerate there.
 
 The default product occupation pattern is deterministic. For example, the
 default occupied sites are `[1]` for `Ly=6, x_period=1` and `[1,7,13]` for
-`Ly=6, x_period=3`. A flux scan can add explicit cold product candidates with
-`--cold_patterns`; semicolons separate candidates and commas separate occupied
-sites within a candidate. There is currently no `--seed` CLI option. Krylov
-transfer solves use a random initial tensor, so bitwise reproducibility of
-their iteration path is not promised even though the product candidates and
-selection tie-breaking are deterministic.
+`Ly=6, x_period=3`. A single point or the initial warm state of a scan can use
+an explicit product state with `--occupied_sites=...`; the number of distinct
+sites must equal `Np_cell`. A flux scan can add further cold product candidates
+with `--cold_patterns`; semicolons separate candidates and commas separate
+occupied sites within a candidate.
+
+`--seed` (default `0`) controls deterministic `Random.Xoshiro` streams for
+neutral-transfer and mixed-transfer eigensolver initial tensors. Scan streams
+are derived separately for every point, candidate, and observable, so adding a
+fidelity solve does not silently change a later transfer solve. The seed and
+occupied pattern are stored in `summary.toml`. This makes runs reproducible at
+the input and RNG-stream level; floating-point eigensolvers may still differ
+across Julia/package versions, hardware, or thread configurations, all of
+which must be treated as provenance.
 
 ## Single-point commands
 
@@ -135,11 +143,14 @@ and can expose period-three density structure. Compare energies using the same
 normalization, convergence tolerances, and adequately converged bond
 dimensions; do not compare the raw per-cell energies of unequal cells.
 
-Useful optional single-point keys are `--checkpoint`, `--transfer_neigs`,
-`--imaginary_tol`, and `--allow_nonconverged`. The parser also exposes
-`--load`, but optimization restart from a saved QN checkpoint is not currently
-a supported production path; see the reproduced backend limitation below. By
-default the checkpoint is `<output>/state.h5`, `transfer_neigs=4`,
+Useful optional single-point keys are `--checkpoint`, `--occupied_sites`,
+`--seed`, `--transfer_neigs`, `--imaginary_tol`, and
+`--allow_nonconverged`. The parser recognizes `--load` so an attempted restart
+gets a precise diagnostic, but both single-point and flux-scan optimization
+reject it before configuring threads or invoking any state/backend callback;
+see the reproduced pinned-backend limitation below. Checkpoints are supported
+for audit and observable-only reload validation, not optimization restart. By
+default the checkpoint is `<output>/state.h5`, `seed=0`, `transfer_neigs=4`,
 `stability=2`, and both energy tolerances are `10*vumps_tol`. The default
 behavior exits nonzero if VUMPS or a required observable is invalid. Setting
 `--allow_nonconverged=true` permits a zero exit but does not change validity
@@ -221,18 +232,25 @@ expansion and then performs VUMPS iterations. A schedule entry is an expansion
 cap, not a guarantee that every QN bond reaches that number. Expansion is
 accepted only when at least one actual bond satisfies
 `after_dimension[i] > before_dimension[i]`; an unchanged cell is an error.
-QN constraints commonly make growth nonuniform. The guard compares every bond
-before and after expansion, while the current text output records only
-`maxlinkdim` at each subsequent VUMPS iteration, not every before/after vector.
+QN constraints commonly make growth nonuniform. `expansion.tsv` records the
+stage, requested cap, complete comma-separated before/after bond-dimension
+vectors, actual progress flag, and elapsed time. `convergence.tsv` separately
+records `maxlinkdim` after each VUMPS iteration.
 
 `convergence.tsv` distinguishes three independent conditions:
 
 - `precision_error=max(eps_left,eps_right)` is the VUMPS canonical residual and
   must be less than `vumps_tol`;
 - `delta_energy` is the change in the average of left and right cell-energy
-  estimates and must be less than `energy_tol`;
+  estimates;
 - `energy_mismatch=abs(energy_left-energy_right)` must be less than
-  `mismatch_tol`.
+  the corresponding mismatch threshold after normalization.
+
+The energy columns remain raw totals for the complete MPS reference cell.
+Convergence divides `delta_energy` and `energy_mismatch` by
+`sites_per_cell` before comparing them with `energy_tol` and `mismatch_tol`.
+The thresholds are therefore energy-per-site tolerances and remain comparable
+between `x_period=1` and `x_period=3`; the output is not silently rescaled.
 
 All three must hold for `stability` consecutive iterations at every stage.
 The `eps_left`/`eps_right` values are not Krylov eigensolver residuals. Transfer
@@ -300,6 +318,7 @@ A single-point directory contains:
 ```text
 summary.toml
 convergence.tsv
+expansion.tsv
 density.tsv
 entanglement_spectrum.tsv
 schmidt_sectors.tsv
@@ -311,7 +330,9 @@ state.h5
 complete geometry and filling, `phi_y`, charge scale and configuration
 signature, model and optimization settings, backend commit, convergence,
 validity, energy normalizations, entropy/polarization summaries, and neutral
-correlation length. The TSV files are the analysis contract and retain raw
+correlation length. Dependency provenance contains the Julia,
+ITensorInfiniteMPS, ITensorMPS, ITensors, KrylovKit, and HDF5 versions plus the
+pinned backend commit. The TSV files are the analysis contract and retain raw
 numbers with explicit `valid`/`converged` fields. A nonconverged or invalid run
 still writes its raw text and canonical checkpoint before the default nonzero
 exit.
@@ -326,13 +347,14 @@ sites_per_cell, particles_per_cell, charge_scale,
 configuration_signature.
 ```
 
-Load validates the pinned backend, derived arithmetic, configuration signature,
-canonical tensors, and exact equality of `Ly`, `x_period`, filling, and
-`phi_y`. Model couplings and optimization settings are in `summary.toml`, not
-HDF5 compatibility metadata, so the caller must also check them before reusing
-a state. Because `phi_y` is strict, a checkpoint at one flux cannot seed a
-different flux. Flux-scan warm states instead stay in memory and reuse the
-exact same site indices while the Hamiltonian twist changes.
+Observable-only load validates the pinned backend, derived arithmetic,
+configuration signature, canonical tensors, and exact equality of `Ly`,
+`x_period`, filling, and `phi_y`. Model couplings and optimization settings are
+in `summary.toml`, not HDF5 compatibility metadata, so an audit must inspect
+both files. Because `phi_y` is strict, a checkpoint at one flux cannot even be
+validated as the state of a different flux. Flux-scan warm states instead stay
+in memory and reuse the exact same site indices while the Hamiltonian twist
+changes.
 
 ## Smoke status and known limitations
 
@@ -372,9 +394,9 @@ Known pinned-backend limitations and guards are:
   direct-sum link indices have opposite directions (`Out` versus `In`). Even a
   no-expansion VUMPS restart reaches final re-canonicalization and reproduces a
   related direction mismatch. `load_checkpoint` remains validated for
-  observable/reload checks, but the CLI's `--load` optimization path is not a
-  safe production restart at this pinned commit. Start a fresh deterministic
-  or explicit cold product candidate instead, and retain both candidates for
+  observable/reload checks, but both CLIs reject `--load` optimization before
+  any backend callback at this pinned commit. Start a fresh deterministic or
+  explicit cold product candidate instead, and retain all candidates for
   comparison.
 - VUMPS can converge to metastable branches, `x_period=1` can suppress broken
   translation symmetry, the reported correlation length covers only the
