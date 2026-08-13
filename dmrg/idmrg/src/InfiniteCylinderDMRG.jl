@@ -18,6 +18,7 @@ include("Configuration.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
 include("Observables.jl")
+include("BranchTracking.jl")
 include("Output.jl")
 
 export CylinderModelParams,
@@ -69,6 +70,15 @@ export CylinderModelParams,
     density_data,
     entanglement_data,
     neutral_transfer_data,
+    bhattacharyya_distance,
+    best_sector_shift,
+    charge_matched_spectrum_distance,
+    branch_flags,
+    MixedTransferFidelity,
+    mixed_transfer_fidelity,
+    BranchCandidate,
+    CandidateSelection,
+    select_candidate,
     InfiniteCanonicalMPS,
     CheckpointFormatError,
     CheckpointCompatibilityError,
