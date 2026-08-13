@@ -543,9 +543,11 @@ function flux_scan_row(
     fidelity_valid = candidate.converged && candidate.fidelity_valid &&
         isfinite(candidate.fidelity_to_previous) &&
         0 <= candidate.fidelity_to_previous <= 1
-    fidelity_density_valid = fidelity_valid && candidate.fidelity_to_previous > 0
-    fidelity_density = fidelity_density_valid ?
-        -log(candidate.fidelity_to_previous) / Int(x_period) : NaN
+    fidelity_density_valid = fidelity_valid
+    fidelity_density_divergent = fidelity_valid && iszero(candidate.fidelity_to_previous)
+    fidelity_density = fidelity_valid ?
+        (fidelity_density_divergent ? Inf :
+         -log(candidate.fidelity_to_previous) / Int(x_period)) : NaN
     return (
         point=Int(point),
         phi_y=Float64(phi_y),
@@ -568,6 +570,7 @@ function flux_scan_row(
         fidelity_valid,
         fidelity_density_x_raw=fidelity_density,
         fidelity_density_x_valid=fidelity_density_valid,
+        fidelity_density_x_divergent=fidelity_density_divergent,
         reason=candidate.reason,
     )
 end
@@ -1082,7 +1085,7 @@ function _reject_checkpoint_restart(settings::SinglePointSettings)
 end
 
 const SCAN_SUMMARY_HEADER =
-    "point\tphi_y\tselected_candidate\tselected_label\tselection_mode\tcut_x\tselection_valid\tselection_reason\tconverged\tvalid\tenergy_raw\tenergy_valid\tenergy_delta_to_ground_raw\tenergy_delta_to_ground_valid\traw_schmidt_polarization\tpolarization_valid\tdelta_raw_schmidt_polarization\tfidelity_raw\tfidelity_valid\tfidelity_density_x_raw\tfidelity_density_x_valid\treason"
+    "point\tphi_y\tselected_candidate\tselected_label\tselection_mode\tcut_x\tselection_valid\tselection_reason\tconverged\tvalid\tenergy_raw\tenergy_valid\tenergy_delta_to_ground_raw\tenergy_delta_to_ground_valid\traw_schmidt_polarization\tpolarization_valid\tdelta_raw_schmidt_polarization\tfidelity_raw\tfidelity_valid\tfidelity_density_x_raw\tfidelity_density_x_valid\tfidelity_density_x_divergent\treason"
 const BRANCH_EVENTS_HEADER =
     "from_point\tto_point\tfrom_phi_y\tto_phi_y\tfidelity_raw\tfidelity_valid\tcharge_step_raw\tcharge_step_valid\tsector_distance_raw\tsector_distance_valid\tsector_shift_raw\tsector_shift_valid\tspectrum_distance_raw\tspectrum_distance_valid\tenergy_crossing_raw\tenergy_crossing_valid\tfidelity_drop_tol\tcharge_jump_tol\tsector_tol\tspectrum_tol\tspectrum_levels\tflag_fidelity\tflag_charge\tflag_sector\tflag_spectrum\tflag_energy_crossing\tflags_valid"
 const SECTOR_GAUGE_HEADER =

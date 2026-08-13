@@ -489,6 +489,28 @@ end
     @test next_row.energy_delta_to_ground_valid
     @test next_row.fidelity_density_x_raw ≈ -log(0.7) / 3
     @test next_row.fidelity_density_x_valid
+    zero_fidelity_row = flux_scan_row(
+        2,
+        0.5,
+        FluxCandidateData(
+            "orthogonal",
+            -1.0,
+            0.0,
+            Dict(0 => 1.0),
+            levels_a;
+            fidelity_to_previous=0.0,
+            fidelity_valid=true,
+        ),
+        1;
+        reference_polarization=0.0,
+        x_period=3,
+        selection_mode=:adiabatic,
+        ground_energy=-1.0,
+        ground_energy_valid=true,
+    )
+    @test zero_fidelity_row.fidelity_density_x_raw == Inf
+    @test zero_fidelity_row.fidelity_density_x_valid
+    @test zero_fidelity_row.fidelity_density_x_divergent
 
     gauge_rows = InfiniteCylinderDMRG._same_flux_sector_gauge_rows(
         2,

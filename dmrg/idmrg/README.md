@@ -199,6 +199,9 @@ fidelity_raw             = fidelity_cell
 fidelity_density_x_raw   = -log(fidelity_cell)/x_period.
 ```
 
+For an exactly zero valid fidelity, the density is retained as `Inf` and
+`fidelity_density_x_divergent=true`; it is not confused with a failed solve.
+
 `scan_metadata.toml` records the flux grid, geometry, model, optimization,
 branch mode, fixed cut, thresholds, patterns, seed, and runtime provenance even
 for a one-point scan with no adjacent event. `sector_gauge.tsv` compares every
