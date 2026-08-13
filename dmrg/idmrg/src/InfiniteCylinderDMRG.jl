@@ -20,6 +20,7 @@ include("VUMPSRunner.jl")
 include("Observables.jl")
 include("BranchTracking.jl")
 include("Output.jl")
+include("CLI.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -84,6 +85,24 @@ export CylinderModelParams,
     CheckpointCompatibilityError,
     save_checkpoint,
     load_checkpoint,
-    write_output_files
+    write_output_files,
+    SinglePointSettings,
+    parse_single_point_args,
+    FluxScanSettings,
+    parse_flux_scan_args,
+    flux_grid,
+    FluxCandidateData,
+    select_flux_candidate_data,
+    flux_scan_row,
+    flux_branch_event,
+    WorkflowValidationError,
+    SinglePointOperations,
+    SinglePointRunResult,
+    configure_cli_threads,
+    run_single_point,
+    SCAN_SUMMARY_HEADER,
+    BRANCH_EVENTS_HEADER,
+    FluxScanRunResult,
+    run_flux_scan
 
 end
