@@ -404,6 +404,16 @@ function _dualize_right_canonical_links(psi::InfiniteCanonicalMPS)
 end
 
 function _normalize_right_link_convention(psi::InfiniteCanonicalMPS)
+    center_links = Index[]
+    for site in 1:nsites(psi)
+        push!(center_links, only(filterinds(psi.C[site]; tags="Left")))
+        push!(center_links, only(filterinds(psi.C[site]; tags="Right")))
+    end
+    all(index -> !hasqns(index), center_links) && return psi
+    all(hasqns, center_links) || error(
+        "canonical center links mix QN-conserving and dense index spaces"
+    )
+
     same = Bool[]
     dual = Bool[]
     for site in 1:nsites(psi)
