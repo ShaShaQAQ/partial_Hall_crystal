@@ -28,11 +28,6 @@ iteration_validation = try
 catch error
     sprint(showerror, error)
 end
-_, right_probe, _ = ITensorInfiniteMPS.right_orthogonalize(
-    no_expansion.psi.AL;
-    left_tags=ts"",
-    right_tags=ts"Right",
-)
 write_restart_toml(
     joinpath(output_directory, "iterated_indices.toml"),
     Dict(
@@ -40,52 +35,19 @@ write_restart_toml(
         "state_indices" => state_index_table(no_expansion.psi),
         "link_dimensions" => link_dimensions(no_expansion.psi),
         "checkpoint_validation" => iteration_validation,
-        "right_orthogonalized_indices" => state_index_table(
-            InfiniteCanonicalMPS(right_probe, no_expansion.psi.C, right_probe)
-        ),
     ),
 )
-continued = InfiniteCylinderDMRG._canonicalize_vumps_state(no_expansion.psi)
-
-probe_n1, probe_n2 = 2, 3
-probe_left_common = commoninds(continued.AL[probe_n1], continued.C[probe_n1])
-probe_right_common = commoninds(continued.AR[probe_n2], continued.C[probe_n1])
-probe_NL = nullspace(continued.AL[probe_n1], probe_left_common; atol=1e-2)
-probe_NR = nullspace(continued.AR[probe_n2], probe_right_common; atol=1e-2)
-probe_nL = uniqueinds(probe_NL, continued.AL[probe_n1])
-probe_nR = uniqueinds(probe_NR, continued.AR[probe_n2])
-probe_HN = ITensorInfiniteMPS.generate_twobody_nullspace(
-    continued, H, (probe_n1, probe_n2); atol=1e-2
-) * probe_NL * probe_NR
-probe_U, _, probe_V = svd(
-    probe_HN,
-    probe_nL;
-    maxdim=8 - dim(only(probe_left_common)),
-    cutoff=1e-8,
-)
-probe_NL *= dag(probe_U)
-probe_NR *= dag(probe_V)
+canonicalized = InfiniteCylinderDMRG._canonicalize_vumps_state(no_expansion.psi)
+InfiniteCylinderDMRG._validate_checkpoint_state(canonicalized, config)
 write_restart_toml(
-    joinpath(output_directory, "expansion_direction_probe.toml"),
+    joinpath(output_directory, "canonicalized_indices.toml"),
     Dict(
-        "bond" => [probe_n1, probe_n2],
-        "left_common" => index_identity.(collect(probe_left_common)),
-        "right_common" => index_identity.(collect(probe_right_common)),
-        "left_existing" => index_identity.(
-            collect(uniqueinds(continued.AL[probe_n1], probe_NL))
-        ),
-        "left_addition" => index_identity.(
-            collect(uniqueinds(dag(probe_NL), continued.AL[probe_n1]))
-        ),
-        "right_existing" => index_identity.(
-            collect(uniqueinds(continued.AR[probe_n2], probe_NR))
-        ),
-        "right_addition" => index_identity.(
-            collect(uniqueinds(dag(probe_NR), continued.AR[probe_n2]))
-        ),
+        "site_indices" => site_identity_table(canonicalized),
+        "state_indices" => state_index_table(canonicalized),
+        "link_dimensions" => link_dimensions(canonicalized),
     ),
 )
-expanded = expand_subspace(continued, H, 8; cutoff=1e-8)
+expanded = expand_subspace(no_expansion.psi, H, 8; cutoff=1e-8)
 
 next_config = restart_config(0.1)
 next_H = build_infinite_mpo(next_config, restart_model(), sites)
