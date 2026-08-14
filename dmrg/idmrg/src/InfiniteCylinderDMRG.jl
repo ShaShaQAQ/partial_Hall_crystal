@@ -17,6 +17,7 @@ using Random
 
 include("Configuration.jl")
 include("PaperGeometry.jl")
+include("InitialCandidates.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
 include("Observables.jl")
@@ -56,6 +57,9 @@ export CylinderModelParams,
     paper_orbits_are_hermitian,
     paper_bloch_from_orbits,
     paper_reference_Hk,
+    InitialCandidate,
+    paper_cdw_color,
+    fig2_initial_candidates,
     InfiniteHoppingTerm,
     InfiniteInteractionTerm,
     normalize_directed,
