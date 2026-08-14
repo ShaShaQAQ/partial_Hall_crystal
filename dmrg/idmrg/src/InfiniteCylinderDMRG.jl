@@ -14,10 +14,12 @@ using KrylovKit
 using HDF5
 using TOML
 using Random
+using SparseArrays
 
 include("Configuration.jl")
 include("PaperGeometry.jl")
 include("InitialCandidates.jl")
+include("TransverseTranslation.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
 include("Observables.jl")
@@ -60,6 +62,9 @@ export CylinderModelParams,
     InitialCandidate,
     paper_cdw_color,
     fig2_initial_candidates,
+    translated_fock_basis,
+    fermionic_ring_translation,
+    apply_fermionic_ring_translation,
     InfiniteHoppingTerm,
     InfiniteInteractionTerm,
     normalize_directed,
