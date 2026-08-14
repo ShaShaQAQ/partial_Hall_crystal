@@ -1,6 +1,6 @@
 function _configuration_signature(c::InfiniteCylinderConfig)
-    signature =
-        "IC$(c.Ly)x$(c.x_period)n$(c.filling_num)d$(c.filling_den)"
+    geometry_code = c.geometry == :legacy_sheared ? "IC$(c.Ly)" : "IP$(c.Ny)"
+    signature = "$(geometry_code)x$(c.x_period)n$(c.filling_num)d$(c.filling_den)"
     ncodeunits(signature) <= 16 || throw(
         ArgumentError(
             "cylinder configuration signature exceeds the ITensor 16-character tag limit"
@@ -12,6 +12,8 @@ function _configuration_signature(c::InfiniteCylinderConfig)
     )
     return signature
 end
+
+configuration_signature(c::InfiniteCylinderConfig) = _configuration_signature(c)
 
 function _tag_configuration_sites(sites, c::InfiniteCylinderConfig)
     signature = _configuration_signature(c)

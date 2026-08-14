@@ -1,5 +1,7 @@
 const SINGLE_POINT_KEYS = Set([
+    "geometry",
     "Ly",
+    "Ny",
     "x_period",
     "filling_num",
     "filling_den",
@@ -29,7 +31,6 @@ const SINGLE_POINT_KEYS = Set([
 ])
 
 const SINGLE_POINT_REQUIRED_KEYS = (
-    "Ly",
     "x_period",
     "filling_num",
     "filling_den",
@@ -37,6 +38,31 @@ const SINGLE_POINT_REQUIRED_KEYS = (
     "maxdim",
     "output",
 )
+
+function _configuration_from_options(options)
+    geometry = Symbol(get(options, "geometry", "legacy_sheared"))
+    geometry in SUPPORTED_GEOMETRIES || throw(
+        ArgumentError("--geometry must be legacy_sheared or paper_straight")
+    )
+    common = (
+        x_period=_parse_int_option(options["x_period"], "x_period"),
+        filling_num=_parse_int_option(options["filling_num"], "filling_num"),
+        filling_den=_parse_int_option(options["filling_den"], "filling_den"),
+        phi_y=_parse_float_option(options["phi_y"], "phi_y"),
+    )
+    if geometry == :legacy_sheared
+        haskey(options, "Ny") && throw(
+            ArgumentError("--Ny requires --geometry=paper_straight")
+        )
+        Ly = _parse_int_option(_required(options, "Ly"), "Ly")
+        return InfiniteCylinderConfig(; geometry, Ly, common...)
+    end
+    haskey(options, "Ly") && throw(
+        ArgumentError("--Ly cannot be combined with --geometry=paper_straight")
+    )
+    Ny = _parse_int_option(_required(options, "Ny"), "Ny")
+    return InfiniteCylinderConfig(; geometry, Ny, common...)
+end
 
 struct SinglePointSettings
     config::InfiniteCylinderConfig
@@ -169,13 +195,7 @@ function parse_single_point_args(args=ARGS)
     options = _parse_key_value_args(args, SINGLE_POINT_KEYS)
     foreach(key -> _required(options, key), SINGLE_POINT_REQUIRED_KEYS)
 
-    config = InfiniteCylinderConfig(
-        _parse_int_option(options["Ly"], "Ly"),
-        _parse_int_option(options["x_period"], "x_period"),
-        _parse_int_option(options["filling_num"], "filling_num"),
-        _parse_int_option(options["filling_den"], "filling_den"),
-        _parse_float_option(options["phi_y"], "phi_y"),
-    )
+    config = _configuration_from_options(options)
     model_values = [
         haskey(options, key) ? _parse_float_option(options[key], key) : default for
         (key, default) in zip(
@@ -895,13 +915,7 @@ function _default_cold_state(sites, config::InfiniteCylinderConfig, pattern)
 end
 
 function _with_phi(settings::SinglePointSettings, phi_y::Real; output=settings.output, checkpoint=settings.checkpoint)
-    config = InfiniteCylinderConfig(
-        settings.config.Ly,
-        settings.config.x_period,
-        settings.config.filling_num,
-        settings.config.filling_den,
-        Float64(phi_y),
-    )
+    config = with_flux(settings.config, phi_y)
     return SinglePointSettings(
         config,
         settings.model,
@@ -1219,13 +1233,7 @@ function run_flux_scan(
     selected_results = SinglePointRunResult[]
 
     for (point, phi_y) in enumerate(flux_grid(settings))
-        config = InfiniteCylinderConfig(
-            settings.point.config.Ly,
-            settings.point.config.x_period,
-            settings.point.config.filling_num,
-            settings.point.config.filling_den,
-            phi_y,
-        )
+        config = with_flux(settings.point.config, phi_y)
         H = operations.build_hamiltonian(config, settings.point.model, shared_sites)
         point_directory = joinpath(settings.point.output, "phi_$(lpad(point - 1, 3, '0'))")
         labels = ["warm"; ["cold_$(lpad(index, 2, '0'))" for index in eachindex(settings.cold_patterns)]]
