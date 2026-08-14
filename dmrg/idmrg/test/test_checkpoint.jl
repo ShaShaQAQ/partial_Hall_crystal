@@ -3,6 +3,7 @@ using TOML
 using HDF5
 using ITensors
 using ITensorMPS
+using ITensorInfiniteMPS
 using InfiniteCylinderDMRG
 
 function captured_exception(f)
@@ -12,6 +13,29 @@ function captured_exception(f)
     catch error
         return error
     end
+end
+
+function downgrade_checkpoint_to_v1!(path::AbstractString)
+    v2_only_attributes = (
+        "geometry",
+        "Ny",
+        "coordinate_convention",
+        "circumference_convention",
+        "site_signature",
+        "julia_version",
+        "itensors_version",
+        "itensor_mps_version",
+        "itensor_infinite_mps_version",
+        "hdf5_version",
+    )
+    h5open(path, "r+") do file
+        delete_attribute(file, "format")
+        attributes(file)["format"] = "infinite_cylinder_vumps_v1"
+        for name in v2_only_attributes
+            haskey(attributes(file), name) && delete_attribute(file, name)
+        end
+    end
+    return path
 end
 
 @testset "validated atomic HDF5 checkpoints" begin
@@ -43,10 +67,16 @@ end
 
         h5open(path, "r") do file
             metadata = attributes(file)
-            @test read(metadata["format"]) == "infinite_cylinder_vumps_v1"
+            @test read(metadata["format"]) == "infinite_cylinder_vumps_v2"
             @test read(metadata["backend_commit"]) ==
                 "765f2777703bc1138b009adbed1b97bde1973402"
+            @test read(metadata["geometry"]) == "legacy_sheared"
+            @test read(metadata["coordinate_convention"]) ==
+                "legacy_sheared_site_ring_v1"
+            @test read(metadata["circumference_convention"]) ==
+                "Ly_physical_sites"
             @test read(metadata["Ly"]) == cfg.Ly
+            @test read(metadata["Ny"]) == cfg.Ny
             @test read(metadata["x_period"]) == cfg.x_period
             @test read(metadata["filling_num"]) == cfg.filling_num
             @test read(metadata["filling_den"]) == cfg.filling_den
@@ -54,6 +84,14 @@ end
             @test read(metadata["sites_per_cell"]) == sites_per_cell(cfg)
             @test read(metadata["particles_per_cell"]) == particles_per_cell(cfg)
             @test read(metadata["charge_scale"]) == charge_scale(cfg)
+            @test read(metadata["site_signature"]) == configuration_signature(cfg)
+            @test read(metadata["julia_version"]) == string(VERSION)
+            @test read(metadata["itensors_version"]) == string(Base.pkgversion(ITensors))
+            @test read(metadata["itensor_mps_version"]) ==
+                string(Base.pkgversion(ITensorMPS))
+            @test read(metadata["itensor_infinite_mps_version"]) ==
+                string(Base.pkgversion(ITensorInfiniteMPS))
+            @test read(metadata["hdf5_version"]) == string(Base.pkgversion(HDF5))
         end
 
         incompatible = (
@@ -135,6 +173,46 @@ end
             captured_exception(() -> load_checkpoint(invalid_backend_state, cfg))
         @test backend_error isa CheckpointFormatError
         @test occursin("could not read canonical state", sprint(showerror, backend_error))
+    end
+end
+
+@testset "geometry-aware v2 and legacy v1 checkpoint compatibility" begin
+    mktempdir() do directory
+        legacy = InfiniteCylinderConfig(; Ly=4, x_period=3, filling_num=1, filling_den=3)
+        _, _, legacy_psi = initial_infinite_mps(legacy)
+        legacy_v1 = joinpath(directory, "legacy_v1.h5")
+        save_checkpoint(legacy_v1, legacy_psi, legacy)
+        downgrade_checkpoint_to_v1!(legacy_v1)
+        @test load_checkpoint(legacy_v1, legacy) isa InfiniteCanonicalMPS
+
+        paper = InfiniteCylinderConfig(;
+            geometry=:paper_straight,
+            Ny=2,
+            x_period=3,
+            filling_num=1,
+            filling_den=3,
+        )
+        _, _, paper_psi = initial_infinite_mps(paper)
+        paper_v2 = joinpath(directory, "paper_v2.h5")
+        save_checkpoint(paper_v2, paper_psi, paper)
+        @test load_checkpoint(paper_v2, paper) isa InfiniteCanonicalMPS
+
+        same_shape_legacy = InfiniteCylinderConfig(;
+            Ly=4,
+            x_period=3,
+            filling_num=1,
+            filling_den=3,
+        )
+        mismatch = captured_exception(() -> load_checkpoint(paper_v2, same_shape_legacy))
+        @test mismatch isa CheckpointCompatibilityError
+        @test occursin("geometry", sprint(showerror, mismatch))
+
+        invalid_paper_v1 = joinpath(directory, "invalid_paper_v1.h5")
+        cp(paper_v2, invalid_paper_v1)
+        downgrade_checkpoint_to_v1!(invalid_paper_v1)
+        old_format = captured_exception(() -> load_checkpoint(invalid_paper_v1, paper))
+        @test old_format isa CheckpointFormatError
+        @test occursin("legacy", lowercase(sprint(showerror, old_format)))
     end
 end
 
