@@ -28,6 +28,11 @@ iteration_validation = try
 catch error
     sprint(showerror, error)
 end
+_, right_probe, _ = ITensorInfiniteMPS.right_orthogonalize(
+    no_expansion.psi.AL;
+    left_tags=ts"",
+    right_tags=ts"Right",
+)
 write_restart_toml(
     joinpath(output_directory, "iterated_indices.toml"),
     Dict(
@@ -35,6 +40,9 @@ write_restart_toml(
         "state_indices" => state_index_table(no_expansion.psi),
         "link_dimensions" => link_dimensions(no_expansion.psi),
         "checkpoint_validation" => iteration_validation,
+        "right_orthogonalized_indices" => state_index_table(
+            InfiniteCanonicalMPS(right_probe, no_expansion.psi.C, right_probe)
+        ),
     ),
 )
 continued = InfiniteCylinderDMRG._canonicalize_vumps_state(no_expansion.psi)
