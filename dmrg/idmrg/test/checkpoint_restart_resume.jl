@@ -12,8 +12,24 @@ pre_maxlinkdim = maximum(link_dimensions(psi))
 pre_energy = energy_data(psi, H, config).per_cell
 pre_density = [row.density for row in density_data(psi, config)]
 pre_schmidt_qns = schmidt_qn_table(psi, config)
+write_restart_toml(
+    joinpath(output_directory, "loaded_indices.toml"),
+    Dict(
+        "site_indices" => site_identity_table(psi),
+        "state_indices" => state_index_table(psi),
+        "link_dimensions" => link_dimensions(psi),
+    ),
+)
 
 no_expansion = vumps_iteration(H, psi; vumps_tol=1e-4)
+write_restart_toml(
+    joinpath(output_directory, "iterated_indices.toml"),
+    Dict(
+        "site_indices" => site_identity_table(no_expansion.psi),
+        "state_indices" => state_index_table(no_expansion.psi),
+        "link_dimensions" => link_dimensions(no_expansion.psi),
+    ),
+)
 continued = InfiniteCylinderDMRG._canonicalize_vumps_state(no_expansion.psi)
 expanded = expand_subspace(continued, H, 8; cutoff=1e-8)
 

@@ -15,6 +15,8 @@ export W003_REPO JULIA_BIN JULIA_DEPOT_PATH TEST_TARGET
 
 result_root=/home/public/shajy/codex/results/fqahc-fig2/pbs/${PBS_JOBID}
 mkdir -p "$result_root"
+export IDMRG_TEST_ARTIFACTS="$result_root/artifacts"
+mkdir -p "$IDMRG_TEST_ARTIFACTS"
 record_exit() {
   exit_code=$?
   printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"

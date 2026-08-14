@@ -14,16 +14,28 @@ function run_restart_process(script::AbstractString, output_directory::AbstractS
     return process
 end
 
+function with_restart_directory(f::Function)
+    artifact_root = get(ENV, "IDMRG_TEST_ARTIFACTS", "")
+    if isempty(artifact_root)
+        return mktempdir(f)
+    end
+    directory = joinpath(artifact_root, "checkpoint_restart")
+    mkpath(directory)
+    return f(directory)
+end
+
 @testset "cross-process checkpoint restart, expansion, and next flux" begin
-    mktempdir() do directory
+    with_restart_directory() do directory
         save_script = joinpath(@__DIR__, "checkpoint_restart_save.jl")
         resume_script = joinpath(@__DIR__, "checkpoint_restart_resume.jl")
 
         save_cmd = run_restart_process(save_script, directory)
         @test save_cmd.exitcode == 0
         if save_cmd.exitcode != 0
-            @info "checkpoint save stderr" text=read(
-                joinpath(directory, basename(save_script) * ".stderr.log"), String
+            println(
+                stderr,
+                "checkpoint save stderr:\n",
+                read(joinpath(directory, basename(save_script) * ".stderr.log"), String),
             )
             return
         end
@@ -31,8 +43,10 @@ end
         resume_cmd = run_restart_process(resume_script, directory)
         @test resume_cmd.exitcode == 0
         if resume_cmd.exitcode != 0
-            @info "checkpoint resume stderr" text=read(
-                joinpath(directory, basename(resume_script) * ".stderr.log"), String
+            println(
+                stderr,
+                "checkpoint resume stderr:\n",
+                read(joinpath(directory, basename(resume_script) * ".stderr.log"), String),
             )
             return
         end
