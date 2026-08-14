@@ -26,6 +26,7 @@ function index_identity(index)
         "id" => string(id(index)),
         "tags" => string(tags(index)),
         "direction" => string(dir(index)),
+        "prime_level" => plev(index),
         "dimension" => dim(index),
         "qn_blocks" => blocks,
     )

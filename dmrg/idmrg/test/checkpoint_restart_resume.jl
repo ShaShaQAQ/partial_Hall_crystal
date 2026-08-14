@@ -22,12 +22,19 @@ write_restart_toml(
 )
 
 no_expansion = vumps_iteration(H, psi; vumps_tol=1e-4)
+iteration_validation = try
+    InfiniteCylinderDMRG._validate_checkpoint_state(no_expansion.psi, config)
+    "valid"
+catch error
+    sprint(showerror, error)
+end
 write_restart_toml(
     joinpath(output_directory, "iterated_indices.toml"),
     Dict(
         "site_indices" => site_identity_table(no_expansion.psi),
         "state_indices" => state_index_table(no_expansion.psi),
         "link_dimensions" => link_dimensions(no_expansion.psi),
+        "checkpoint_validation" => iteration_validation,
     ),
 )
 continued = InfiniteCylinderDMRG._canonicalize_vumps_state(no_expansion.psi)
