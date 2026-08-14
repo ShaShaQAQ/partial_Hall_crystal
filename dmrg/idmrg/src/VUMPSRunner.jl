@@ -329,11 +329,33 @@ function _validate_vumps_schedule(
     return Int.(targets)
 end
 
+function _mixed_canonical_from_left_links(psi::InfiniteMPS)
+    _, right, _ = ITensorInfiniteMPS.right_orthogonalize(
+        psi;
+        left_tags=ts"Left",
+        right_tags=ts"Right",
+    )
+    left, centers, eigenvalue = ITensorInfiniteMPS.left_orthogonalize(
+        right;
+        left_tags=ts"Left",
+        right_tags=ts"Right",
+    )
+    isapprox(eigenvalue, one(eigenvalue)) || error(
+        "canonical transfer eigenvalue must be one, got $eigenvalue"
+    )
+    return InfiniteCanonicalMPS(left, centers, right)
+end
+
 function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
     expected_sites = siteinds(only, psi.AL)
     expected_dims = link_dimensions(psi)
     expected_flux = flux(psi.AL)
-    canonical = ITensorMPS.orthogonalize(psi.AL, :)
+    left_links = linkinds(only, psi.AL)
+    canonical = if all(index -> hastags(index, "Left"), left_links)
+        _mixed_canonical_from_left_links(psi.AL)
+    else
+        ITensorMPS.orthogonalize(psi.AL, :)
+    end
 
     canonical isa InfiniteCanonicalMPS || error(
         "VUMPS canonicalization did not return an InfiniteCanonicalMPS"
