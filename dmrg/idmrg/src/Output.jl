@@ -1,4 +1,5 @@
-const CHECKPOINT_FORMAT = "infinite_cylinder_vumps_v1"
+const CHECKPOINT_FORMAT_V1 = "infinite_cylinder_vumps_v1"
+const CHECKPOINT_FORMAT = "infinite_cylinder_vumps_v2"
 const TEXT_OUTPUT_FORMAT = "infinite_cylinder_vumps_text_v1"
 const ITENSOR_INFINITE_MPS_COMMIT = "765f2777703bc1138b009adbed1b97bde1973402"
 
@@ -57,10 +58,18 @@ function _isometry_residual(tensor, retained_index)
 end
 
 function _checkpoint_metadata(c::InfiniteCylinderConfig)
+    coordinate_convention = c.geometry == :paper_straight ?
+        "paper_straight_A1_A2_AB_v1" : "legacy_sheared_site_ring_v1"
+    circumference_convention = c.geometry == :paper_straight ?
+        "Ny_two_band_cells" : "Ly_physical_sites"
     return (
         format=CHECKPOINT_FORMAT,
         backend_commit=ITENSOR_INFINITE_MPS_COMMIT,
+        geometry=string(c.geometry),
+        coordinate_convention,
+        circumference_convention,
         Ly=c.Ly,
+        Ny=c.Ny,
         x_period=c.x_period,
         filling_num=c.filling_num,
         filling_den=c.filling_den,
@@ -69,6 +78,12 @@ function _checkpoint_metadata(c::InfiniteCylinderConfig)
         particles_per_cell=particles_per_cell(c),
         charge_scale=charge_scale(c),
         configuration_signature=_configuration_signature(c),
+        site_signature=_configuration_signature(c),
+        julia_version=string(VERSION),
+        itensors_version=string(Base.pkgversion(ITensors)),
+        itensor_mps_version=string(Base.pkgversion(ITensorMPS)),
+        itensor_infinite_mps_version=string(Base.pkgversion(ITensorInfiniteMPS)),
+        hdf5_version=string(Base.pkgversion(HDF5)),
     )
 end
 
@@ -200,10 +215,9 @@ function _read_checkpoint_attribute(attrs, name::String, expected_type::Type)
     return value
 end
 
-function _read_checkpoint_metadata(file)
-    attrs = attributes(file)
+function _read_v1_checkpoint_metadata(attrs, format)
     return (
-        format=_read_checkpoint_attribute(attrs, "format", AbstractString),
+        format,
         backend_commit=_read_checkpoint_attribute(
             attrs, "backend_commit", AbstractString
         ),
@@ -225,36 +239,128 @@ function _read_checkpoint_metadata(file)
     )
 end
 
-function _stored_checkpoint_configuration(metadata)
-    metadata.format == CHECKPOINT_FORMAT || throw(
-        CheckpointFormatError("unsupported format $(repr(metadata.format))")
+function _read_v2_checkpoint_metadata(attrs, format)
+    return (
+        format,
+        backend_commit=_read_checkpoint_attribute(
+            attrs, "backend_commit", AbstractString
+        ),
+        geometry=_read_checkpoint_attribute(attrs, "geometry", AbstractString),
+        coordinate_convention=_read_checkpoint_attribute(
+            attrs, "coordinate_convention", AbstractString
+        ),
+        circumference_convention=_read_checkpoint_attribute(
+            attrs, "circumference_convention", AbstractString
+        ),
+        Ly=_read_checkpoint_attribute(attrs, "Ly", Integer),
+        Ny=_read_checkpoint_attribute(attrs, "Ny", Integer),
+        x_period=_read_checkpoint_attribute(attrs, "x_period", Integer),
+        filling_num=_read_checkpoint_attribute(attrs, "filling_num", Integer),
+        filling_den=_read_checkpoint_attribute(attrs, "filling_den", Integer),
+        phi_y=_read_checkpoint_attribute(attrs, "phi_y", Float64),
+        sites_per_cell=_read_checkpoint_attribute(
+            attrs, "sites_per_cell", Integer
+        ),
+        particles_per_cell=_read_checkpoint_attribute(
+            attrs, "particles_per_cell", Integer
+        ),
+        charge_scale=_read_checkpoint_attribute(attrs, "charge_scale", Integer),
+        configuration_signature=_read_checkpoint_attribute(
+            attrs, "configuration_signature", AbstractString
+        ),
+        site_signature=_read_checkpoint_attribute(
+            attrs, "site_signature", AbstractString
+        ),
+        julia_version=_read_checkpoint_attribute(
+            attrs, "julia_version", AbstractString
+        ),
+        itensors_version=_read_checkpoint_attribute(
+            attrs, "itensors_version", AbstractString
+        ),
+        itensor_mps_version=_read_checkpoint_attribute(
+            attrs, "itensor_mps_version", AbstractString
+        ),
+        itensor_infinite_mps_version=_read_checkpoint_attribute(
+            attrs, "itensor_infinite_mps_version", AbstractString
+        ),
+        hdf5_version=_read_checkpoint_attribute(
+            attrs, "hdf5_version", AbstractString
+        ),
     )
+end
+
+function _read_checkpoint_metadata(file)
+    attrs = attributes(file)
+    format = _read_checkpoint_attribute(attrs, "format", AbstractString)
+    format == CHECKPOINT_FORMAT && return _read_v2_checkpoint_metadata(attrs, format)
+    format == CHECKPOINT_FORMAT_V1 && return _read_v1_checkpoint_metadata(attrs, format)
+    throw(CheckpointFormatError("unsupported format $(repr(format))"))
+end
+
+function _stored_checkpoint_configuration(metadata)
     metadata.backend_commit == ITENSOR_INFINITE_MPS_COMMIT || throw(
         CheckpointFormatError(
             "unsupported backend commit $(repr(metadata.backend_commit))"
         ),
     )
     stored = try
-        InfiniteCylinderConfig(
-            Int(metadata.Ly),
-            Int(metadata.x_period),
-            Int(metadata.filling_num),
-            Int(metadata.filling_den),
-            metadata.phi_y,
-        )
+        if metadata.format == CHECKPOINT_FORMAT_V1
+            InfiniteCylinderConfig(
+                Int(metadata.Ly),
+                Int(metadata.x_period),
+                Int(metadata.filling_num),
+                Int(metadata.filling_den),
+                metadata.phi_y,
+            )
+        else
+            InfiniteCylinderConfig(
+                Symbol(metadata.geometry),
+                Int(metadata.Ly),
+                Int(metadata.Ny),
+                Int(metadata.x_period),
+                Int(metadata.filling_num),
+                Int(metadata.filling_den),
+                metadata.phi_y,
+            )
+        end
     catch error
         throw(_checkpoint_format_error("stored configuration is invalid", error))
     end
     derived = _checkpoint_metadata(stored)
-    for name in (
+    common_names = (
         :sites_per_cell,
         :particles_per_cell,
         :charge_scale,
         :configuration_signature,
     )
+    for name in common_names
         getproperty(metadata, name) == getproperty(derived, name) || throw(
-            CheckpointFormatError("attribute $name is inconsistent with the configuration")
+            CheckpointFormatError(
+                metadata.format == CHECKPOINT_FORMAT_V1 ?
+                "legacy v1 attribute $name is inconsistent with the configuration" :
+                "attribute $name is inconsistent with the configuration"
+            )
         )
+    end
+    if metadata.format == CHECKPOINT_FORMAT
+        for name in (
+            :geometry,
+            :coordinate_convention,
+            :circumference_convention,
+            :Ny,
+            :site_signature,
+            :julia_version,
+            :itensors_version,
+            :itensor_mps_version,
+            :itensor_infinite_mps_version,
+            :hdf5_version,
+        )
+            getproperty(metadata, name) == getproperty(derived, name) || throw(
+                CheckpointFormatError(
+                    "attribute $name is inconsistent with the configuration or runtime"
+                )
+            )
+        end
     end
     return stored
 end
@@ -262,7 +368,7 @@ end
 function _validate_checkpoint_compatibility(
     stored::InfiniteCylinderConfig, requested::InfiniteCylinderConfig
 )
-    for name in (:Ly, :x_period, :filling_num, :filling_den, :phi_y)
+    for name in (:geometry, :Ly, :Ny, :x_period, :filling_num, :filling_den, :phi_y)
         stored_value = getproperty(stored, name)
         requested_value = getproperty(requested, name)
         isequal(stored_value, requested_value) || throw(
