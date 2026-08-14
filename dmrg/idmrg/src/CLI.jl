@@ -1078,24 +1078,19 @@ function run_single_point(
     settings::SinglePointSettings;
     operations::SinglePointOperations=SinglePointOperations(),
 )
-    _reject_checkpoint_restart(settings)
     operations.configure_threads(settings.threads)
-    state = operations.initialize(settings.config, settings.occupied_sites)
-    H = operations.build_hamiltonian(settings.config, settings.model, state.sites)
-    return _enforce_workflow_validity(
-        _run_prepared_point(settings, H, state.psi, operations)
-    )
-end
-
-function _reject_checkpoint_restart(settings::SinglePointSettings)
-    if !isnothing(settings.load)
-        throw(
-            WorkflowValidationError(
-                "optimization restart from --load is unsupported by pinned backend commit $(ITENSOR_INFINITE_MPS_COMMIT); checkpoints are retained for checkpoint audit and observable-only reload validation. Start a fresh deterministic product state with --occupied_sites or use explicit fresh cold candidates instead.",
-            ),
-        )
+    if isnothing(settings.load)
+        state = operations.initialize(settings.config, settings.occupied_sites)
+        sites = state.sites
+        psi = state.psi
+    else
+        psi = operations.load_state(settings.load, settings.config)
+        sites = operations.state_sites(psi)
     end
-    return nothing
+    H = operations.build_hamiltonian(settings.config, settings.model, sites)
+    return _enforce_workflow_validity(
+        _run_prepared_point(settings, H, psi, operations)
+    )
 end
 
 const SCAN_SUMMARY_HEADER =
@@ -1216,14 +1211,21 @@ function run_flux_scan(
     settings::FluxScanSettings;
     operations::SinglePointOperations=SinglePointOperations(),
 )
-    _reject_checkpoint_restart(settings.point)
     operations.configure_threads(settings.point.threads)
-    initial = operations.initialize(
-        settings.point.config,
-        settings.point.occupied_sites,
-    )
-    shared_sites = initial.sites
-    warm_state = initial.psi
+    if isnothing(settings.point.load)
+        initial = operations.initialize(
+            settings.point.config,
+            settings.point.occupied_sites,
+        )
+        shared_sites = initial.sites
+        warm_state = initial.psi
+    else
+        warm_state = operations.load_state(
+            settings.point.load,
+            settings.point.config,
+        )
+        shared_sites = operations.state_sites(warm_state)
+    end
     previous_selected_state = nothing
     reference_polarization = NaN
     rows = NamedTuple[]
