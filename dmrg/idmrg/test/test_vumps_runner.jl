@@ -283,6 +283,16 @@ end
     @test record.elapsed_seconds == 0.25
 end
 
+@testset "dense canonical states bypass QN link normalization" begin
+    initspin(_) = "↑"
+    sites = infsiteinds("S=1/2", 1; initstate=initspin)
+    psi = InfMPS(sites, initspin)
+    canonical = ITensorMPS.orthogonalize(psi.AL, :)
+
+    @test all(index -> !hasqns(index), inds(canonical.C[1]))
+    @test InfiniteCylinderDMRG._normalize_right_link_convention(canonical) === canonical
+end
+
 @testset "staged VUMPS runner" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
