@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#PBS -N phc_idmrg_test
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=02:00:00
+#PBS -j oe
+
+set -euo pipefail
+export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
+: "${W003_REPO:=/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark}"
+: "${JULIA_BIN:=/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia}"
+: "${JULIA_DEPOT_PATH:=/home/public/shajy/codex/depots/idmrg-julia-1.12.5}"
+: "${TEST_TARGET:=test/runtests.jl}"
+export W003_REPO JULIA_BIN JULIA_DEPOT_PATH TEST_TARGET
+
+result_root=/home/public/shajy/codex/results/fqahc-fig2/pbs/${PBS_JOBID}
+mkdir -p "$result_root"
+record_exit() {
+  exit_code=$?
+  printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"
+}
+trap record_exit EXIT
+cd "$W003_REPO/dmrg/idmrg"
+
+export LC_ALL=C
+export JULIA_NUM_THREADS=${NCPUS:-24}
+export JULIA_PKG_USE_CLI_GIT=true
+export GIT_CONFIG_GLOBAL="$JULIA_DEPOT_PATH/gitconfig"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+{
+  hostname
+  commit_file="$W003_REPO/.git/refs/heads/DMRG"
+  [[ -f "$commit_file" ]] || {
+    echo "missing branch ref: $commit_file" >&2
+    exit 1
+  }
+  printf 'git_commit=%s\n' "$(<"$commit_file")"
+  "$JULIA_BIN" --startup-file=no -e 'using InteractiveUtils; versioninfo()'
+  "$JULIA_BIN" --startup-file=no --project=. -e \
+    'using Pkg; Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)'
+  env | sort | sed -n '/^JULIA_/p;/^OMP_/p;/^OPENBLAS_/p;/^MKL_/p;/^PBS_/p'
+  /opt/pbs/bin/qstat -f "$PBS_JOBID" || true
+} > "$result_root/provenance.txt" 2>&1
+
+/usr/bin/time -v "$JULIA_BIN" --startup-file=no --project=. "$TEST_TARGET" \
+  > "$result_root/test.log" 2> "$result_root/time.txt"

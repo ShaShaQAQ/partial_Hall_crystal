@@ -108,7 +108,7 @@ Complete the non-check branch of `bootstrap_w003.sh` to download the official Li
 #!/usr/bin/env bash
 #PBS -N phc_idmrg_test
 #PBS -q cmt
-#PBS -l nodes=1:ppn=4
+#PBS -l nodes=1:ppn=24
 #PBS -l walltime=02:00:00
 #PBS -j oe
 set -euo pipefail
@@ -119,7 +119,7 @@ set -euo pipefail
 result_root=/home/public/shajy/codex/results/fqahc-fig2/pbs/${PBS_JOBID}
 mkdir -p "$result_root"
 cd "$W003_REPO/dmrg/idmrg"
-export JULIA_NUM_THREADS=${NCPUS:-4}
+export JULIA_NUM_THREADS=${NCPUS:-24}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 {
   hostname

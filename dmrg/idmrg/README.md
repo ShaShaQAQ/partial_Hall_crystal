@@ -23,21 +23,33 @@ package resolution.
 
 ## Environment and tests
 
-Run commands below from the repository root. Instantiate only the isolated
-environment:
+All approved iDMRG tests and tensor calculations run on W003. The Mac is used
+only for source editing and Git transport. W003 uses the dedicated checkout
+`/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark`; never repurpose
+the dirty production checkout `/home/public/shajy/partial_Hall_crystal`.
+
+From the dedicated W003 checkout, install and validate the exact user-owned
+Julia 1.12.5 runtime and isolated depot with:
 
 ```bash
-julia --project=dmrg/idmrg -e 'using Pkg; Pkg.instantiate()'
+bash dmrg/idmrg/jobs/bootstrap_w003.sh
+bash dmrg/idmrg/jobs/bootstrap_w003.sh --check
 ```
 
-The fast test suite can be run directly or through `Pkg.test()`:
+Fast tests are submitted to PBS rather than run on the Mac or W003 login node:
 
 ```bash
-julia --project=dmrg/idmrg dmrg/idmrg/test/runtests.jl
-julia --project=dmrg/idmrg -e 'using Pkg; Pkg.test()'
+export W003_REPO=/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark
+export JULIA_BIN=/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia
+export JULIA_DEPOT_PATH=/home/public/shajy/codex/depots/idmrg-julia-1.12.5
+qsub -v W003_REPO,JULIA_BIN,JULIA_DEPOT_PATH,TEST_TARGET=test/runtests.jl \
+  dmrg/idmrg/jobs/run_tests.pbs
 ```
 
-Neither command changes the root finite-DMRG environment.
+The job writes test output, dependency provenance, scheduler metadata, and
+resource timing under
+`/home/public/shajy/codex/results/fqahc-fig2/pbs/$PBS_JOBID`. Neither the
+bootstrap nor the PBS job changes the root finite-DMRG environment.
 
 ## Geometry, Hamiltonian, and filling
 
