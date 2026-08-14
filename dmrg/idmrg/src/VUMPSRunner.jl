@@ -346,6 +346,81 @@ function _mixed_canonical_from_left_links(psi::InfiniteMPS)
     return InfiniteCanonicalMPS(left, centers, right)
 end
 
+function _index_qn_dimensions(index)
+    return Dict(qn(index, block) => blockdim(index, block) for block in 1:nblocks(index))
+end
+
+function _dual_qn_index(index)
+    blocks = [
+        -qn(index, block) => blockdim(index, block) for block in 1:nblocks(index)
+    ]
+    return Index(blocks; tags=tags(index), dir=dir(dag(index)))
+end
+
+function _replace_with_dual_index(tensor, old_index, new_index)
+    isomorphism = ITensor(dag(old_index), new_index)
+    for value in 1:dim(old_index)
+        isomorphism[dag(old_index) => value, new_index => value] = 1.0
+    end
+    flux(isomorphism) == QN() || error(
+        "right-link dualization isomorphism must have neutral QN flux"
+    )
+    return tensor * isomorphism
+end
+
+function _right_link_occurrence(new_base, old_base, occurrence)
+    tagged = settags(new_base, tags(occurrence))
+    return dir(occurrence) == dir(old_base) ? tagged : dag(tagged)
+end
+
+function _dualize_right_canonical_links(psi::InfiniteCanonicalMPS)
+    centers = copy(psi.C)
+    right = copy(psi.AR)
+    replacements = Dict{Any,Tuple{Index,Index}}()
+
+    for site in 1:nsites(psi)
+        old_index = only(filterinds(centers[site]; tags="Right"))
+        replacements[id(old_index)] = (old_index, _dual_qn_index(old_index))
+    end
+
+    for site in 1:nsites(psi)
+        tensor = centers[site]
+        for old_index in filterinds(tensor; tags="Right")
+            old_base, new_base = replacements[id(old_index)]
+            new_index = _right_link_occurrence(new_base, old_base, old_index)
+            tensor = _replace_with_dual_index(tensor, old_index, new_index)
+        end
+        centers[site] = tensor
+
+        tensor = right[site]
+        for old_index in filterinds(tensor; tags="Right")
+            old_base, new_base = replacements[id(old_index)]
+            new_index = _right_link_occurrence(new_base, old_base, old_index)
+            tensor = _replace_with_dual_index(tensor, old_index, new_index)
+        end
+        right[site] = tensor
+    end
+    return InfiniteCanonicalMPS(psi.AL, centers, right)
+end
+
+function _normalize_right_link_convention(psi::InfiniteCanonicalMPS)
+    same = Bool[]
+    dual = Bool[]
+    for site in 1:nsites(psi)
+        left_index = only(filterinds(psi.C[site]; tags="Left"))
+        right_index = only(filterinds(psi.C[site]; tags="Right"))
+        left_space = _index_qn_dimensions(left_index)
+        right_space = _index_qn_dimensions(right_index)
+        push!(same, right_space == left_space)
+        push!(dual, right_space == Dict(-charge => dimension for (charge, dimension) in left_space))
+    end
+    all(dual) && return psi
+    all(same) || error(
+        "canonical right-link QN spaces are neither uniformly equal nor dual to left links"
+    )
+    return _dualize_right_canonical_links(psi)
+end
+
 function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
     expected_sites = siteinds(only, psi.AL)
     expected_dims = link_dimensions(psi)
@@ -372,6 +447,7 @@ function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
     flux(canonical.AL) == expected_flux || error(
         "VUMPS canonicalization changed the conserved QN flux"
     )
+    canonical = _normalize_right_link_convention(canonical)
 
     for site in 1:nsites(canonical)
         left_center = canonical.AL[site] * canonical.C[site]
