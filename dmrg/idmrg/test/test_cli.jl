@@ -174,100 +174,6 @@ end
     )
 end
 
-@testset "checkpoint optimization restart is rejected before callbacks" begin
-    settings = parse_single_point_args([
-        "--Ly=6",
-        "--x_period=1",
-        "--filling_num=1",
-        "--filling_den=3",
-        "--phi_y=0",
-        "--maxdim=1",
-        "--output=unused",
-        "--load=checkpoint.h5",
-    ])
-    calls = Ref(0)
-    callback(args...) = (calls[] += 1; error("callback must not run"))
-    operations = SinglePointOperations(
-        configure_threads=callback,
-        initialize=callback,
-        load_state=callback,
-        state_sites=callback,
-        build_hamiltonian=callback,
-        optimize=callback,
-        energy=callback,
-        density=callback,
-        entanglement=callback,
-        transfer=callback,
-        fidelity=callback,
-        write_outputs=callback,
-        save_state=callback,
-        cold_state=callback,
-    )
-    error = try
-        run_single_point(settings; operations)
-        nothing
-    catch exception
-        exception
-    end
-    @test error isa WorkflowValidationError
-    message = sprint(showerror, error)
-    @test occursin("765f2777703bc1138b009adbed1b97bde1973402", message)
-    @test occursin("unsupported", lowercase(message))
-    @test occursin("audit", lowercase(message))
-    @test occursin("observable-only", lowercase(message))
-    @test occursin("fresh deterministic", lowercase(message))
-    @test occursin("cold", lowercase(message))
-    @test calls[] == 0
-end
-
-@testset "flux-scan checkpoint restart is rejected before callbacks" begin
-    settings = parse_flux_scan_args([
-        "--Ly=6",
-        "--x_period=1",
-        "--filling_num=1",
-        "--filling_den=3",
-        "--phi_start=0",
-        "--phi_stop=1",
-        "--phi_steps=2",
-        "--maxdim=1",
-        "--output=unused",
-        "--load=checkpoint.h5",
-    ])
-    calls = Ref(0)
-    callback(args...) = (calls[] += 1; error("callback must not run"))
-    operations = SinglePointOperations(
-        configure_threads=callback,
-        initialize=callback,
-        load_state=callback,
-        state_sites=callback,
-        build_hamiltonian=callback,
-        optimize=callback,
-        energy=callback,
-        density=callback,
-        entanglement=callback,
-        transfer=callback,
-        fidelity=callback,
-        write_outputs=callback,
-        save_state=callback,
-        cold_state=callback,
-    )
-    error = try
-        run_flux_scan(settings; operations)
-        nothing
-    catch exception
-        exception
-    end
-    @test error isa WorkflowValidationError
-    message = sprint(showerror, error)
-    @test occursin("765f2777703bc1138b009adbed1b97bde1973402", message)
-    @test occursin("unsupported", lowercase(message))
-    @test occursin("audit", lowercase(message))
-    @test occursin("observable-only", lowercase(message))
-    @test occursin("fresh deterministic", lowercase(message))
-    @test occursin("cold", lowercase(message))
-    @test calls[] == 0
-end
-
 @testset "safe CLI threading" begin
     configured = configure_cli_threads(1)
     @test configured.requested == 1
@@ -751,6 +657,80 @@ function fake_single_point_operations(events; converged=true, transfer_valid=tru
             path
         end,
     )
+end
+
+function fake_restart_operations(events, checkpoint_state)
+    base = fake_single_point_operations(events)
+    return SinglePointOperations(
+        configure_threads=base.configure_threads,
+        initialize=(args...) -> error("restart must not initialize a product state"),
+        load_state=(path, config) -> begin
+            push!(events, (:load, path, config.phi_y))
+            checkpoint_state
+        end,
+        state_sites=base.state_sites,
+        build_hamiltonian=base.build_hamiltonian,
+        optimize=base.optimize,
+        energy=base.energy,
+        density=base.density,
+        entanglement=base.entanglement,
+        transfer=base.transfer,
+        fidelity=base.fidelity,
+        write_outputs=base.write_outputs,
+        save_state=base.save_state,
+        cold_state=base.cold_state,
+    )
+end
+
+@testset "single-point and flux-scan checkpoint restart routing" begin
+    mktempdir() do directory
+        config = InfiniteCylinderConfig(; Ly=6, x_period=1)
+        _, _, checkpoint_state = initial_infinite_mps(config)
+
+        point = parse_single_point_args([
+            "--Ly=6",
+            "--x_period=1",
+            "--filling_num=1",
+            "--filling_den=3",
+            "--phi_y=0",
+            "--maxdim=1",
+            "--output=$(joinpath(directory, "point"))",
+            "--load=$(joinpath(directory, "seed.h5"))",
+        ])
+        point_events = Any[]
+        point_result = run_single_point(
+            point;
+            operations=fake_restart_operations(point_events, checkpoint_state),
+        )
+        @test point_result.valid
+        @test count(event -> event[1] === :load, point_events) == 1
+        @test !any(event -> event[1] === :initialize, point_events)
+        @test findfirst(event -> event[1] === :load, point_events) <
+            findfirst(event -> event[1] === :build, point_events)
+
+        scan_settings = parse_flux_scan_args([
+            "--Ly=6",
+            "--x_period=1",
+            "--filling_num=1",
+            "--filling_den=3",
+            "--phi_start=0",
+            "--phi_stop=0.1",
+            "--phi_steps=2",
+            "--maxdim=1",
+            "--output=$(joinpath(directory, "scan"))",
+            "--load=$(joinpath(directory, "seed.h5"))",
+        ])
+        scan_events = Any[]
+        scan_result = run_flux_scan(
+            scan_settings;
+            operations=fake_restart_operations(scan_events, checkpoint_state),
+        )
+        @test length(scan_result.rows) == 2
+        @test count(event -> event[1] === :load, scan_events) == 1
+        @test !any(event -> event[1] === :initialize, scan_events)
+        @test findfirst(event -> event[1] === :load, scan_events) <
+            findfirst(event -> event[1] === :build, scan_events)
+    end
 end
 
 @testset "callable single-point workflow preserves raw invalid output" begin
