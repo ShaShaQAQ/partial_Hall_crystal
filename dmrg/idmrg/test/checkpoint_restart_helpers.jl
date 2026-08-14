@@ -1,6 +1,7 @@
 using TOML
 using ITensors
 using ITensorMPS
+using ITensorInfiniteMPS
 using InfiniteCylinderDMRG
 
 function restart_config(phi_y::Real=0.0)
