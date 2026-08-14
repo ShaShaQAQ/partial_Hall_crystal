@@ -16,6 +16,7 @@ using TOML
 using Random
 
 include("Configuration.jl")
+include("PaperGeometry.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
 include("Observables.jl")
@@ -44,6 +45,17 @@ export CylinderModelParams,
     with_flux,
     configuration_signature,
     default_occupied_sites,
+    PAPER_A1,
+    PAPER_A2,
+    PAPER_SUBLATTICE_POSITIONS,
+    PaperHoppingOrbit,
+    paper_triangular_coordinates,
+    paper_physical_position,
+    paper_periodic_distance_squared,
+    paper_hopping_orbits,
+    paper_orbits_are_hermitian,
+    paper_bloch_from_orbits,
+    paper_reference_Hk,
     InfiniteHoppingTerm,
     InfiniteInteractionTerm,
     normalize_directed,
@@ -55,6 +67,9 @@ export CylinderModelParams,
     canonical_term_dict,
     tile_to_finite_window,
     finite_term_parity,
+    neighbor_shell_counts,
+    straight_seam_is_connected,
+    paper_window_parity,
     infinite_opsum,
     build_infinite_mpo,
     initial_infinite_mps,

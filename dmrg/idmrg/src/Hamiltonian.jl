@@ -22,7 +22,7 @@ function normalize_undirected(c::InfiniteCylinderConfig, i::Int, j::Int)
     return minmax(i, j)
 end
 
-function build_infinite_hoppings(
+function _build_legacy_hoppings(
     c::InfiniteCylinderConfig,
     params::CylinderModelParams;
     atol::Real=1e-12,
@@ -62,7 +62,59 @@ function build_infinite_hoppings(
     return hops
 end
 
-function build_infinite_interactions(
+function _build_paper_hoppings(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    atol::Real=1e-12,
+)
+    c.geometry == :paper_straight || throw(
+        ArgumentError("paper hopping construction requires paper_straight geometry")
+    )
+    orbits = paper_hopping_orbits(params; atol)
+    paper_orbits_are_hermitian(orbits; atol=100atol) || error(
+        "paper hopping orbits are not Hermitian"
+    )
+    accum = Dict{Tuple{Int,Int},ComplexF64}()
+    for source in 1:sites_per_cell(c)
+        source_x, source_y, source_orbital_symbol = paper_coordinates(c, source)
+        source_orbital = source_orbital_symbol === :A ? 1 : 2
+        for orbit in orbits
+            orbit.source_orbital == source_orbital || continue
+            target_y_unwrapped = source_y + orbit.dy
+            winding_y, target_y = fldmod(target_y_unwrapped, c.Ny)
+            target_orbital = orbit.target_orbital == 1 ? :A : :B
+            target = paper_site(
+                c,
+                source_x + orbit.dx,
+                target_y,
+                target_orbital,
+            )
+            key = normalize_directed(c, target, source)
+            amplitude = orbit.amplitude * cis(winding_y * c.phi_y)
+            accum[key] = get(accum, key, 0.0 + 0.0im) + amplitude
+        end
+    end
+
+    hoppings = InfiniteHoppingTerm[]
+    for ((target, source), amplitude) in accum
+        abs(amplitude) < atol && continue
+        push!(hoppings, InfiniteHoppingTerm(target, source, amplitude))
+    end
+    sort!(hoppings; by=h -> (h.source, h.target, real(h.amp), imag(h.amp)))
+    return hoppings
+end
+
+function build_infinite_hoppings(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    atol::Real=1e-12,
+)
+    return c.geometry == :legacy_sheared ?
+        _build_legacy_hoppings(c, params; atol) :
+        _build_paper_hoppings(c, params; atol)
+end
+
+function _build_legacy_interactions(
     c::InfiniteCylinderConfig,
     params::CylinderModelParams;
     atol::Real=1e-14,
@@ -88,6 +140,84 @@ function build_infinite_interactions(
 
     sort!(interactions; by=v -> (v.shell, v.i, v.j, v.V))
     return interactions
+end
+
+function _build_paper_interactions(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    atol::Real=1e-14,
+)
+    c.geometry == :paper_straight || throw(
+        ArgumentError("paper interaction construction requires paper_straight geometry")
+    )
+    seen = Set{Tuple{Int,Int,Int}}()
+    interactions = InfiniteInteractionTerm[]
+    for (shell, interaction) in ((1, params.V1), (2, params.V2), (3, params.V3))
+        abs(interaction) < atol && continue
+        for source in 1:sites_per_cell(c)
+            source_x, source_y, source_orbital_symbol = paper_coordinates(c, source)
+            source_orbital = source_orbital_symbol === :A ? 0 : 1
+            source_triangular_x = source_x - source_y
+            source_triangular_y = 2source_y + source_orbital
+            for (dx, dy) in NB_DISPS[shell]
+                target_triangular_y = source_triangular_y + dy
+                target_y, target_orbital = fldmod(target_triangular_y, 2)
+                target_x = source_triangular_x + dx + target_y
+                target = paper_site(
+                    c,
+                    target_x,
+                    target_y,
+                    iszero(target_orbital) ? :A : :B,
+                )
+                target == source && continue
+                i, j = normalize_undirected(c, target, source)
+                key = (i, j, shell)
+                key in seen && continue
+                push!(seen, key)
+                push!(
+                    interactions,
+                    InfiniteInteractionTerm(i, j, interaction, shell),
+                )
+            end
+        end
+    end
+    sort!(interactions; by=value -> (value.shell, value.i, value.j, value.V))
+    return interactions
+end
+
+function build_infinite_interactions(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    atol::Real=1e-14,
+)
+    return c.geometry == :legacy_sheared ?
+        _build_legacy_interactions(c, params; atol) :
+        _build_paper_interactions(c, params; atol)
+end
+
+function neighbor_shell_counts(
+    interactions::AbstractVector{<:InfiniteInteractionTerm},
+)
+    counts = Dict{Int,Int}()
+    for interaction in interactions
+        counts[interaction.shell] = get(counts, interaction.shell, 0) + 1
+    end
+    return counts
+end
+
+function straight_seam_is_connected(
+    c::InfiniteCylinderConfig,
+    hoppings::AbstractVector{<:InfiniteHoppingTerm},
+)
+    c.geometry == :paper_straight || throw(
+        ArgumentError("straight seam diagnostics require paper_straight geometry")
+    )
+    for hopping in hoppings
+        _, target_y, _ = paper_coordinates(c, hopping.target)
+        _, source_y, _ = paper_coordinates(c, hopping.source)
+        minmax(target_y, source_y) == (0, c.Ny - 1) && return true
+    end
+    return false
 end
 
 function build_infinite_model_terms(
@@ -200,6 +330,112 @@ function tile_to_finite_window(
     sort!(finite_hops; by=h -> (h.source, h.target, real(h.amp), imag(h.amp)))
     sort!(finite_interactions; by=v -> (v.shell, v.i, v.j, v.V))
     return finite_hops, finite_interactions
+end
+
+function _direct_paper_window_terms(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    x_cells::Int,
+    atol::Real,
+)
+    hopping_accum = Dict{Tuple{Int,Int},ComplexF64}()
+    orbits = paper_hopping_orbits(params; atol)
+    for source_x in 0:(x_cells - 1), source_y in 0:(c.Ny - 1), source_orbital in 1:2
+        source = paper_site(c, source_x, source_y, source_orbital == 1 ? :A : :B)
+        for orbit in orbits
+            orbit.source_orbital == source_orbital || continue
+            target_x = source_x + orbit.dx
+            0 <= target_x < x_cells || continue
+            winding_y, target_y = fldmod(source_y + orbit.dy, c.Ny)
+            target = paper_site(
+                c,
+                target_x,
+                target_y,
+                orbit.target_orbital == 1 ? :A : :B,
+            )
+            key = (target, source)
+            amplitude = orbit.amplitude * cis(winding_y * c.phi_y)
+            hopping_accum[key] = get(hopping_accum, key, 0.0 + 0.0im) + amplitude
+        end
+    end
+
+    interaction_accum = Dict{Tuple{Int,Int,Int},Float64}()
+    for (shell, interaction) in ((1, params.V1), (2, params.V2), (3, params.V3))
+        abs(interaction) < atol && continue
+        for source_x in 0:(x_cells - 1), source_y in 0:(c.Ny - 1), source_orbital in 0:1
+            source = paper_site(c, source_x, source_y, iszero(source_orbital) ? :A : :B)
+            source_triangular_x = source_x - source_y
+            source_triangular_y = 2source_y + source_orbital
+            for (dx, dy) in NB_DISPS[shell]
+                target_y, target_orbital = fldmod(source_triangular_y + dy, 2)
+                target_x = source_triangular_x + dx + target_y
+                0 <= target_x < x_cells || continue
+                target = paper_site(
+                    c,
+                    target_x,
+                    target_y,
+                    iszero(target_orbital) ? :A : :B,
+                )
+                i, j = minmax(target, source)
+                i == j && continue
+                interaction_accum[(i, j, shell)] = interaction
+            end
+        end
+    end
+
+    hoppings = [
+        InfiniteHoppingTerm(target, source, amplitude) for
+        ((target, source), amplitude) in hopping_accum if abs(amplitude) >= atol
+    ]
+    interactions = [
+        InfiniteInteractionTerm(i, j, interaction, shell) for
+        ((i, j, shell), interaction) in interaction_accum
+    ]
+    sort!(hoppings; by=h -> (h.source, h.target, real(h.amp), imag(h.amp)))
+    sort!(interactions; by=value -> (value.shell, value.i, value.j, value.V))
+    return hoppings, interactions
+end
+
+function paper_window_parity(
+    c::InfiniteCylinderConfig,
+    params::CylinderModelParams;
+    x_cells::Int,
+    atol::Real=1e-10,
+)
+    c.geometry == :paper_straight || throw(
+        ArgumentError("paper window parity requires paper_straight geometry")
+    )
+    x_cells > 0 || throw(ArgumentError("x_cells must be positive"))
+    hoppings, interactions = build_infinite_model_terms(c, params)
+    tiled_hoppings, tiled_interactions = tile_to_finite_window(
+        c,
+        hoppings,
+        interactions;
+        Lx=x_cells,
+    )
+    direct_hoppings, direct_interactions = _direct_paper_window_terms(
+        c,
+        params;
+        x_cells,
+        atol,
+    )
+    tiled_hopping_dict = Dict((h.target, h.source) => h.amp for h in tiled_hoppings)
+    direct_hopping_dict = Dict((h.target, h.source) => h.amp for h in direct_hoppings)
+    tiled_interaction_dict = Dict(
+        (value.i, value.j, value.shell) => value.V for value in tiled_interactions
+    )
+    direct_interaction_dict = Dict(
+        (value.i, value.j, value.shell) => value.V for value in direct_interactions
+    )
+    return _dictionaries_are_approx(
+        tiled_hopping_dict,
+        direct_hopping_dict;
+        atol,
+    ) && _dictionaries_are_approx(
+        tiled_interaction_dict,
+        direct_interaction_dict;
+        atol,
+    )
 end
 
 const _finite_parity_model = Ref{Union{Nothing,Module}}(nothing)
