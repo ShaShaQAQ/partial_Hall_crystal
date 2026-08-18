@@ -168,6 +168,84 @@ function _nonempty_path(value::AbstractString, key::String)
     return String(value)
 end
 
+const FIG2_BENCHMARK_KEYS = Set([
+    "manifest",
+    "stage",
+    "output",
+    "dimensions",
+    "flux_units_2pi",
+    "threads",
+])
+
+const FIG2_BENCHMARK_REQUIRED_KEYS = (
+    "manifest",
+    "stage",
+    "output",
+    "dimensions",
+    "flux_units_2pi",
+)
+
+struct Fig2BenchmarkSettings
+    manifest::String
+    stage::String
+    output::String
+    dimensions::Vector{Int}
+    fluxes::Vector{Float64}
+    threads::Int
+end
+
+function _parse_fig2_dimensions(value::AbstractString)
+    isempty(value) && throw(ArgumentError("--dimensions must not be empty"))
+    fields = split(value, ','; keepempty=true)
+    any(isempty, fields) && throw(
+        ArgumentError("--dimensions must be a comma-separated list of positive integers")
+    )
+    dimensions = [_parse_int_option(field, "dimensions") for field in fields]
+    all(>(0), dimensions) || throw(
+        ArgumentError("--dimensions entries must be positive")
+    )
+    all(
+        dimensions[index] < dimensions[index + 1] for
+        index in 1:(length(dimensions) - 1)
+    ) || throw(ArgumentError("--dimensions must be strictly increasing"))
+    return dimensions
+end
+
+function _parse_fig2_fluxes(value::AbstractString)
+    isempty(value) && throw(ArgumentError("--flux_units_2pi must not be empty"))
+    fields = split(value, ','; keepempty=true)
+    any(isempty, fields) && throw(
+        ArgumentError("--flux_units_2pi must be a comma-separated list of numbers")
+    )
+    units = [_parse_float_option(field, "flux_units_2pi") for field in fields]
+    length(units) >= 2 || throw(
+        ArgumentError("--flux_units_2pi must contain both 0 and 3")
+    )
+    all(
+        units[index] < units[index + 1] for index in 1:(length(units) - 1)
+    ) || throw(ArgumentError("--flux_units_2pi must be strictly increasing"))
+    first(units) == 0.0 || throw(
+        ArgumentError("--flux_units_2pi must start at 0")
+    )
+    last(units) == 3.0 || throw(
+        ArgumentError("--flux_units_2pi must stop at 3")
+    )
+    return 2pi .* units
+end
+
+function parse_fig2_benchmark_args(args=ARGS)
+    options = _parse_key_value_args(args, FIG2_BENCHMARK_KEYS)
+    foreach(key -> _required(options, key), FIG2_BENCHMARK_REQUIRED_KEYS)
+    return Fig2BenchmarkSettings(
+        _nonempty_path(options["manifest"], "manifest"),
+        _nonempty_path(options["stage"], "stage"),
+        _nonempty_path(options["output"], "output"),
+        _parse_fig2_dimensions(options["dimensions"]),
+        _parse_fig2_fluxes(options["flux_units_2pi"]),
+        _positive_int(options, "threads", 1),
+    )
+end
+
 function _parse_occupied_pattern(
     value::AbstractString,
     c::InfiniteCylinderConfig,

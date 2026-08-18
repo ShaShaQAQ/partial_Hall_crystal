@@ -54,8 +54,8 @@ bootstrap nor the PBS job changes the root finite-DMRG environment.
 ## Geometry, Hamiltonian, and filling
 
 The MPS is infinite and untwisted along `x`. It repeats a finite reference cell
-of `x_period` rings. Each ring has `Ly` physical sites and is periodic along
-`y`. The site order is
+of `x_period` rings and is periodic/twisted along `y`. The legacy sheared
+geometry uses `Ly` physical sites per ring, with site order
 
 ```text
 i(x,y) = x*Ly + y + 1,    0 <= x < x_period, 0 <= y < Ly.
@@ -73,11 +73,31 @@ exp(i*w_y*phi_y).
 Thus `phi_y` is the total transverse twist in radians, not `phi_y/(2*pi)`.
 The Hamiltonian is `2*pi` periodic.
 
-There are two physical sites in each microscopic two-band unit cell. Therefore
+The paper-straight geometry is selected explicitly with
+`--geometry=paper_straight --Ny=...`; `Ly` and `Ny` are never accepted
+together. Here `Ny` counts two-orbital microscopic cells around the cylinder,
+so a ring has `2Ny` physical sites and
 
 ```text
-sites_per_cell      = x_period*Ly
-unit_cells_per_cell = x_period*Ly/2
+i(x,y,A) = x*(2Ny) + 2y + 1
+i(x,y,B) = x*(2Ny) + 2y + 2.
+```
+
+For the Fig. 2 benchmark, `Ny=6`, `x_period=3`, and filling `7/9` therefore
+mean 36 physical sites, 18 microscopic cells, and exactly 14 particles in the
+infinite-MPS reference cell. The paper-straight Hamiltonian uses the same
+repository two-band Bloch model reconstructed into real-space hopping orbits,
+with the transverse seam twist applied by winding number. Its geometry and
+checkpoint signatures are distinct from the legacy sheared cylinder even when
+their raw tensor shapes happen to match.
+
+There are two physical sites in each microscopic two-band unit cell. With
+`circumference_sites=Ly` for legacy sheared geometry and
+`circumference_sites=2Ny` for paper-straight geometry,
+
+```text
+sites_per_cell      = x_period*circumference_sites
+unit_cells_per_cell = sites_per_cell/2
 Np_cell             = filling_num*unit_cells_per_cell/filling_den.
 ```
 
@@ -157,16 +177,13 @@ dimensions; do not compare the raw per-cell energies of unequal cells.
 
 Useful optional single-point keys are `--checkpoint`, `--occupied_sites`,
 `--seed`, `--transfer_neigs`, `--imaginary_tol`, and
-`--allow_nonconverged`. The parser recognizes `--load` so an attempted restart
-gets a precise diagnostic, but both single-point and flux-scan optimization
-reject it before configuring threads or invoking any state/backend callback;
-see the reproduced pinned-backend limitation below. Checkpoints are supported
-for audit and observable-only reload validation, not optimization restart. By
-default the checkpoint is `<output>/state.h5`, `seed=0`, `transfer_neigs=4`,
-`stability=2`, and both energy tolerances are `10*vumps_tol`. The default
-behavior exits nonzero if VUMPS or a required observable is invalid. Setting
-`--allow_nonconverged=true` permits a zero exit but does not change validity
-fields or fabricate observables.
+`--allow_nonconverged`. `--load` resumes a geometry- and flux-compatible v2
+checkpoint after validating the canonical state and all stored runtime/site
+invariants. By default the checkpoint is `<output>/state.h5`, `seed=0`,
+`transfer_neigs=4`, `stability=2`, and both energy tolerances are
+`10*vumps_tol`. The default behavior exits nonzero if VUMPS or a required
+observable is invalid. Setting `--allow_nonconverged=true` permits a zero exit
+but does not change validity fields or fabricate observables.
 
 ## Raw flux scan
 
@@ -220,6 +237,81 @@ for a one-point scan with no adjacent event. `sector_gauge.tsv` compares every
 pair of explicit cold candidates at the same flux and fixed cut under the best
 integer raw-QN shift. The shift is evidence only and is never applied to either
 candidate's stored sector weights or polarization.
+
+## Paper Fig. 2 benchmark
+
+`benchmarks/fqahc_fig2.toml` is the immutable scientific target for the
+paper-straight `Ny=6`, `x_period=3`, `nu=7/9` case with
+`t1=1`, `t3=0.2`, `V1=10`, and `V2=V3=2`. The target scan runs from
+`phi_y=0` to `6*pi`; the expected endpoint pump is one electron, the expected
+Schmidt-spectrum flow is one charge sector, and the fixed low-lying momentum
+counting target is `1,1,2,3,5`. Momentum labels use the
+`sector_relative_canonical_cyclic_orbit` convention: their relative cyclic
+order is physical after validation, while an absolute sector phase/offset is
+gauge-dependent.
+
+The production entry point uses only explicit `--key=value` arguments. This
+example shows the sparse pilot schedule; it must be launched by a W003 PBS job,
+not on the Mac or a W003 login shell:
+
+```bash
+/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia --threads=24 \
+  --startup-file=no --project=dmrg/idmrg \
+  dmrg/idmrg/bin/run_fig2_benchmark.jl \
+  --manifest=dmrg/idmrg/benchmarks/fqahc_fig2.toml \
+  --stage=pilot \
+  --output=/home/public/shajy/codex/results/fqahc-fig2/pilot \
+  --dimensions=32,64,128 \
+  --flux_units_2pi=0,0.5,1,1.5,2,2.5,3 \
+  --threads=24
+```
+
+At zero flux, every deterministic product-state candidate is retained and the
+lowest converged valid energy per site is selected. At later flux points, the
+selected branch is the converged valid candidate with the largest valid mixed
+infinite-MPS fidelity to the previous selected state; energy only breaks a
+fidelity tie. Every `(D, flux, candidate)` owns a private directory containing
+its `state.h5`, convergence/expansion tables, density, raw charge and momentum
+entanglement spectra, raw Schmidt sectors, mixed fidelity, and candidate
+metadata.
+
+`ledger.toml` is replaced atomically only after all ten required candidate
+artifacts exist and their SHA-256 values have been recorded. Re-running the
+same stage validates the byte-identical manifest copy and every completed-file
+checksum, skips completed candidates/selections, loads the most recent selected
+checkpoint only when more work is required, and continues from it. A changed
+manifest, stage, schedule identity, candidate metadata, or file checksum is a
+hard error rather than a silent restart.
+
+The benchmark keeps two different pump products:
+
+- `pump_raw.tsv` contains the selected raw Schmidt polarization and its direct
+  difference from the zero-flux value. It is never offset, unwrapped, sign
+  flipped, reduced modulo a charge, or translated between branches.
+- `pump_sector_tracked.tsv` contains a separate cumulative integer-sector
+  correspondence derived only when the adjacent mixed fidelity is valid and
+  the sector-matching residual is within the manifest tolerance. One invalid
+  step invalidates the subsequent tracked path. This table does not rewrite
+  `pump_raw.tsv` or any candidate artifact.
+
+`acceptance.toml` always contains the fixed rows `endpoint_pump`,
+`sector_shift`, `momentum_counting`, `paper_curve`, `bond_convergence`,
+`restart`, and `provenance`, each with measured value, tolerance, evidence
+path, reason, and pass/fail. Missing digitized-curve, convergence, restart, or
+validated momentum evidence is an explicit failure.
+
+This benchmark is a separate `nu=7/9` paper reproduction, not a relabeling of
+the finite `Lx=15`, `nu=1/3` campaign. Their cylinder conventions map as
+follows:
+
+| Quantity | Finite `Lx=15`, `nu=1/3` | Paper Fig. 2 infinite benchmark |
+|---|---:|---:|
+| Long direction | open, `Lx=15` | infinite, period-three MPS cell |
+| Circumference | `Ly=6` physical sites | `Ny=6` two-orbital cells = 12 physical sites |
+| Reference size | `Ns=90`, `Nuc=45`, `Np=15` | 36 sites, 18 cells, 14 particles |
+| Interactions | `V1=1`, `V2=V3=0` | `V1=10`, `V2=V3=2` |
+| Twist | transverse seam `Phi_y` | same winding-phase convention, `phi_y` |
+| Pump evidence | open-edge cumulative density | fixed-cut raw Schmidt polarization |
 
 ## Finite/infinite mapping
 
@@ -382,24 +474,28 @@ A flux-scan root contains `scan_metadata.toml`, `scan_summary.tsv`,
 candidate at every flux. All tables preserve raw quantities and attach
 independent validity fields; no derived sector alignment rewrites them.
 
-HDF5 format `infinite_cylinder_vumps_v1` stores the canonical infinite state
-and these compatibility attributes exactly:
+HDF5 format `infinite_cylinder_vumps_v2` stores the canonical infinite state
+and geometry-aware compatibility attributes, including:
 
 ```text
-format, backend_commit,
-Ly, x_period, filling_num, filling_den, phi_y,
+format, backend_commit, geometry,
+coordinate_convention, circumference_convention,
+Ly, Ny, x_period, filling_num, filling_den, phi_y,
 sites_per_cell, particles_per_cell, charge_scale,
-configuration_signature.
+configuration_signature, site_signature,
+julia_version, itensors_version, itensor_mps_version,
+itensor_infinite_mps_version, hdf5_version.
 ```
 
-Observable-only load validates the pinned backend, derived arithmetic,
-configuration signature, canonical tensors, and exact equality of `Ly`,
-`x_period`, filling, and `phi_y`. Model couplings and optimization settings are
-in `summary.toml`, not HDF5 compatibility metadata, so an audit must inspect
-both files. Because `phi_y` is strict, a checkpoint at one flux cannot even be
-validated as the state of a different flux. Flux-scan warm states instead stay
-in memory and reuse the exact same site indices while the Hamiltonian twist
-changes.
+Load validates the pinned backend and package versions, geometry convention,
+derived arithmetic, configuration/site signatures, canonical tensors, and
+exact equality of circumference, `x_period`, filling, and `phi_y`. Legacy v1
+files are accepted only as `legacy_sheared` after all v1 invariants pass;
+paper-straight and legacy states are mutually incompatible. Model couplings and
+optimization settings remain in `summary.toml`, so an audit must inspect both
+files. Because `phi_y` is strict, the benchmark first loads a persisted state
+with its stored flux and then uses that validated state as the warm initial
+state for the next-flux Hamiltonian.
 
 ## Smoke status and known limitations
 
@@ -413,11 +509,13 @@ ignored summaries currently report:
 
 Both used `maxdim=1,4,8`, demonstrated actual QN bond growth, produced valid
 charge-resolved and neutral-transfer data, and passed HDF5 reload comparisons.
-They are data-contract tests, not production phase results. Run them locally
-with:
+They are data-contract tests, not production phase results. Run them only
+through the W003 PBS harness, for example with `IDMRG_RUN_SMOKE=true` exported
+inside a physical PBS script:
 
 ```bash
-IDMRG_RUN_SMOKE=true julia --project=dmrg/idmrg dmrg/idmrg/test/runtests.jl
+IDMRG_RUN_SMOKE=true /home/public/shajy/codex/runtime/julia-1.12.5/bin/julia \
+  --startup-file=no --project=dmrg/idmrg dmrg/idmrg/test/runtests.jl
 ```
 
 The 24-core W003 PBS wrapper runs the minimal smoke first and the `Ly=6` smoke
@@ -434,15 +532,12 @@ Known pinned-backend limitations and guards are:
   remains a cap rather than an attained dimension.
 - Final canonicalization uses the official ITensorMPS routine and is validated
   before checkpointing.
-- With the pinned backend, loading the fresh canonical `Ly=6` smoke checkpoint
-  and requesting further QN subspace expansion reproduces an upstream failure:
-  direct-sum link indices have opposite directions (`Out` versus `In`). Even a
-  no-expansion VUMPS restart reaches final re-canonicalization and reproduces a
-  related direction mismatch. `load_checkpoint` remains validated for
-  observable/reload checks, but both CLIs reject `--load` optimization before
-  any backend callback at this pinned commit. Start a fresh deterministic or
-  explicit cold product candidate instead, and retain all candidates for
-  comparison.
+- Cross-process restart is gated by a regression that loads a v2 checkpoint,
+  reproduces pre-restart energy, density, Schmidt QNs, and site identities,
+  completes a no-expansion iteration, expands the QN bonds, and advances to the
+  next flux. A failed compatibility or canonical-state check remains a hard
+  error; the workflow never strips QNs or rebuilds a product state as a resume
+  fallback.
 - VUMPS can converge to metastable branches, `x_period=1` can suppress broken
   translation symmetry, the reported correlation length covers only the
   neutral channel, and checkpoint representation compatibility is tied to the

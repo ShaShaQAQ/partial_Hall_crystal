@@ -1,0 +1,47 @@
+format = "fqahc_fig2_benchmark_v1"
+paper_title = "Generic integer and fractional quantum anomalous Hall crystals from interaction-driven band folding"
+paper_doi = "10.1103/mh3v-fb9w"
+paper_zotero_key = "A7PSUI68"
+geometry = "paper_straight"
+Ny = 6
+x_period = 3
+filling_num = 7
+filling_den = 9
+t1 = 1.0
+t3 = 0.2
+V1 = 10.0
+V2 = 2.0
+V3 = 2.0
+flux_start = 0.0
+flux_stop = 18.84955592153876
+expected_endpoint_pump = 1.0
+expected_sector_shift = 1
+pump_tolerance = 0.05
+counting = [1, 1, 2, 3, 5]
+momentum_convention = "sector_relative_canonical_cyclic_orbit"
+raw_pump_policy = "no_offset_no_unwrap_no_sign_flip_no_branch_translation"
+
+[optimization]
+cutoff = 1.0e-9
+vumps_tol = 1.0e-6
+energy_tol = 1.0e-6
+energy_mismatch_tol = 1.0e-6
+transfer_tol = 1.0e-8
+momentum_residual_tol = 1.0e-6
+max_iterations = 50
+stable_iterations = 2
+
+[pilot]
+maxdims = [32, 64, 128]
+flux_units_2pi = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+cold_candidates = 2
+
+[convergence]
+maxdims = [256, 512, 1000, 2000, 3000]
+energy_per_site_change_tol = 1.0e-6
+endpoint_pump_change_tol = 0.02
+sector_residual_tol = 1.0e-6
+momentum_validation_residual_tol = 1.0e-6
+
+[acceptance]
+rows = ["endpoint_pump", "sector_shift", "momentum_counting", "paper_curve", "bond_convergence", "restart", "provenance"]

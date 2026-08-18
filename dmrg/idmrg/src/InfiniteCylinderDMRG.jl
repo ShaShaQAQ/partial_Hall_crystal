@@ -14,6 +14,7 @@ using KrylovKit
 using HDF5
 using TOML
 using Random
+using SHA
 using SparseArrays
 using LinearAlgebra
 
@@ -28,6 +29,7 @@ include("MomentumEntanglement.jl")
 include("BranchTracking.jl")
 include("Output.jl")
 include("CLI.jl")
+include("Fig2Benchmark.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -144,6 +146,16 @@ export CylinderModelParams,
     BRANCH_EVENTS_HEADER,
     SECTOR_GAUGE_HEADER,
     FluxScanRunResult,
-    run_flux_scan
+    run_flux_scan,
+    Fig2BenchmarkSpec,
+    Fig2CandidateEvidence,
+    Fig2BenchmarkOperations,
+    Fig2Selection,
+    Fig2BenchmarkRun,
+    Fig2BenchmarkSettings,
+    parse_fig2_benchmark_args,
+    load_fig2_benchmark,
+    run_fig2_benchmark,
+    write_fig2_acceptance_report!
 
 end
