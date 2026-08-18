@@ -15,6 +15,7 @@ using HDF5
 using TOML
 using Random
 using SparseArrays
+using LinearAlgebra
 
 include("Configuration.jl")
 include("PaperGeometry.jl")
@@ -23,6 +24,7 @@ include("TransverseTranslation.jl")
 include("Hamiltonian.jl")
 include("VUMPSRunner.jl")
 include("Observables.jl")
+include("MomentumEntanglement.jl")
 include("BranchTracking.jl")
 include("Output.jl")
 include("CLI.jl")
@@ -104,6 +106,11 @@ export CylinderModelParams,
     density_data,
     entanglement_data,
     neutral_transfer_data,
+    MomentumValidation,
+    MomentumEntanglementLevel,
+    MomentumEntanglementData,
+    validate_momentum_blocks,
+    momentum_entanglement_data,
     bhattacharyya_distance,
     best_sector_shift,
     charge_matched_spectrum_distance,
