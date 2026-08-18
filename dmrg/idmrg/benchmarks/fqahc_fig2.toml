@@ -1,4 +1,4 @@
-format = "fqahc_fig2_benchmark_v1"
+format = "fqahc_fig2_benchmark_v3"
 paper_title = "Generic integer and fractional quantum anomalous Hall crystals from interaction-driven band folding"
 paper_doi = "10.1103/mh3v-fb9w"
 paper_zotero_key = "A7PSUI68"
@@ -21,6 +21,48 @@ counting = [1, 1, 2, 3, 5]
 momentum_convention = "sector_relative_canonical_cyclic_orbit"
 raw_pump_policy = "no_offset_no_unwrap_no_sign_flip_no_branch_translation"
 
+[momentum_counting_rule]
+format = "fqahc_fig2_momentum_counting_v1"
+reference_sector = "largest_eigenvalue_raw_charge_sector"
+delta_ky = [0, -1, -2, -3, -4]
+cut_intercept = 2.15
+cut_slope = -1.58
+digitization_uncertainty = 0.20
+source_pdf_sha256 = "23f0691570b906ae7a9394cef2e3dd6eebd4e36d79e882a4bbd2f17824cc89a0"
+source_page = 3
+source_panel = "f"
+
+[paper_curve_rule]
+format = "fqahc_fig2_paper_curve_comparison_v3"
+source_pdf_sha256 = "23f0691570b906ae7a9394cef2e3dd6eebd4e36d79e882a4bbd2f17824cc89a0"
+source_page = 3
+source_panel = "d"
+# Reproduce with pdftocairo page 3 SVG output. This is SHA-256 of the complete
+# line-7765 `<path .../>\n` SVG element (attributes and transform included),
+# not only its `d` attribute.
+source_vector_path_sha256 = "54e5c57f88a735e5efe0c2a24de455bbaa987bbceb5a9affa44f85fab58a892c"
+target = "nu_star=1/3,V1=10,V2=V3=2"
+extraction = "pdftocairo_svg_vector_path"
+flux_units_2pi = [
+  0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0, 1.125,
+  1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0, 2.125, 2.25, 2.375,
+  2.5, 2.625, 2.75, 2.875, 3.0,
+]
+delta_q = [
+  0.000000, 0.039286, 0.080329, 0.122619, 0.165646,
+  0.208617, 0.250794, 0.292290, 0.332370, 0.371882,
+  0.410998, 0.450680, 0.490760, 0.532426, 0.575907,
+  0.620918, 0.667290, 0.713152, 0.760601, 0.807029,
+  0.851927, 0.889739, 0.925283, 0.961735, 1.000000,
+]
+uncertainty = [
+  0.02, 0.02, 0.02, 0.02, 0.02,
+  0.02, 0.02, 0.02, 0.02, 0.02,
+  0.02, 0.02, 0.02, 0.02, 0.02,
+  0.02, 0.02, 0.02, 0.02, 0.02,
+  0.02, 0.02, 0.02, 0.02, 0.02,
+]
+
 [optimization]
 cutoff = 1.0e-9
 vumps_tol = 1.0e-6
@@ -42,6 +84,31 @@ energy_per_site_change_tol = 1.0e-6
 endpoint_pump_change_tol = 0.02
 sector_residual_tol = 1.0e-6
 momentum_validation_residual_tol = 1.0e-6
+
+[early_plateau]
+policy = "allowed_if_all_gates_pass"
+lower_dimension = 1000
+upper_dimension = 2000
+omitted_dimension = 3000
+evidence_filename = "early_plateau.toml"
+
+[restart_gate]
+format = "fqahc_fig2_restart_gate_v1"
+evidence_filename = "restart_gate.toml"
+backend_commit = "765f2777703bc1138b009adbed1b97bde1973402"
+energy_tolerance = 1.0e-10
+density_tolerance = 1.0e-10
+required_checks = [
+  "load_completed",
+  "no_expansion_iteration_completed",
+  "controlled_expansion_completed",
+  "energy_reproduced",
+  "density_reproduced",
+  "schmidt_sectors_reproduced",
+  "entanglement_spectrum_reproduced",
+  "site_indices_reproduced",
+  "next_flux_iteration_completed",
+]
 
 [acceptance]
 rows = ["endpoint_pump", "sector_shift", "momentum_counting", "paper_curve", "bond_convergence", "restart", "provenance"]
