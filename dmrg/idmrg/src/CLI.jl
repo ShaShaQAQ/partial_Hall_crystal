@@ -899,6 +899,7 @@ function _default_optimize(H, psi, settings::SinglePointSettings)
         energy_mismatch_tol=settings.energy_mismatch_tol,
         stable_iterations=settings.stable_iterations,
         imaginary_tol=settings.imaginary_tol,
+        canonical_seed=_single_point_canonical_seed(settings.seed),
     )
 end
 
@@ -963,6 +964,15 @@ function _derived_seed(seed::Integer, tags...)
     return word
 end
 
+_single_point_canonical_seed(seed::Integer) =
+    _derived_seed(seed, :vumps_canonicalization)
+
+_flux_candidate_seed(seed::Integer, point::Integer, label::AbstractString)::Int =
+    Int(mod(
+        _derived_seed(seed, :flux_candidate, point, label),
+        UInt64(typemax(Int)),
+    ))
+
 function _default_write_outputs(
     directory,
     config,
@@ -992,7 +1002,13 @@ function _default_cold_state(sites, config::InfiniteCylinderConfig, pattern)
     return InfMPS(sites, initstate)
 end
 
-function _with_phi(settings::SinglePointSettings, phi_y::Real; output=settings.output, checkpoint=settings.checkpoint)
+function _with_phi(
+    settings::SinglePointSettings,
+    phi_y::Real;
+    output=settings.output,
+    checkpoint=settings.checkpoint,
+    seed=settings.seed,
+)
     config = with_flux(settings.config, phi_y)
     return SinglePointSettings(
         config,
@@ -1012,7 +1028,7 @@ function _with_phi(settings::SinglePointSettings, phi_y::Real; output=settings.o
         String(checkpoint),
         nothing,
         copy(settings.occupied_sites),
-        settings.seed,
+        seed,
         settings.allow_nonconverged,
     )
 end
@@ -1331,6 +1347,7 @@ function run_flux_scan(
                 phi_y;
                 output=candidate_directory,
                 checkpoint=joinpath(candidate_directory, "state.h5"),
+                seed=_flux_candidate_seed(settings.point.seed, point, label),
             )
             candidate_result = _run_prepared_point(
                 point_settings,

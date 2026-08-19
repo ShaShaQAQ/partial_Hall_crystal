@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+#PBS -N phc_fig2_stage
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=12:00:00
+#PBS -j oe
+
+set -euo pipefail
+export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
+
+: "${PBS_JOBID:?run_fig2_stage.pbs must run inside PBS}"
+: "${FIG2_JOB_CONFIG:?FIG2_JOB_CONFIG is required}"
+
+results_base=/home/public/shajy/codex/results/fqahc-fig2
+results_prefix=/home/public/shajy/codex/results/fqahc-fig2/
+config_path=$(/usr/bin/realpath -m "$FIG2_JOB_CONFIG")
+case "$config_path" in
+  "$results_base"/job_configs/*.env) ;;
+  *)
+    echo "FIG2_JOB_CONFIG must be an immutable file under $results_base/job_configs" >&2
+    exit 2
+    ;;
+esac
+test -r "$config_path"
+# shellcheck disable=SC1090
+source "$config_path"
+
+: "${W003_REPO:?W003_REPO is required}"
+: "${JULIA_BIN:?JULIA_BIN is required}"
+: "${JULIA_DEPOT_PATH:?JULIA_DEPOT_PATH is required}"
+: "${FIG2_MANIFEST:?FIG2_MANIFEST is required}"
+: "${FIG2_STAGE:?FIG2_STAGE is required}"
+: "${FIG2_OUTPUT:?FIG2_OUTPUT is required}"
+: "${FIG2_DIMENSIONS:?FIG2_DIMENSIONS is required}"
+: "${FIG2_FLUX_UNITS:?FIG2_FLUX_UNITS is required}"
+: "${FIG2_THREADS:?FIG2_THREADS is required}"
+
+repo=$(/usr/bin/realpath -m "$W003_REPO")
+output=$(/usr/bin/realpath -m "$FIG2_OUTPUT")
+manifest=$(/usr/bin/realpath -m "$FIG2_MANIFEST")
+[[ "$repo" == /home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark ]] || {
+  echo "W003_REPO is not the dedicated benchmark checkout" >&2
+  exit 2
+}
+case "$output" in
+  "$results_prefix"*) ;;
+  *)
+    echo "FIG2_OUTPUT must be below $results_prefix" >&2
+    exit 2
+    ;;
+esac
+[[ "$output" != "$results_base" ]] || {
+  echo "FIG2_OUTPUT must not be the shared results root" >&2
+  exit 2
+}
+case "$FIG2_THREADS" in
+  4|12|24) ;;
+  *)
+    echo "FIG2_THREADS must be one of 4, 12, or 24" >&2
+    exit 2
+    ;;
+esac
+test -x "$JULIA_BIN"
+test -f "$manifest"
+test -f "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl"
+
+result_root="$results_base/pbs/${PBS_JOBID}"
+mkdir -p "$result_root" "$output"
+record_exit() {
+  exit_code=$?
+  printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"
+  trap - EXIT
+  exit "$exit_code"
+}
+trap record_exit EXIT
+
+exec 9>> "$output/.fig2_stage.lock"
+if ! /usr/bin/flock -n 9; then
+  echo "another PBS job holds the Fig. 2 output lock: $output" >&2
+  exit 3
+fi
+printf '%s\n' "$PBS_JOBID" > "$output/.fig2_stage.lock"
+
+cd "$repo"
+git diff --quiet -- . || {
+  echo "tracked W003 worktree changes block Fig. 2 production" >&2
+  exit 4
+}
+git diff --cached --quiet -- . || {
+  echo "staged W003 worktree changes block Fig. 2 production" >&2
+  exit 4
+}
+head_commit=$(git rev-parse HEAD)
+origin_commit=$(git rev-parse origin/DMRG)
+[[ "$head_commit" == "$origin_commit" ]] || {
+  echo "W003 HEAD must equal origin/DMRG before Fig. 2 production" >&2
+  exit 4
+}
+
+export JULIA_PKG_OFFLINE=true
+export JULIA_PKG_USE_CLI_GIT=true
+export GIT_CONFIG_GLOBAL="$JULIA_DEPOT_PATH/gitconfig"
+if [[ "$FIG2_THREADS" == 24 ]]; then
+  export JULIA_NUM_THREADS=24
+else
+  export JULIA_NUM_THREADS="$FIG2_THREADS"
+fi
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export LC_ALL=C
+
+{
+  hostname
+  printf 'pbs_job_id=%s\n' "$PBS_JOBID"
+  printf 'job_config=%s\n' "$config_path"
+  printf 'git_commit=%s\n' "$head_commit"
+  printf 'origin_dmrg=%s\n' "$origin_commit"
+  printf 'stage=%s\n' "$FIG2_STAGE"
+  printf 'output=%s\n' "$output"
+  printf 'dimensions=%s\n' "$FIG2_DIMENSIONS"
+  printf 'flux_units_2pi=%s\n' "$FIG2_FLUX_UNITS"
+  printf 'threads=%s\n' "$FIG2_THREADS"
+  git status --porcelain --untracked-files=no
+  sha256sum \
+    "$config_path" \
+    "$manifest" \
+    "$repo/dmrg/idmrg/src/Fig2Benchmark.jl" \
+    "$repo/dmrg/idmrg/src/VUMPSRunner.jl" \
+    "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl"
+  "$JULIA_BIN" --startup-file=no -e 'using InteractiveUtils; versioninfo()'
+  "$JULIA_BIN" --startup-file=no --project="$repo/dmrg/idmrg" -e \
+    'using Pkg; Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)'
+  env | sort | sed -n '/^JULIA_/p;/^OMP_/p;/^OPENBLAS_/p;/^MKL_/p;/^PBS_/p'
+  /opt/pbs/bin/qstat -f "$PBS_JOBID" || true
+} > "$result_root/provenance.txt" 2>&1
+
+args=(
+  --manifest="$manifest"
+  --stage="$FIG2_STAGE"
+  --output="$output"
+  --dimensions="$FIG2_DIMENSIONS"
+  --flux_units_2pi="$FIG2_FLUX_UNITS"
+  --threads="$FIG2_THREADS"
+)
+
+/usr/bin/time -v "$JULIA_BIN" --startup-file=no \
+  --project="$repo/dmrg/idmrg" \
+  "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl" "${args[@]}" \
+  > "$result_root/driver.log" 2> "$result_root/time.txt"
+
+test -s "$output/manifest.toml"
+test -s "$output/ledger.toml"
+test -s "$output/pump_raw.tsv"
+test -s "$output/pump_sector_tracked.tsv"
+test -s "$output/acceptance.toml"

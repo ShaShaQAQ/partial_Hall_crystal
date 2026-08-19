@@ -329,21 +329,170 @@ function _validate_vumps_schedule(
     return Int.(targets)
 end
 
-function _mixed_canonical_from_left_links(psi::InfiniteMPS)
-    _, right, _ = ITensorInfiniteMPS.right_orthogonalize(
-        psi;
-        left_tags=ts"Left",
-        right_tags=ts"Right",
+function _identity_transfer_initial(psi::InfiniteMPS)
+    transfer = ITensorInfiniteMPS.TransferMatrix(psi)
+    initial = ITensor(dag(ITensorInfiniteMPS.input_inds(transfer)))
+    initial_indices = inds(initial)
+    length(initial_indices) == 2 || error(
+        "canonical transfer fixed point must have two indices"
     )
-    left, centers, eigenvalue = ITensorInfiniteMPS.left_orthogonalize(
-        right;
-        left_tags=ts"Left",
-        right_tags=ts"Right",
+    dim(initial_indices[1]) == dim(initial_indices[2]) || error(
+        "canonical transfer fixed-point indices must have equal dimensions"
     )
-    isapprox(eigenvalue, one(eigenvalue)) || error(
-        "canonical transfer eigenvalue must be one, got $eigenvalue"
+    for value in 1:dim(initial_indices[1])
+        initial[
+            initial_indices[1] => value,
+            initial_indices[2] => value,
+        ] = 1.0
+    end
+    normalize!(initial)
+    return transfer, initial
+end
+
+function _arnoldi_transfer_fixed_point(
+    psi::InfiniteMPS;
+    tol::Real=1e-12,
+    max_iterations::Integer=100,
+)
+    isfinite(tol) && tol > 0 || throw(
+        ArgumentError("fixed-point tolerance must be finite and positive")
     )
-    return InfiniteCanonicalMPS(left, centers, right)
+    !(max_iterations isa Bool) && max_iterations > 0 || throw(
+        ArgumentError("fixed-point maximum iterations must be positive")
+    )
+
+    transfer, initial = _identity_transfer_initial(psi)
+    _, vectors, values, _ = KrylovKit.schursolve(
+        transfer,
+        initial,
+        1,
+        :LM,
+        KrylovKit.Arnoldi(;
+            tol,
+            maxiter=max_iterations,
+            eager=false,
+        ),
+    )
+    isempty(values) && error("canonical transfer Arnoldi solve returned no eigenvalue")
+    isempty(vectors) && error("canonical transfer Arnoldi solve returned no eigenvector")
+    eigenvalue = values[1]
+    fixed_point = vectors[1]
+    isfinite(eigenvalue) && !iszero(eigenvalue) || error(
+        "canonical transfer Arnoldi solve returned an invalid eigenvalue"
+    )
+    applied = transfer(fixed_point)
+    eigen_residual = norm(applied - eigenvalue * fixed_point) /
+        max(norm(applied), abs(eigenvalue) * norm(fixed_point), 1.0)
+    isfinite(eigen_residual) && eigen_residual <= tol || error(
+        "canonical transfer Arnoldi eigenpair failed its residual check"
+    )
+
+    overlap = inner(initial, fixed_point)
+    isfinite(overlap) && !iszero(overlap) || error(
+        "canonical transfer Arnoldi fixed point lost identity overlap"
+    )
+    fixed_point *= conj(sign(overlap))
+
+    adjoint_fixed_point = swapinds(
+        dag(fixed_point), reverse(Pair(inds(fixed_point)...))
+    )
+    hermitian_residual = norm(fixed_point - adjoint_fixed_point) / norm(fixed_point)
+    hermitian_residual <= max(100 * tol, 1e-10) || error(
+        "canonical transfer fixed point is not Hermitian"
+    )
+    fixed_point = (fixed_point + adjoint_fixed_point) / 2
+    normalize!(fixed_point)
+
+    checked = transfer(fixed_point)
+    eigenvalue = inner(fixed_point, checked) / inner(fixed_point, fixed_point)
+    isfinite(eigenvalue) && real(eigenvalue) > 0 || error(
+        "canonical transfer fixed-point check produced a nonpositive eigenvalue"
+    )
+    checked_residual = norm(checked - eigenvalue * fixed_point) /
+        max(norm(checked), abs(eigenvalue) * norm(fixed_point), 1.0)
+    isfinite(checked_residual) && checked_residual <= tol || error(
+        "canonical transfer fixed point failed its eigen-residual check"
+    )
+    return fixed_point, eigenvalue
+end
+
+function _positive_transfer_sqrt(
+    fixed_point;
+    tol::Real=1e-12,
+)
+    tol isa Bool && throw(
+        ArgumentError("canonical transfer square-root tolerance must be real")
+    )
+    isfinite(tol) && tol > 0 || throw(
+        ArgumentError(
+            "canonical transfer square-root tolerance must be finite and positive"
+        )
+    )
+
+    spectrum, eigenvectors = eigen(fixed_point; ishermitian=true)
+    eigenvalues = [spectrum[n, n] for n in 1:mindim(spectrum)]
+    isempty(eigenvalues) && error(
+        "canonical transfer fixed-point eigendecomposition returned no eigenvalue"
+    )
+    all(isfinite, eigenvalues) || error(
+        "canonical transfer fixed-point eigendecomposition returned a nonfinite eigenvalue"
+    )
+
+    spectrum_scale = max(maximum(abs, eigenvalues), 1.0)
+    negative_threshold = tol * spectrum_scale
+    isfinite(negative_threshold) && negative_threshold > 0 || throw(
+        ArgumentError(
+            "canonical transfer square-root tolerance produced an invalid negative-eigenvalue threshold"
+        )
+    )
+    minimum_eigenvalue = minimum(eigenvalues)
+    minimum_eigenvalue >= -negative_threshold || error(
+        "canonical transfer fixed point has a negative eigenvalue: " *
+        "minimum=$minimum_eigenvalue, threshold=-$negative_threshold"
+    )
+
+    sqrt_spectrum = copy(spectrum)
+    for n in eachindex(eigenvalues)
+        eigenvalue = eigenvalues[n]
+        sqrt_spectrum[n, n] = sqrt(max(eigenvalue, zero(eigenvalue)))
+    end
+    positive_sqrt = eigenvectors' * sqrt_spectrum * dag(eigenvectors)
+
+    input_indices = inds(fixed_point)
+    hassameinds(positive_sqrt, input_indices) || error(
+        "canonical transfer square root changed the fixed-point indices"
+    )
+    positive_sqrt = ITensors.permute(positive_sqrt, input_indices...)
+    output_indices = inds(positive_sqrt)
+    for (output_index, input_index) in zip(output_indices, input_indices)
+        id(output_index) == id(input_index) &&
+            tags(output_index) == tags(input_index) &&
+            plev(output_index) == plev(input_index) &&
+            dir(output_index) == dir(input_index) &&
+            space(output_index) == space(input_index) || error(
+            "canonical transfer square root changed fixed-point index metadata"
+        )
+    end
+    return positive_sqrt
+end
+
+function _canonical_from_left_isometries(psi::InfiniteMPS)
+    fixed_point, eigenvalue = _arnoldi_transfer_fixed_point(psi)
+    center = _positive_transfer_sqrt(fixed_point)
+    center = replacetags(center, ts"" => ts"Right"; plev=1)
+    center = noprime(center, ts"Right")
+    normalize!(center)
+    centers, right, polar_eigenvalue =
+        ITensorInfiniteMPS.right_orthogonalize_polar(
+            psi,
+            center;
+            left_tags=ts"",
+            right_tags=ts"Right",
+        )
+    isapprox(polar_eigenvalue, sqrt(real(eigenvalue))) || error(
+        "canonical transfer eigenvalue mismatch: $polar_eigenvalue versus $eigenvalue"
+    )
+    return InfiniteCanonicalMPS(psi, centers, right)
 end
 
 function _index_qn_dimensions(index)
@@ -354,7 +503,12 @@ function _dual_qn_index(index)
     blocks = [
         -qn(index, block) => blockdim(index, block) for block in 1:nblocks(index)
     ]
-    return Index(blocks; tags=tags(index), dir=dir(dag(index)))
+    return Index(
+        blocks;
+        tags=tags(index),
+        plev=plev(index),
+        dir=dir(dag(index)),
+    )
 end
 
 function _replace_with_dual_index(tensor, old_index, new_index)
@@ -362,54 +516,69 @@ function _replace_with_dual_index(tensor, old_index, new_index)
     for value in 1:dim(old_index)
         isomorphism[dag(old_index) => value, new_index => value] = 1.0
     end
-    flux(isomorphism) == QN() || error(
-        "right-link dualization isomorphism must have neutral QN flux"
+    isomorphism_flux = flux(isomorphism)
+    (isnothing(isomorphism_flux) || isomorphism_flux == QN()) || error(
+        "right-link remapping isomorphism must have neutral QN flux"
     )
     return tensor * isomorphism
 end
 
 function _right_link_occurrence(new_base, old_base, occurrence)
-    tagged = settags(new_base, tags(occurrence))
-    return dir(occurrence) == dir(old_base) ? tagged : dag(tagged)
+    matched = settags(new_base, tags(occurrence))
+    matched = setprime(matched, plev(occurrence))
+    return dir(occurrence) == dir(old_base) ? matched : dag(matched)
 end
 
-function _dualize_right_canonical_links(psi::InfiniteCanonicalMPS)
+function _remap_right_canonical_links(
+    psi::InfiniteCanonicalMPS,
+    new_index::Function,
+)
+    old_links = [
+        only(commoninds(psi.C[site], psi.AR[site])) for
+        site in 1:nsites(psi)
+    ]
+    new_links = new_index.(old_links)
     centers = copy(psi.C)
     right = copy(psi.AR)
-    replacements = Dict{Any,Tuple{Index,Index}}()
 
     for site in 1:nsites(psi)
-        old_index = only(filterinds(centers[site]; tags="Right"))
-        replacements[id(old_index)] = (old_index, _dual_qn_index(old_index))
-    end
+        previous = mod1(site - 1, nsites(psi))
+        centers[site] = _replace_with_dual_index(
+            centers[site], old_links[site], new_links[site]
+        )
 
-    for site in 1:nsites(psi)
-        tensor = centers[site]
-        for old_index in filterinds(tensor; tags="Right")
-            old_base, new_base = replacements[id(old_index)]
-            new_index = _right_link_occurrence(new_base, old_base, old_index)
-            tensor = _replace_with_dual_index(tensor, old_index, new_index)
-        end
-        centers[site] = tensor
-
-        tensor = right[site]
-        for old_index in filterinds(tensor; tags="Right")
-            old_base, new_base = replacements[id(old_index)]
-            new_index = _right_link_occurrence(new_base, old_base, old_index)
-            tensor = _replace_with_dual_index(tensor, old_index, new_index)
-        end
-        right[site] = tensor
+        old_left = only(commoninds(psi.AR[site], psi.AR[site - 1]))
+        new_left = _right_link_occurrence(
+            new_links[previous], old_links[previous], old_left
+        )
+        new_right = _right_link_occurrence(
+            new_links[site], old_links[site], old_links[site]
+        )
+        tensor = _replace_with_dual_index(
+            right[site], old_left, new_left
+        )
+        right[site] = _replace_with_dual_index(
+            tensor, old_links[site], new_right
+        )
     end
     return InfiniteCanonicalMPS(psi.AL, centers, right)
 end
 
+_dualize_right_canonical_links(psi::InfiniteCanonicalMPS) =
+    _remap_right_canonical_links(psi, _dual_qn_index)
+
+_freshen_right_canonical_links(psi::InfiniteCanonicalMPS) =
+    _remap_right_canonical_links(psi, sim)
+
 function _normalize_right_link_convention(psi::InfiniteCanonicalMPS)
     center_links = Index[]
     for site in 1:nsites(psi)
-        push!(center_links, only(filterinds(psi.C[site]; tags="Left")))
-        push!(center_links, only(filterinds(psi.C[site]; tags="Right")))
+        push!(center_links, only(commoninds(psi.C[site], psi.AL[site])))
+        push!(center_links, only(commoninds(psi.C[site], psi.AR[site])))
     end
-    all(index -> !hasqns(index), center_links) && return psi
+    all(index -> !hasqns(index), center_links) && return (
+        _freshen_right_canonical_links(psi)
+    )
     all(hasqns, center_links) || error(
         "canonical center links mix QN-conserving and dense index spaces"
     )
@@ -417,29 +586,60 @@ function _normalize_right_link_convention(psi::InfiniteCanonicalMPS)
     same = Bool[]
     dual = Bool[]
     for site in 1:nsites(psi)
-        left_index = only(filterinds(psi.C[site]; tags="Left"))
-        right_index = only(filterinds(psi.C[site]; tags="Right"))
+        left_index = only(commoninds(psi.C[site], psi.AL[site]))
+        right_index = only(commoninds(psi.C[site], psi.AR[site]))
         left_space = _index_qn_dimensions(left_index)
         right_space = _index_qn_dimensions(right_index)
         push!(same, right_space == left_space)
-        push!(dual, right_space == Dict(-charge => dimension for (charge, dimension) in left_space))
+        push!(
+            dual,
+            right_space == Dict(
+                -charge => dimension for (charge, dimension) in left_space
+            ),
+        )
     end
-    all(dual) && return psi
+    all(dual) && return _freshen_right_canonical_links(psi)
     all(same) || error(
         "canonical right-link QN spaces are neither uniformly equal nor dual to left links"
     )
     return _dualize_right_canonical_links(psi)
 end
 
-function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
+function _canonical_rng_seed(seed::Integer)
+    seed isa Bool && throw(ArgumentError("canonical RNG seed must be an integer"))
+    0 <= seed <= typemax(UInt64) || throw(
+        ArgumentError("canonical RNG seed must be in the UInt64 range")
+    )
+    return UInt64(seed)
+end
+
+function _with_canonical_rng(f::Function, seed::Integer)
+    canonical_seed = _canonical_rng_seed(seed)
+    default_rng = Random.default_rng()
+    index_rng = ITensors.index_id_rng()
+    saved_default_rng = copy(default_rng)
+    saved_index_rng = copy(index_rng)
+    try
+        Random.seed!(default_rng, canonical_seed)
+        Random.seed!(index_rng, xor(canonical_seed, UInt64(0x49444d5053494458)))
+        return f()
+    finally
+        copy!(default_rng, saved_default_rng)
+        copy!(index_rng, saved_index_rng)
+    end
+end
+
+function _canonicalize_vumps_state(
+    psi::InfiniteCanonicalMPS;
+    rng_seed::Integer=0,
+)
     expected_sites = siteinds(only, psi.AL)
     expected_dims = link_dimensions(psi)
     expected_flux = flux(psi.AL)
-    left_links = linkinds(only, psi.AL)
-    canonical = if all(index -> hastags(index, "Left"), left_links)
-        _mixed_canonical_from_left_links(psi.AL)
-    else
-        ITensorMPS.orthogonalize(psi.AL, :)
+    canonical = _with_canonical_rng(rng_seed) do
+        _normalize_right_link_convention(
+            _canonical_from_left_isometries(psi.AL)
+        )
     end
 
     canonical isa InfiniteCanonicalMPS || error(
@@ -457,8 +657,11 @@ function _canonicalize_vumps_state(psi::InfiniteCanonicalMPS)
     flux(canonical.AL) == expected_flux || error(
         "VUMPS canonicalization changed the conserved QN flux"
     )
-    canonical = _normalize_right_link_convention(canonical)
-
+    left_ids = Set(id.(linkinds(only, canonical.AL)))
+    right_ids = Set(id.(linkinds(only, canonical.AR)))
+    isempty(intersect(left_ids, right_ids)) || error(
+        "VUMPS canonicalization reused a left link ID on the right-canonical chain"
+    )
     for site in 1:nsites(canonical)
         left_center = canonical.AL[site] * canonical.C[site]
         right_center = canonical.C[site - 1] * canonical.AR[site]
@@ -484,6 +687,7 @@ function run_vumps(
     imaginary_tol::Real=1e-12,
     solver_tol=(x -> x / 100),
     eager::Bool=true,
+    canonical_seed::Integer=0,
 )
     targets = _validate_vumps_schedule(
         maxdim_schedule,
@@ -495,6 +699,7 @@ function run_vumps(
         stable_iterations,
         imaginary_tol,
     )
+    _canonical_rng_seed(canonical_seed)
     records = VUMPSRecord[]
     expansions = SubspaceExpansionRecord[]
     current = psi
@@ -588,7 +793,11 @@ function run_vumps(
             reason =
                 "stage $stage reached maximum iterations ($max_iterations) without convergence"
             return VUMPSResult(
-                _canonicalize_vumps_state(current), records, expansions, false, reason
+                _canonicalize_vumps_state(current; rng_seed=canonical_seed),
+                records,
+                expansions,
+                false,
+                reason,
             )
         end
     end
@@ -596,7 +805,7 @@ function run_vumps(
     count = length(targets)
     suffix = count == 1 ? "stage" : "stages"
     return VUMPSResult(
-        _canonicalize_vumps_state(current),
+        _canonicalize_vumps_state(current; rng_seed=canonical_seed),
         records,
         expansions,
         true,

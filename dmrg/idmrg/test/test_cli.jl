@@ -612,7 +612,7 @@ function fake_single_point_operations(events; converged=true, transfer_valid=tru
             (:hamiltonian, config.phi_y)
         end,
         optimize=(H, psi, settings) -> begin
-            push!(events, (:optimize, H[2]))
+            push!(events, (:optimize, H[2], settings.seed))
             VUMPSResult(psi, VUMPSRecord[], converged, converged ? "converged" : "stopped")
         end,
         energy=(psi, H, config, settings) -> begin
@@ -795,6 +795,39 @@ end
         @test !raw.valid
         @test !raw.optimization.converged
         @test !raw.transfer.valid
+    end
+end
+
+@testset "flux scan namespaces deterministic seeds by point and candidate" begin
+    mktempdir() do directory
+        function scan_optimize_seeds(output)
+            settings = parse_flux_scan_args([
+                "--Ly=6",
+                "--x_period=1",
+                "--filling_num=1",
+                "--filling_den=3",
+                "--phi_start=0",
+                "--phi_stop=1",
+                "--phi_steps=2",
+                "--maxdim=1",
+                "--output=$output",
+                "--cold_patterns=2;3",
+                "--seed=2468",
+                "--allow_nonconverged=true",
+            ])
+            events = Any[]
+            run_flux_scan(
+                settings;
+                operations=fake_single_point_operations(events),
+            )
+            return [event[3] for event in events if event[1] === :optimize]
+        end
+
+        first_seeds = scan_optimize_seeds(joinpath(directory, "first"))
+        second_seeds = scan_optimize_seeds(joinpath(directory, "second"))
+        @test length(first_seeds) == 6
+        @test length(unique(first_seeds)) == length(first_seeds)
+        @test second_seeds == first_seeds
     end
 end
 

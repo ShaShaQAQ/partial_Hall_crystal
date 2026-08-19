@@ -266,6 +266,39 @@ not on the Mac or a W003 login shell:
   --threads=24
 ```
 
+The checked-in PBS wrapper is the preferred production entry point. From the
+dedicated W003 checkout, preview the exact request without writing a job
+configuration or calling `qsub`:
+
+```bash
+DRY_RUN=1 dmrg/idmrg/jobs/submit_fig2_stage.sh
+```
+
+Submit the default `D=32,64,128` seven-flux pilot with:
+
+```bash
+dmrg/idmrg/jobs/submit_fig2_stage.sh
+```
+
+The submitter writes one read-only configuration under
+`/home/public/shajy/codex/results/fqahc-fig2/job_configs`, then passes only that
+path through PBS. This avoids comma parsing in PBS `-v` values. The runner
+requires `HEAD == origin/DMRG`, refuses tracked or staged W003 changes, holds an
+advisory lock on the output root, and records the node, PBS request, source and
+manifest hashes, package versions, thread environment, `/usr/bin/time -v`, and
+exit code under `results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is
+resubmitted with the same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid;
+the benchmark ledger audits completed candidate checksums and resumes from the
+last valid wavefunction.
+
+The default walltime is 12 hours through `D=128`, 36 hours for `D=256`, 72
+hours through `D=1000`, and 120 hours above `D=1000`. Override it explicitly
+with `FIG2_WALLTIME=HH:MM:SS`. A later stage can be chained only after a verified
+predecessor with `FIG2_DEPENDENCY=<job-id>`. `FIG2_THREADS` defaults to 24 and
+may be set to 4 or 12 only for the declared utilization comparison; BLAS, OMP,
+MKL, and ITensor Strided threading remain at one while ITensor block-sparse
+threading is enabled by the Julia driver.
+
 At zero flux, every deterministic product-state candidate is retained and the
 lowest converged valid energy per site is selected. At later flux points, the
 selected branch is the converged valid candidate with the largest valid mixed
@@ -382,9 +415,16 @@ matrix eigenpair residuals appear separately in `transfer_spectrum.tsv` and
 are checked against `transfer_tol`.
 
 Before returning either a converged or nonconverged result, the implementation
-runs the official `ITensorMPS.orthogonalize` canonicalization and verifies cell
-size, exact site identities, link dimensions, QN flux, and center equations.
-Only a validated canonical state can be written to HDF5.
+keeps the left-isometric `AL` tensors returned by VUMPS, obtains their positive
+right transfer fixed point from a deterministic identity-started Arnoldi/Schur
+solve with an explicit eigen-residual check, and performs one right polar
+orthogonalization. It then gives the
+right-canonical links independent IDs and dual QN spaces. This avoids the
+pinned backend's random initial transfer tensor and the unstable second
+orthogonalization of an already canonical VUMPS state. Cell size, exact site
+identities, link dimensions, QN flux, both isometry conditions, and every
+center equation are still checked at relative tolerance `1e-10`. Only a
+validated canonical state can be written to HDF5.
 
 The final Hamiltonian expectation first sums its complex per-cell estimates,
 then requires the total imaginary component to be no larger than
@@ -530,8 +570,11 @@ Known pinned-backend limitations and guards are:
 - QN subspace expansion may grow only a subset of bonds. The runner checks
   actual per-bond progress and errors if no bond grows; a requested `maxdim`
   remains a cap rather than an attained dimension.
-- Final canonicalization uses the official ITensorMPS routine and is validated
-  before checkpointing.
+- The pinned backend's public mixed-canonical routine uses random transfer
+  initial tensors and can select an ill-conditioned fixed point for a QN VUMPS
+  state. Final canonicalization therefore uses the deterministic single-pass
+  adapter described above and is validated before checkpointing; the
+  `1e-10` canonical-state gate is not relaxed.
 - Cross-process restart is gated by a regression that loads a v2 checkpoint,
   reproduces pre-restart energy, density, Schmidt QNs, and site identities,
   completes a no-expansion iteration, expands the QN bonds, and advances to the

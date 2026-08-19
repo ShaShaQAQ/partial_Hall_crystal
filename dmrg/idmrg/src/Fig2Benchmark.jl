@@ -5474,6 +5474,24 @@ function _fig2_selection_core_validity(result, expected_pair)
     return true
 end
 
+function _fig2_candidate_seed(
+    dimension::Integer,
+    point::Integer,
+    candidate_id::AbstractString,
+)
+    !(dimension isa Bool) && dimension > 0 || throw(
+        ArgumentError("Fig. 2 candidate dimension must be positive")
+    )
+    !(point isa Bool) && point > 0 || throw(
+        ArgumentError("Fig. 2 candidate point must be positive")
+    )
+    isempty(candidate_id) && throw(
+        ArgumentError("Fig. 2 candidate ID must not be empty")
+    )
+    seed = _derived_seed(0, :fig2_canonicalization, dimension, point, candidate_id)
+    return Int(mod(seed, UInt64(typemax(Int))))
+end
+
 function _default_fig2_run_candidate(
     spec,
     dimension,
@@ -5510,7 +5528,7 @@ function _default_fig2_run_candidate(
         joinpath(candidate_directory, "state.h5"),
         nothing,
         collect(occupied_sites),
-        0,
+        _fig2_candidate_seed(dimension, point, candidate_id),
         true,
     )
     H = build_infinite_mpo(config, spec.model, sites)

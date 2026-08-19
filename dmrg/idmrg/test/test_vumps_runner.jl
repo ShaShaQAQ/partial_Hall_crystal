@@ -3,6 +3,7 @@ using ITensors
 using ITensorMPS
 using ITensorInfiniteMPS
 using InfiniteCylinderDMRG
+using Random
 
 @testset "VUMPS runner helpers" begin
     cfg = InfiniteCylinderConfig(; Ly=2, x_period=3)
@@ -172,6 +173,71 @@ end
     )
 end
 
+@testset "paper D=2 VUMPS canonicalization regression" begin
+    manifest = joinpath(@__DIR__, "..", "benchmarks", "fqahc_fig2.toml")
+    spec = load_fig2_benchmark(manifest)
+    dimension = 2
+    point = 1
+    candidate_id = first(
+        InfiniteCylinderDMRG._default_fig2_candidate_ids(
+            spec, dimension, point, nothing
+        ),
+    )
+
+    saved_default_rng = copy(Random.default_rng())
+    saved_index_rng = copy(ITensors.index_id_rng())
+    try
+        Random.seed!(Random.default_rng(), 0)
+        Random.seed!(ITensors.index_id_rng(), 0)
+        prepared = InfiniteCylinderDMRG._prepare_fig2_candidate_state(
+            spec, spec.config, candidate_id, nothing
+        )
+        hamiltonian = build_infinite_mpo(
+            spec.config, spec.model, prepared.sites
+        )
+        current = expand_subspace(
+            prepared.psi, hamiltonian, dimension; cutoff=1.0e-8
+        )
+        for _ in 1:3
+            current = vumps_iteration(
+                hamiltonian, current; vumps_tol=1.0e2, imaginary_tol=1.0e-12
+            ).psi
+        end
+
+        expected_sites = siteinds(only, current.AL)
+        expected_dimensions = link_dimensions(current)
+        expected_flux = flux(current.AL)
+        Random.seed!(Random.default_rng(), 0)
+        Random.seed!(ITensors.index_id_rng(), 0)
+        canonical = InfiniteCylinderDMRG._canonicalize_vumps_state(current)
+
+        @test isnothing(
+            InfiniteCylinderDMRG._validate_checkpoint_state(
+                canonical, spec.config
+            ),
+        )
+        @test siteinds(only, canonical.AL) == expected_sites
+        @test link_dimensions(canonical) == expected_dimensions
+        @test flux(canonical.AL) == expected_flux
+        left_ids = Set(id.(linkinds(only, canonical.AL)))
+        right_ids = Set(id.(linkinds(only, canonical.AR)))
+        @test isempty(intersect(left_ids, right_ids))
+        for site in 1:nsites(canonical)
+            left_index = only(commoninds(canonical.C[site], canonical.AL[site]))
+            right_index = only(commoninds(canonical.C[site], canonical.AR[site]))
+            left_space = InfiniteCylinderDMRG._index_qn_dimensions(left_index)
+            right_space = InfiniteCylinderDMRG._index_qn_dimensions(right_index)
+            @test right_space == Dict(
+                -charge => block_dimension for
+                (charge, block_dimension) in left_space
+            )
+        end
+    finally
+        copy!(Random.default_rng(), saved_default_rng)
+        copy!(ITensors.index_id_rng(), saved_index_rng)
+    end
+end
+
 @testset "pinned VUMPS iteration boundary" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
@@ -283,14 +349,23 @@ end
     @test record.elapsed_seconds == 0.25
 end
 
-@testset "dense canonical states bypass QN link normalization" begin
+@testset "dense canonical states receive fresh right link IDs" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
     psi = InfMPS(sites, initspin)
     canonical = ITensorMPS.orthogonalize(psi.AL, :)
 
     @test all(index -> !hasqns(index), inds(canonical.C[1]))
-    @test InfiniteCylinderDMRG._normalize_right_link_convention(canonical) === canonical
+    normalized = InfiniteCylinderDMRG._normalize_right_link_convention(canonical)
+    @test normalized !== canonical
+    @test id.(linkinds(only, normalized.AL)) == id.(linkinds(only, canonical.AL))
+    @test id.(linkinds(only, normalized.AR)) != id.(linkinds(only, canonical.AR))
+    @test isempty(
+        intersect(
+            Set(id.(linkinds(only, normalized.AL))),
+            Set(id.(linkinds(only, normalized.AR))),
+        ),
+    )
 end
 
 @testset "staged VUMPS runner" begin
