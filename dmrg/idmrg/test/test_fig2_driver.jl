@@ -1911,7 +1911,7 @@ if all(
                         stage=1,
                         iteration=2,
                         maxlinkdim=4,
-                        delta_energy=1.0e-8,
+                        delta_energy="missing",
                         converged=false,
                     ),
                     (
@@ -1919,27 +1919,30 @@ if all(
                         iteration=3,
                         maxlinkdim=4,
                         delta_energy=1.0e-8,
+                        converged=false,
+                    ),
+                    (
+                        stage=1,
+                        iteration=4,
+                        maxlinkdim=4,
+                        delta_energy=1.0e-8,
                         converged=true,
                     ),
                 ],
             )
-            final = nothing
-            audit_error = try
-                final = validate_production_convergence(
+            outcome = try
+                validate_production_convergence(
                     joinpath(directory, "convergence.tsv"), [4]
                 )
-                nothing
             catch error
                 error
             end
-            @test isnothing(audit_error)
-            if isnothing(audit_error)
-                @test final.stage == 1
-                @test final.iteration == 3
-                @test final.maxlinkdim == 4
-                @test final.converged
-            else
-                @test audit_error isa MethodError
+            @test !(outcome isa Exception)
+            if !(outcome isa Exception)
+                @test outcome.stage == 1
+                @test outcome.iteration == 4
+                @test outcome.maxlinkdim == 4
+                @test outcome.converged
             end
         end
     end
@@ -2007,6 +2010,9 @@ if all(
             precision_error=1.0e-8,
             converged=false,
         )
+        activation_row = merge(
+            stable_row(2), (; delta_energy="missing")
+        )
 
         bad_delta = audit_outcome([
             first_row,
@@ -2034,6 +2040,22 @@ if all(
             stable_row(2; converged=true),
         ])
         @test premature isa ArgumentError
+
+        low_dimension_converged = audit_outcome([
+            first_row,
+            merge(stable_row(2), (; maxlinkdim=2)),
+            merge(stable_row(3; converged=true), (; maxlinkdim=2)),
+        ])
+        @test low_dimension_converged isa ArgumentError
+
+        late_reset = audit_outcome([
+            first_row,
+            activation_row,
+            merge(stable_row(3), (; delta_energy="missing")),
+            stable_row(4),
+            stable_row(5; converged=true),
+        ])
+        @test late_reset isa ArgumentError
 
         unconverged_stage = audit_outcome(
             [
@@ -2064,14 +2086,82 @@ if all(
 
         valid = audit_outcome([
             first_row,
-            stable_row(2),
-            stable_row(3; converged=true),
+            activation_row,
+            stable_row(3),
+            stable_row(4; converged=true),
         ])
         @test !(valid isa Exception)
         if !(valid isa Exception)
             @test valid.stage == 1
-            @test valid.iteration == 3
+            @test valid.iteration == 4
             @test valid.converged
+        end
+
+        multi_stage = audit_outcome(
+            [
+                (
+                    stage=1,
+                    iteration=1,
+                    maxlinkdim=2,
+                    delta_energy="missing",
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=false,
+                ),
+                (
+                    stage=1,
+                    iteration=2,
+                    maxlinkdim=2,
+                    delta_energy=1.0e-8,
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=false,
+                ),
+                (
+                    stage=1,
+                    iteration=3,
+                    maxlinkdim=2,
+                    delta_energy=1.0e-8,
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=true,
+                ),
+                (
+                    stage=2,
+                    iteration=1,
+                    maxlinkdim=4,
+                    delta_energy="missing",
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=false,
+                ),
+                (
+                    stage=2,
+                    iteration=2,
+                    maxlinkdim=4,
+                    delta_energy=1.0e-8,
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=false,
+                ),
+                (
+                    stage=2,
+                    iteration=3,
+                    maxlinkdim=4,
+                    delta_energy=1.0e-8,
+                    energy_mismatch=1.0e-8,
+                    precision_error=1.0e-8,
+                    converged=true,
+                ),
+            ];
+            schedule=[2, 4],
+        )
+        @test !(multi_stage isa Exception)
+        if !(multi_stage isa Exception)
+            @test multi_stage.stage == 2
+            @test multi_stage.iteration == 3
+            @test multi_stage.maxlinkdim == 4
+            @test multi_stage.converged
         end
     end
 
@@ -2297,7 +2387,7 @@ if all(
         end
     end
 
-    @testset "convergence first-delta missing sentinel is narrow" begin
+    @testset "convergence reset sentinel follows expansion activation" begin
         mktempdir() do directory
             write_fake_candidate_files(
                 directory,
@@ -2317,7 +2407,7 @@ if all(
                         stage=1,
                         iteration=2,
                         maxlinkdim=4,
-                        delta_energy=1.0e-8,
+                        delta_energy="missing",
                         converged=false,
                     ),
                     (
@@ -2325,15 +2415,29 @@ if all(
                         iteration=3,
                         maxlinkdim=4,
                         delta_energy=1.0e-8,
+                        converged=false,
+                    ),
+                    (
+                        stage=1,
+                        iteration=4,
+                        maxlinkdim=4,
+                        delta_energy=1.0e-8,
                         converged=true,
                     ),
                 ],
             )
-            final = validate_production_convergence(
-                joinpath(directory, "convergence.tsv"), [4]
-            )
-            @test final.iteration == 3
-            @test final.converged
+            outcome = try
+                validate_production_convergence(
+                    joinpath(directory, "convergence.tsv"), [4]
+                )
+            catch error
+                error
+            end
+            @test !(outcome isa Exception)
+            if !(outcome isa Exception)
+                @test outcome.iteration == 4
+                @test outcome.converged
+            end
         end
 
         function rejects_missing_at(row, column)
@@ -2356,7 +2460,21 @@ if all(
                             stage=1,
                             iteration=2,
                             maxlinkdim=4,
-                            delta_energy=0.25,
+                            delta_energy="missing",
+                            converged=false,
+                        ),
+                        (
+                            stage=1,
+                            iteration=3,
+                            maxlinkdim=4,
+                            delta_energy=1.0e-8,
+                            converged=false,
+                        ),
+                        (
+                            stage=1,
+                            iteration=4,
+                            maxlinkdim=4,
+                            delta_energy=1.0e-8,
                             converged=true,
                         ),
                     ],
@@ -2375,14 +2493,14 @@ if all(
             end
         end
         rejects_missing_at(1, 4)
-        rejects_missing_at(2, 7)
+        rejects_missing_at(3, 7)
     end
 
-    @testset "producer first-delta sentinel normalization is fail closed" begin
+    @testset "producer activation sentinels normalize atomically" begin
         function write_producer_convergence(
             directory;
             first_delta="Inf",
-            second_delta=0.25,
+            second_delta="Inf",
         )
             write_fake_candidate_files(
                 directory,
@@ -2403,6 +2521,13 @@ if all(
                         iteration=2,
                         maxlinkdim=4,
                         delta_energy=second_delta,
+                        converged=false,
+                    ),
+                    (
+                        stage=1,
+                        iteration=3,
+                        maxlinkdim=4,
+                        delta_energy=0.25,
                         converged=true,
                     ),
                 ],
@@ -2412,16 +2537,27 @@ if all(
 
         mktempdir() do directory
             path = write_producer_convergence(directory)
-            InfiniteCylinderDMRG._normalize_fig2_convergence_sentinel!(path)
-            lines = readlines(path)
-            @test split(lines[2], '\t'; keepempty=true)[7] == "missing"
-            @test split(lines[3], '\t'; keepempty=true)[7] == "0.25"
-            final = InfiniteCylinderDMRG._validate_fig2_convergence_tsv(path)
-            @test final.iteration == 2
-            @test final.converged
+            normalization_error = try
+                InfiniteCylinderDMRG._normalize_fig2_convergence_sentinel!(path)
+                nothing
+            catch error
+                error
+            end
+            @test isnothing(normalization_error)
+            if isnothing(normalization_error)
+                lines = readlines(path)
+                @test split(lines[2], '\t'; keepempty=true)[7] == "missing"
+                @test split(lines[3], '\t'; keepempty=true)[7] == "missing"
+                @test split(lines[4], '\t'; keepempty=true)[7] == "0.25"
+                final = InfiniteCylinderDMRG._validate_fig2_convergence_tsv(path)
+                @test final.iteration == 3
+                @test final.converged
+            end
         end
 
-        function rejects_normalization(tamper; first_delta="Inf", second_delta=0.25)
+        function rejects_normalization(
+            tamper; first_delta="Inf", second_delta="Inf"
+        )
             mktempdir() do directory
                 path = write_producer_convergence(
                     directory; first_delta, second_delta
@@ -2438,7 +2574,6 @@ if all(
         identity_tamper(path) = nothing
         rejects_normalization(identity_tamper; first_delta="0.0")
         rejects_normalization(identity_tamper; first_delta="missing")
-        rejects_normalization(identity_tamper; second_delta="Inf")
         rejects_normalization(identity_tamper; second_delta="NaN")
         rejects_normalization() do path
             lines = readlines(path)
