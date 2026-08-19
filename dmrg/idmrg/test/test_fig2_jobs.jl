@@ -274,6 +274,7 @@ end
         @test occursin("#PBS -l nodes=1:ppn=24", source)
         @test occursin("#PBS -l walltime=12:00:00", source)
         @test occursin("JULIA_NUM_THREADS=24", source)
+        @test occursin("export JULIA_DEPOT_PATH\n", source)
         @test occursin("OMP_NUM_THREADS=1", source)
         @test occursin("OPENBLAS_NUM_THREADS=1", source)
         @test occursin("MKL_NUM_THREADS=1", source)
