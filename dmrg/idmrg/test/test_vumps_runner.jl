@@ -470,6 +470,26 @@ end
     @test isfinite(expansion.elapsed_seconds)
     @test expansion.elapsed_seconds >= 0
 
+    @test maximum(link_dimensions(expanded_stop.psi)) == 2
+    oversized_error = try
+        run_vumps(
+            H,
+            expanded_stop.psi;
+            options...,
+            maxdim_schedule=[1],
+            max_iterations=1,
+        )
+        nothing
+    catch caught
+        caught
+    end
+    @test oversized_error isa ArgumentError
+    if oversized_error isa ArgumentError
+        message = sprint(showerror, oversized_error)
+        @test occursin("initial/achieved maxdim=2", message)
+        @test occursin("first target=1", message)
+    end
+
     converged = run_vumps(H, psi; options..., max_iterations=3)
     @test converged.converged
     @test converged.reason == "converged after 1 stage"
