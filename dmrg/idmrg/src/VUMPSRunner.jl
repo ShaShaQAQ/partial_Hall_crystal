@@ -706,6 +706,13 @@ function run_vumps(
         imaginary_tol,
     )
     _canonical_rng_seed(canonical_seed)
+    initial_maxdim = maximum(link_dimensions(psi))
+    initial_maxdim <= targets[1] || throw(
+        ArgumentError(
+            "initial/achieved maxdim=$initial_maxdim exceeds first target=$(targets[1]); " *
+            "exact-target stages cannot lower bond dimension"
+        )
+    )
     records = VUMPSRecord[]
     expansions = SubspaceExpansionRecord[]
     current = psi
