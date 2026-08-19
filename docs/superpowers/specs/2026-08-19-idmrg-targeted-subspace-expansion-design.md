@@ -23,11 +23,13 @@ link dimension is below the target, it will repeatedly call the upstream
 call it will:
 
 1. validate that the link count is unchanged;
-2. require at least one link dimension to grow; and
+2. require every link dimension to be nondecreasing and at least one to grow;
+   and
 3. stop only when the maximum link dimension equals the target.
 
-Each successful pass increases an integer link dimension and the upstream
-operation is capped by `maxdim=target`, so the loop is finite. If a pass
+Each successful pass strictly increases the bounded sum of integer link
+dimensions, and the upstream operation is capped by `maxdim=target`, so the
+loop is finite. If a pass
 stalls before the target, the runner fails immediately with the before,
 after, achieved, and target dimensions. It must not run VUMPS on a state
 that merely made partial expansion progress.
