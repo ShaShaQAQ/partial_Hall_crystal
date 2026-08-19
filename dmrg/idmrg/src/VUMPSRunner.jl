@@ -282,25 +282,19 @@ function expand_subspace(
     target > 0 || throw(ArgumentError("target maxdim must be positive"))
     isfinite(cutoff) && cutoff > 0 ||
         throw(ArgumentError("cutoff must be finite and positive"))
-    maximum(link_dimensions(psi)) < target || return psi
+    before = link_dimensions(psi)
+    maximum(before) < target || return psi
 
-    current = psi
-    while maximum(link_dimensions(current)) < target
-        before = link_dimensions(current)
-        expanded = subspace_expansion(current, H; maxdim=target, cutoff)
-        after = link_dimensions(expanded)
-        _subspace_expansion_progressed(before, after) || error(
-            "subspace expansion stalled at achieved maxdim=$(maximum(after)) " *
-            "before target maxdim=$target; before=$before after=$after"
-        )
-        maximum(after) <= target || error(
-            "subspace expansion exceeded target maxdim=$target: after=$after"
-        )
-        current = expanded
-    end
-    maximum(link_dimensions(current)) == target ||
-        error("subspace expansion did not reach target maxdim=$target")
-    return current
+    expanded = subspace_expansion(psi, H; maxdim=target, cutoff)
+    after = link_dimensions(expanded)
+    maximum(after) <= target || error(
+        "subspace expansion exceeded target maxdim=$target: after=$after"
+    )
+    _subspace_expansion_progressed(before, after) || error(
+        "subspace expansion stalled at achieved maxdim=$(maximum(after)) " *
+        "before target maxdim=$target; before=$before after=$after"
+    )
+    return expanded
 end
 
 function _subspace_expansion_progressed(before, after)
@@ -717,29 +711,32 @@ function run_vumps(
     current = psi
 
     for (stage, target) in enumerate(targets)
-        before = link_dimensions(current)
-        if maximum(before) < target
-            elapsed_seconds = @elapsed current = expand_subspace(
-                current, H, target; cutoff
-            )
-            after = link_dimensions(current)
-            push!(
-                expansions,
-                SubspaceExpansionRecord(
-                    stage,
-                    target,
-                    before,
-                    after,
-                    _subspace_expansion_progressed(before, after),
-                    elapsed_seconds,
-                ),
-            )
-        end
         previous_energy = nothing
         stable_count = 0
         stage_converged = false
 
         for iteration in 1:max_iterations
+            before = link_dimensions(current)
+            if maximum(before) < target
+                elapsed_seconds = @elapsed current = expand_subspace(
+                    current, H, target; cutoff
+                )
+                after = link_dimensions(current)
+                push!(
+                    expansions,
+                    SubspaceExpansionRecord(
+                        stage,
+                        target,
+                        before,
+                        after,
+                        true,
+                        elapsed_seconds,
+                    ),
+                )
+                previous_energy = nothing
+                stable_count = 0
+            end
+
             step = vumps_iteration(
                 H,
                 current;
@@ -759,30 +756,34 @@ function run_vumps(
             eps_right = maximum(step.eps_right)
             precision_error = max(eps_left, eps_right)
             energy_normalization_sites = nsites(current)
+            current_maxdim = maximum(link_dimensions(current))
 
             stable_now =
+                current_maxdim == target &&
                 all(isfinite, (precision_error, delta_energy, energy_mismatch)) &&
                 precision_error < vumps_tol &&
                 delta_energy / energy_normalization_sites < energy_tol &&
                 energy_mismatch / energy_normalization_sites < energy_mismatch_tol
             stable_count = stable_now ? stable_count + 1 : 0
-            converged = vumps_converged(
-                precision_error,
-                delta_energy,
-                energy_mismatch,
-                stable_count;
-                vumps_tol,
-                energy_tol,
-                energy_mismatch_tol,
-                stable_iterations,
-                energy_normalization_sites,
-            )
+            converged =
+                stable_now &&
+                vumps_converged(
+                    precision_error,
+                    delta_energy,
+                    energy_mismatch,
+                    stable_count;
+                    vumps_tol,
+                    energy_tol,
+                    energy_mismatch_tol,
+                    stable_iterations,
+                    energy_normalization_sites,
+                )
             push!(
                 records,
                 VUMPSRecord(
                     stage,
                     iteration,
-                    maximum(link_dimensions(current)),
+                    current_maxdim,
                     energy_left,
                     energy_right,
                     energy_mismatch,
@@ -802,7 +803,9 @@ function run_vumps(
         end
 
         if !stage_converged
-            reason =
+            achieved = maximum(link_dimensions(current))
+            reason = achieved < target ?
+                "stage $stage reached maximum iterations ($max_iterations) before target maxdim=$target (achieved maxdim=$achieved)" :
                 "stage $stage reached maximum iterations ($max_iterations) without convergence"
             return VUMPSResult(
                 _canonicalize_vumps_state(current; rng_seed=canonical_seed),
