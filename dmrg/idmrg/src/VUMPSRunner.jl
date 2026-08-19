@@ -282,21 +282,33 @@ function expand_subspace(
     target > 0 || throw(ArgumentError("target maxdim must be positive"))
     isfinite(cutoff) && cutoff > 0 ||
         throw(ArgumentError("cutoff must be finite and positive"))
-    before = link_dimensions(psi)
-    maximum(before) < target || return psi
+    maximum(link_dimensions(psi)) < target || return psi
 
-    expanded = subspace_expansion(psi, H; maxdim=target, cutoff)
-    after = link_dimensions(expanded)
-    _subspace_expansion_progressed(before, after) ||
-        error("subspace expansion made no progress toward target maxdim=$target")
-    return expanded
+    current = psi
+    while maximum(link_dimensions(current)) < target
+        before = link_dimensions(current)
+        expanded = subspace_expansion(current, H; maxdim=target, cutoff)
+        after = link_dimensions(expanded)
+        _subspace_expansion_progressed(before, after) || error(
+            "subspace expansion stalled at achieved maxdim=$(maximum(after)) " *
+            "before target maxdim=$target; before=$before after=$after"
+        )
+        maximum(after) <= target || error(
+            "subspace expansion exceeded target maxdim=$target: after=$after"
+        )
+        current = expanded
+    end
+    maximum(link_dimensions(current)) == target ||
+        error("subspace expansion did not reach target maxdim=$target")
+    return current
 end
 
 function _subspace_expansion_progressed(before, after)
     length(before) == length(after) || throw(
         DimensionMismatch("subspace expansion changed the number of MPS links")
     )
-    return any(after[index] > before[index] for index in eachindex(before, after))
+    return all(after[index] >= before[index] for index in eachindex(before, after)) &&
+        any(after[index] > before[index] for index in eachindex(before, after))
 end
 
 function _validate_vumps_schedule(

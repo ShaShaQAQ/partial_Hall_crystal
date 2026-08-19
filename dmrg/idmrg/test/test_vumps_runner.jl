@@ -364,6 +364,7 @@ end
         caught
     end
     @test error isa ErrorException
+    @test occursin("stalled at achieved maxdim=1", sprint(showerror, error))
     @test occursin("target maxdim=2", sprint(showerror, error))
     @test expand_subspace(expanded, H, 2; cutoff=1e-8) === expanded
     @test_throws ArgumentError expand_subspace(psi, H, 0; cutoff=1e-8)
