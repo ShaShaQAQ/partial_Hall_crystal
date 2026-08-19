@@ -83,6 +83,8 @@ esac
 test -x "$JULIA_BIN"
 test -f "$manifest"
 test -f "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl"
+checkout_auditor="$repo/dmrg/idmrg/bin/audit_production_checkout.jl"
+test -f "$checkout_auditor"
 
 mkdir -p "$result_root" "$output"
 
@@ -94,16 +96,24 @@ fi
 printf '%s\n' "$PBS_JOBID" > "$output/.fig2_stage.lock"
 
 cd "$repo"
-git diff --quiet -- . || {
-  echo "tracked W003 worktree changes block Fig. 2 production" >&2
+export LC_ALL=C
+checkout_audit="$result_root/checkout_audit.txt"
+if ! "$JULIA_BIN" --startup-file=no "$checkout_auditor" "$repo" \
+    > "$checkout_audit"; then
+  cat "$checkout_audit" >&2
+  echo "W003 checkout audit blocks Fig. 2 production" >&2
+  exit 4
+fi
+head_commit=$(sed -n 's/^head_commit=//p' "$checkout_audit")
+origin_commit=$(sed -n 's/^origin_dmrg=//p' "$checkout_audit")
+[[ "$head_commit" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "checkout audit returned an invalid HEAD commit" >&2
   exit 4
 }
-git diff --cached --quiet -- . || {
-  echo "staged W003 worktree changes block Fig. 2 production" >&2
+[[ "$origin_commit" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "checkout audit returned an invalid origin/DMRG commit" >&2
   exit 4
 }
-head_commit=$(git rev-parse HEAD)
-origin_commit=$(git rev-parse origin/DMRG)
 [[ "$head_commit" == "$origin_commit" ]] || {
   echo "W003 HEAD must equal origin/DMRG before Fig. 2 production" >&2
   exit 4
@@ -120,7 +130,6 @@ fi
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export LC_ALL=C
 
 {
   hostname
@@ -134,11 +143,12 @@ export LC_ALL=C
   printf 'dimensions=%s\n' "$FIG2_DIMENSIONS"
   printf 'flux_units_2pi=%s\n' "$FIG2_FLUX_UNITS"
   printf 'threads=%s\n' "$FIG2_THREADS"
-  git status --porcelain --untracked-files=no
+  cat "$checkout_audit"
   sha256sum \
     "$config_path" \
     "$launcher_path" \
     "$manifest" \
+    "$checkout_auditor" \
     "$repo/dmrg/idmrg/src/Fig2Benchmark.jl" \
     "$repo/dmrg/idmrg/src/VUMPSRunner.jl" \
     "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl"

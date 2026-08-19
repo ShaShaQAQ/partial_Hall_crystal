@@ -899,18 +899,107 @@ function _fig2_project_manifest()
     return abspath(active_project), abspath(project_manifest)
 end
 
+function _fig2_parse_checkout_audit(contents::AbstractString)
+    expected_keys = Set((
+        "head_commit",
+        "origin_dmrg",
+        "tracked_dirty",
+        "staged_dirty",
+    ))
+    fields = Dict{String,String}()
+    for line in split(chomp(contents), '\n')
+        pieces = split(line, '='; limit=2)
+        length(pieces) == 2 || throw(WorkflowValidationError(
+            "checkout audit contains a malformed output line"
+        ))
+        key, value = pieces
+        key in expected_keys || throw(WorkflowValidationError(
+            "checkout audit contains an unknown output key"
+        ))
+        haskey(fields, key) && throw(WorkflowValidationError(
+            "checkout audit contains a duplicate output key"
+        ))
+        fields[key] = value
+    end
+    Set(keys(fields)) == expected_keys || throw(WorkflowValidationError(
+        "checkout audit output is incomplete"
+    ))
+
+    parse_dirty(key) = if fields[key] == "true"
+        true
+    elseif fields[key] == "false"
+        false
+    else
+        throw(WorkflowValidationError(
+            "checkout audit dirty flags must be true or false"
+        ))
+    end
+    head_commit = fields["head_commit"]
+    origin_commit = fields["origin_dmrg"]
+    occursin(r"^[0-9a-f]{40}$", head_commit) || throw(
+        WorkflowValidationError("checkout audit HEAD commit is invalid")
+    )
+    occursin(r"^[0-9a-f]{40}$", origin_commit) || throw(
+        WorkflowValidationError("checkout audit origin/DMRG commit is invalid")
+    )
+    return (
+        head_commit,
+        origin_commit,
+        tracked_dirty=parse_dirty("tracked_dirty"),
+        staged_dirty=parse_dirty("staged_dirty"),
+    )
+end
+
+function _fig2_checkout_audit(repository::AbstractString)
+    auditor = normpath(joinpath(
+        @__DIR__,
+        "..",
+        "bin",
+        "audit_production_checkout.jl",
+    ))
+    isfile(auditor) || throw(WorkflowValidationError(
+        "Fig. 2 checkout auditor is missing"
+    ))
+    stdout = IOBuffer()
+    stderr = IOBuffer()
+    command = `$(Base.julia_cmd()) --startup-file=no $auditor $repository`
+    process = run(
+        pipeline(
+            ignorestatus(command);
+            stdout=stdout,
+            stderr=stderr,
+        ),
+    )
+    audit_output = String(take!(stdout))
+    audit_errors = strip(String(take!(stderr)))
+    process.exitcode == 0 || throw(WorkflowValidationError(
+        isempty(audit_errors) ?
+            "Fig. 2 checkout audit failed closed" :
+            "Fig. 2 checkout audit failed closed: $audit_errors"
+    ))
+    audit = _fig2_parse_checkout_audit(audit_output)
+    !audit.tracked_dirty || throw(WorkflowValidationError(
+        "default Fig. 2 provenance refuses tracked worktree changes"
+    ))
+    !audit.staged_dirty || throw(WorkflowValidationError(
+        "default Fig. 2 provenance refuses staged index changes"
+    ))
+    audit.head_commit == audit.origin_commit || throw(
+        WorkflowValidationError(
+            "default Fig. 2 provenance requires HEAD == origin/DMRG"
+        )
+    )
+    return audit
+end
+
 function _default_fig2_provenance(spec, output, runtime_seconds)
     repository = normpath(joinpath(@__DIR__, "..", "..", ".."))
-    tracked_clean = success(Cmd(["git", "-C", repository, "diff", "--quiet"])) &&
-        success(Cmd(["git", "-C", repository, "diff", "--cached", "--quiet"]))
-    tracked_clean || throw(WorkflowValidationError(
-        "default Fig. 2 provenance refuses a dirty tracked git tree"
-    ))
+    checkout_audit = _fig2_checkout_audit(repository)
     active_project, project_manifest = _fig2_project_manifest()
     return Dict{String,Any}(
         "format" => "fqahc_fig2_provenance_v2",
         "manifest_sha256" => spec.sha256,
-        "git_commit" => _fig2_repository_commit(),
+        "git_commit" => checkout_audit.head_commit,
         "git_tree_clean" => true,
         "julia_version" => string(VERSION),
         "pbs_job_id" => get(ENV, "PBS_JOBID", ""),

@@ -1,4 +1,5 @@
 using Test
+using LibGit2
 
 function run_fig2_submitter_dry_run(
     submitter::AbstractString,
@@ -154,13 +155,117 @@ printf '999999.w003\\n'
     end
 end
 
+function invoke_checkout_auditor(
+    auditor::AbstractString,
+    repository::AbstractString,
+)
+    return mktempdir() do directory
+        stdout_path = joinpath(directory, "stdout.log")
+        stderr_path = joinpath(directory, "stderr.log")
+        command = `$(Base.julia_cmd()) --startup-file=no $auditor $repository`
+        process = open(stdout_path, "w") do stdout_io
+            open(stderr_path, "w") do stderr_io
+                run(
+                    pipeline(
+                        ignorestatus(command);
+                        stdout=stdout_io,
+                        stderr=stderr_io,
+                    ),
+                )
+            end
+        end
+        return (
+            exitcode=process.exitcode,
+            stdout=read(stdout_path, String),
+            stderr=read(stderr_path, String),
+        )
+    end
+end
+
+function exercise_checkout_auditor(
+    auditor::AbstractString,
+    source_repository::AbstractString,
+)
+    return mktempdir() do directory
+        checkout = joinpath(directory, "checkout")
+        cloned_repository = LibGit2.clone(
+            source_repository,
+            checkout;
+            branch="DMRG",
+        )
+        close(cloned_repository)
+
+        clean = invoke_checkout_auditor(auditor, checkout)
+        tracked_path = joinpath(checkout, "dmrg", "idmrg", "Project.toml")
+        original = read(tracked_path, String)
+        open(tracked_path, "a") do io
+            write(io, "\n# tracked dirty audit fixture\n")
+        end
+        tracked_dirty = invoke_checkout_auditor(auditor, checkout)
+
+        open(tracked_path, "w") do io
+            write(io, original)
+        end
+        open(tracked_path, "a") do io
+            write(io, "\n# staged dirty audit fixture\n")
+        end
+        staged_repository = LibGit2.GitRepo(checkout)
+        try
+            LibGit2.add!(
+                staged_repository,
+                joinpath("dmrg", "idmrg", "Project.toml"),
+            )
+        finally
+            close(staged_repository)
+        end
+        staged_dirty = invoke_checkout_auditor(auditor, checkout)
+
+        diverged_checkout = joinpath(directory, "diverged_checkout")
+        diverged_repository = LibGit2.clone(
+            source_repository,
+            diverged_checkout;
+            branch="DMRG",
+        )
+        try
+            parent_commit = LibGit2.revparseid(
+                diverged_repository,
+                "HEAD^",
+            )
+            LibGit2.reset!(
+                diverged_repository,
+                parent_commit,
+                LibGit2.Consts.RESET_HARD,
+            )
+        finally
+            close(diverged_repository)
+        end
+        diverged = invoke_checkout_auditor(auditor, diverged_checkout)
+
+        return (; clean, tracked_dirty, staged_dirty, diverged)
+    end
+end
+
 @testset "Fig. 2 W003 production job contract" begin
     job_directory = joinpath(@__DIR__, "..", "jobs")
     runner = joinpath(job_directory, "run_fig2_stage.pbs")
     submitter = joinpath(job_directory, "submit_fig2_stage.sh")
+    auditor = joinpath(
+        @__DIR__,
+        "..",
+        "bin",
+        "audit_production_checkout.jl",
+    )
+    benchmark_source = joinpath(
+        @__DIR__,
+        "..",
+        "src",
+        "Fig2Benchmark.jl",
+    )
 
     @test isfile(runner)
     @test isfile(submitter)
+    @test isfile(auditor)
+    @test isfile(benchmark_source)
 
     if isfile(runner)
         source = read(runner, String)
@@ -191,14 +296,17 @@ end
             "printf '%s\\n' \"\$PBS_JOBID\" > \"\$output/.fig2_stage.lock\"",
             source,
         )
-        @test occursin("git diff --quiet", source)
-        @test occursin("git diff --cached --quiet", source)
         @test occursin("origin/DMRG", source)
         @test occursin("Pkg.status", source)
         @test occursin("sha256sum", source)
         @test occursin("qstat -f", source)
         @test occursin("/usr/bin/time -v", source)
         @test occursin("run_fig2_benchmark.jl", source)
+        @test occursin("audit_production_checkout.jl", source)
+        @test occursin("checkout_audit", source)
+        @test !occursin("git diff", source)
+        @test !occursin("git status", source)
+        @test !occursin("git rev-parse", source)
         @test occursin(
             ": \"\${FIG2_JOB_LAUNCHER:?FIG2_JOB_LAUNCHER is required}\"",
             source,
@@ -226,6 +334,63 @@ end
             @test occursin(argument, source)
         end
         @test occursin("job_status.toml", source)
+    end
+
+    if isfile(auditor)
+        source = read(auditor, String)
+        @test occursin("using LibGit2", source)
+        @test occursin("LibGit2.isdirty", source)
+        @test occursin("refs/remotes/origin/DMRG", source)
+
+        source_repository = get(
+            ENV,
+            "W003_REPO",
+            normpath(joinpath(@__DIR__, "..", "..", "..")),
+        )
+        @testset "compute-node checkout audit is fail closed" begin
+            result = exercise_checkout_auditor(auditor, source_repository)
+            @test result.clean.exitcode == 0
+            @test occursin("tracked_dirty=false\n", result.clean.stdout)
+            @test occursin("staged_dirty=false\n", result.clean.stdout)
+            clean_stderr = replace(
+                result.clean.stderr,
+                "WARNING: failed to select UTF-8 encoding, using ASCII\n" => "",
+            )
+            @test isempty(clean_stderr)
+
+            @test result.tracked_dirty.exitcode == 4
+            @test occursin(
+                "tracked_dirty=true\n",
+                result.tracked_dirty.stdout,
+            )
+            @test occursin(
+                "tracked worktree changes",
+                result.tracked_dirty.stderr,
+            )
+
+            @test result.staged_dirty.exitcode == 4
+            @test occursin(
+                "staged_dirty=true\n",
+                result.staged_dirty.stdout,
+            )
+            @test occursin(
+                "staged index changes",
+                result.staged_dirty.stderr,
+            )
+
+            @test result.diverged.exitcode == 4
+            @test occursin(
+                "W003 HEAD must equal origin/DMRG",
+                result.diverged.stderr,
+            )
+        end
+    end
+
+    if isfile(benchmark_source)
+        source = read(benchmark_source, String)
+        @test !occursin("Cmd([\"git\"", source)
+        @test occursin("audit_production_checkout.jl", source)
+        @test occursin("_fig2_checkout_audit", source)
     end
 
     if isfile(submitter)

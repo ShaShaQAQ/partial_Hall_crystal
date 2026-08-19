@@ -285,10 +285,11 @@ under `/home/public/shajy/codex/results/fqahc-fig2/job_configs`. The launcher
 exports the two exact immutable paths in its script body and then executes the
 checked-in runner; it does not depend on W003 propagating user variables from
 `qsub -v` through the site `bypass` wrapper. The runner requires
-`HEAD == origin/DMRG`, refuses tracked or staged W003 changes, holds an advisory
-lock on the output root, and records the node, PBS request, launcher,
-configuration, source and manifest hashes, package versions, thread
-environment, `/usr/bin/time -v`, and exit code under
+`HEAD == origin/DMRG` and refuses tracked or staged W003 changes using Julia's
+stdlib `LibGit2` (the compute nodes do not provide a `git` CLI), holds an
+advisory lock on the output root, and records the node, PBS request, checkout
+audit, launcher, configuration, source and manifest hashes, package versions,
+thread environment, `/usr/bin/time -v`, and exit code under
 `results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is resubmitted with the
 same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid; the benchmark ledger
 audits completed candidate checksums and resumes from the last valid
