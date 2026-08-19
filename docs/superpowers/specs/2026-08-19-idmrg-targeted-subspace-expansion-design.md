@@ -17,35 +17,58 @@ reached.
 
 ## Chosen design
 
-`expand_subspace` will own a strong target contract. If the current maximum
-link dimension is below the target, it will repeatedly call the upstream
-`subspace_expansion` operation with the same target and cutoff. After every
-call it will:
+The first attempted implementation made `expand_subspace` repeatedly call the
+upstream operation without an intervening optimizer step. W003 job
+`1869130.w003` proved that this stalls at maximum dimension 2 for the real
+paper Hamiltonian. The activation probe `1869132.w003` then established:
+
+- a second expansion without VUMPS stays at maximum dimension 2;
+- after one complete VUMPS unit-cell iteration, the same target-4 expansion
+  reaches maximum dimension 4; and
+- additional VUMPS iterations do not change that result.
+
+This agrees with the pinned upstream example, which alternates subspace
+expansion and TDVP/VUMPS rather than applying expansion repeatedly to an
+unoptimized enlarged state.
+
+`expand_subspace` will therefore represent exactly one Hamiltonian-generated,
+auditable expansion pass. It will:
 
 1. validate that the link count is unchanged;
 2. require every link dimension to be nondecreasing and at least one to grow;
    and
-3. stop only when the maximum link dimension equals the target.
+3. require that no link exceeds the requested target.
 
-Each successful pass strictly increases the bounded sum of integer link
-dimensions, and the upstream operation is capped by `maxdim=target`, so the
-loop is finite. If a pass
-stalls before the target, the runner fails immediately with the before,
-after, achieved, and target dimensions. It must not run VUMPS on a state
-that merely made partial expansion progress.
+`run_vumps` owns the strong stage target contract. Within one requested stage
+it alternates one expansion pass and one VUMPS iteration until the maximum
+link dimension equals the target. Partial growth is legal, but a zero-progress
+pass is a hard error. The VUMPS iteration is a complete sequential update of
+the reference cell and activates the newly generated Krylov directions before
+the next pass.
 
-The public `SubspaceExpansionRecord` remains one record per VUMPS schedule
-stage. Its `before` and `after` fields describe the complete targeted
-expansion, and its elapsed time includes all internal passes. No Hamiltonian,
-QN convention, optimizer tolerance, candidate selection rule, flux rule, or
-raw pump observable changes.
+`max_iterations` counts every VUMPS iteration within a stage, including these
+activation iterations. Energy history and the stable-iteration counter reset
+after every expansion because energies across different variational spaces
+are not consecutive convergence samples. A low-dimensional state must never
+be declared converged even if its residual and energy tests pass. Only records
+at the exact target dimension participate in the final convergence decision.
+If the iteration budget expires before the target or before target-dimension
+convergence, the result is nonconverged with a specific reason.
+
+Every expansion pass gets its own `SubspaceExpansionRecord` with the same
+stage and target plus its exact before/after dimensions and elapsed time. No
+Hamiltonian, QN convention, optimizer tolerance, candidate selection rule,
+flux rule, or raw pump observable changes.
 
 ## Rejected alternatives
 
-- A powers-of-two Fig. 2 schedule would interleave full VUMPS convergence at
-  every intermediate dimension. It is much more expensive at production
-  dimensions and leaves the lower-level partial-target bug available to
-  other callers.
+- Repeated expansion without VUMPS activation was rejected by job
+  `1869130.w003`: the second pass made no progress beyond dimension 2.
+- A powers-of-two Fig. 2 schedule with full convergence at every intermediate
+  dimension is more expensive than necessary. The activation probe shows one
+  complete unit-cell VUMPS iteration is sufficient to generate the next
+  expansion direction; final convergence is still enforced at the requested
+  target.
 - Random or manually constructed QN-sector enrichment could open unsupported
   sectors and complicate reproducibility. It is unnecessary unless repeated
   Hamiltonian-generated expansion proves unable to reach the target.
@@ -55,9 +78,10 @@ raw pump observable changes.
 All Julia tests run through PBS on W003's `cmt` queue.
 
 1. Add a regression using the real paper QN Hamiltonian and a Fig. 2 product
-   state with target 4. Before the fix it must fail because the result reaches
-   only dimension 2; after the fix it must reach dimension 4 while preserving
-   the unit cell, site indices, and conserved flux.
+   state with target 4. `run_vumps` must reach dimension 4 within an activation
+   iteration plus a target-dimension iteration while preserving the unit cell,
+   site indices, and conserved flux. The regression need not require final
+   convergence with that deliberately short budget.
 2. Retain a stalled-Hamiltonian test. A target that cannot be reached must
    throw before VUMPS starts, with the achieved and requested dimensions in
    the error.
@@ -73,7 +97,8 @@ All Julia tests run through PBS on W003's `cmt` queue.
 
 ## Failure handling
 
-A targeted expansion stall is a hard numerical error, not a converged low-rank
-state. Candidate completion and ledger updates occur only after the target is
-reached and the existing checkpoint/artifact audits pass. Existing finite-DMRG
-jobs and files remain out of scope.
+A zero-progress expansion is a hard numerical error. Exhausting the VUMPS
+iteration budget before the exact target produces a nonconverged result, not a
+converged low-rank state. Candidate completion and ledger updates occur only
+after target-dimension convergence and the existing checkpoint/artifact audits
+pass. Existing finite-DMRG jobs and files remain out of scope.

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make every VUMPS subspace-expansion stage reach its requested bond dimension or fail before optimization, then prove the behavior on the paper QN Hamiltonian and a real D=32 candidate.
+**Goal:** Make every VUMPS subspace-expansion stage reach its requested bond dimension before it can report final convergence, then prove the behavior on the paper QN Hamiltonian and a real D=32 candidate.
 
-**Architecture:** Strengthen the existing `expand_subspace` boundary instead of changing Fig. 2 scheduling or injecting artificial sectors. The function repeatedly applies the upstream Hamiltonian-generated expansion until the target maximum link dimension is reached, with monotonic-progress and overshoot checks on every pass. Existing candidate, checkpoint, observable, and selection code remains unchanged.
+**Architecture:** Keep `expand_subspace` as one monotone Hamiltonian-generated pass and strengthen the stage loop in `run_vumps`. A stage alternates expansion and one complete unit-cell VUMPS iteration until the exact target is reached, then continues at that target until the existing convergence gate passes. Existing candidate, checkpoint, observable, and selection code remains unchanged.
 
 **Tech Stack:** Julia 1.12.5, ITensors.jl, ITensorMPS.jl, ITensorInfiniteMPS.jl, HDF5, PBS/Torque on W003 `cmt`.
 
@@ -88,74 +88,119 @@ Expected: the new Ising and/or paper-QN assertion fails because the current
 one-pass implementation returns maximum link dimension 2 for target 4. No
 Julia command runs on the Mac.
 
-### Task 2: Enforce the target in `expand_subspace`
+### Task 2: Replace the rejected pure-expansion contract with an interleaved RED
 
 **Files:**
-- Modify: `dmrg/idmrg/src/VUMPSRunner.jl:276-293`
 - Test: `dmrg/idmrg/test/test_vumps_runner.jl`
 
-- [ ] **Step 1: Make the progress predicate monotone**
+- [ ] **Step 1: Keep the monotone progress regression**
 
-After its existing length check, replace the predicate body with:
+Keep this assertion because one growing link must not hide another shrinking
+link:
+
+```julia
+@test !InfiniteCylinderDMRG._subspace_expansion_progressed(
+    [2, 2], [1, 3]
+)
+```
+
+- [ ] **Step 2: Test target growth through `run_vumps`, not one expansion**
+
+In the small Ising test, replace the low-level target-4 call with:
+
+```julia
+grown = run_vumps(
+    H,
+    psi;
+    maxdim_schedule=[4],
+    cutoff=1e-8,
+    max_iterations=3,
+    vumps_tol=1e-5,
+    energy_tol=1e-4,
+    energy_mismatch_tol=1e-4,
+    stable_iterations=2,
+)
+@test maximum(link_dimensions(grown.psi)) == 4
+@test length(grown.expansions) >= 2
+@test all(record -> record.stage == 1 && record.target == 4, grown.expansions)
+```
+
+In the paper-QN regression, replace the low-level `expand_subspace` call with:
+
+```julia
+result = run_vumps(
+    hamiltonian,
+    prepared.psi;
+    maxdim_schedule=[4],
+    cutoff=1.0e-9,
+    max_iterations=2,
+    vumps_tol=1.0e-6,
+    energy_tol=1.0e-6,
+    energy_mismatch_tol=1.0e-6,
+    stable_iterations=2,
+    canonical_seed=0,
+)
+expanded = result.psi
+```
+
+Keep the exact dimension/invariant assertions. Expected RED on commit
+`b15c2b2`: the pure-expansion loop throws at dimension 2 before VUMPS can
+activate the next direction.
+
+- [ ] **Step 3: Run the revised targeted PBS test and verify RED**
+
+Expected: the paper-QN test errors with the dimension-2 stall from the rejected
+implementation. Preserve job `1869130.w003` and activation probe
+`1869132.w003` as design evidence.
+
+### Task 3: Interleave expansion and VUMPS within each target stage
+
+**Files:**
+- Modify: `dmrg/idmrg/src/VUMPSRunner.jl:276-303,704-805`
+- Test: `dmrg/idmrg/test/test_vumps_runner.jl`
+
+- [ ] **Step 1: Restore one-pass `expand_subspace` with monotone checks**
+
+Implement one upstream call. It must return a partially expanded state when
+progress is monotone, reject zero progress with before/after/achieved/target in
+the error, and reject any dimension above the target. Keep the monotone
+predicate:
 
 ```julia
 return all(after[index] >= before[index] for index in eachindex(before, after)) &&
     any(after[index] > before[index] for index in eachindex(before, after))
 ```
 
-This makes each accepted pass increase the bounded sum of link dimensions;
-growth of one link cannot hide shrinkage of another.
+- [ ] **Step 2: Move the exact-target loop into `run_vumps`**
 
-- [ ] **Step 2: Replace one-pass expansion with the bounded progress loop**
+For each stage, use a single `while iteration < max_iterations` loop. Before
+each VUMPS iteration, if `maximum(link_dimensions(current)) < target`, call
+`expand_subspace`, append one `SubspaceExpansionRecord`, and reset
+`previous_energy` and `stable_count`. Then run exactly one `vumps_iteration`
+and append its `VUMPSRecord`. Set `stable_now` and `converged` only when
+`maximum(link_dimensions(current)) == target`.
 
-Keep the existing argument validation and early return, then implement:
+If the budget ends, return nonconverged. Use reason
+`"stage $stage reached maximum iterations ($max_iterations) before target maxdim=$target (achieved maxdim=$achieved)"`
+when below target, otherwise retain the existing convergence reason.
 
-```julia
-current = psi
-while maximum(link_dimensions(current)) < target
-    before = link_dimensions(current)
-    expanded = subspace_expansion(current, H; maxdim=target, cutoff)
-    after = link_dimensions(expanded)
-    _subspace_expansion_progressed(before, after) || error(
-        "subspace expansion stalled at achieved maxdim=$(maximum(after)) " *
-        "before target maxdim=$target; before=$before after=$after"
-    )
-    maximum(after) <= target || error(
-        "subspace expansion exceeded target maxdim=$target: after=$after"
-    )
-    current = expanded
-end
-maximum(link_dimensions(current)) == target || error(
-    "subspace expansion did not reach target maxdim=$target"
-)
-return current
-```
-
-- [ ] **Step 3: Tighten the stalled-Hamiltonian assertion**
-
-Replace the existing broad message check with:
-
-```julia
-@test occursin("stalled at achieved maxdim=1", sprint(showerror, error))
-@test occursin("target maxdim=2", sprint(showerror, error))
-```
-
-- [ ] **Step 4: Run the same targeted PBS test and verify GREEN**
+- [ ] **Step 3: Run the targeted PBS test and verify GREEN**
 
 Expected: all `test_vumps_runner.jl` testsets pass; the paper-QN target-4 case
-preserves sites and flux; the zero Hamiltonian still fails before VUMPS.
+reaches 4 after an activation iteration and preserves sites/flux; the zero
+Hamiltonian still fails before VUMPS.
 
-- [ ] **Step 5: Commit and synchronize the implementation**
+- [ ] **Step 4: Commit and synchronize the correction**
 
 ```bash
 git add dmrg/idmrg/src/VUMPSRunner.jl dmrg/idmrg/test/test_vumps_runner.jl
-git commit -m "fix: reach requested iDMRG expansion dimension"
+git commit -m "fix: interleave VUMPS with targeted expansion"
 ```
 
 Synchronize the exact commit through W003 and push `DMRG` with the cluster SSH
 key.
 
-### Task 3: Verify one real D=32 Fig. 2 candidate
+### Task 4: Verify one real D=32 Fig. 2 candidate
 
 **Files:**
 - Read: `dmrg/idmrg/src/Fig2Benchmark.jl`
@@ -195,7 +240,7 @@ Do not add random sectors or relax the target gate. Preserve the output and
 error, then compare powers-of-two VUMPS staging against a QN-aware deterministic
 enrichment design before further implementation.
 
-### Task 4: Run full verification and restore pilot production
+### Task 5: Run full verification and restore pilot production
 
 **Files:**
 - Read: `dmrg/idmrg/test/runtests.jl`
