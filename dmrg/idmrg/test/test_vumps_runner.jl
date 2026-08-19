@@ -259,9 +259,19 @@ end
         )
         expected_sites = siteinds(only, prepared.psi.AL)
         expected_flux = flux(prepared.psi.AL)
-        expanded = expand_subspace(
-            prepared.psi, hamiltonian, 4; cutoff=1.0e-9
+        result = run_vumps(
+            hamiltonian,
+            prepared.psi;
+            maxdim_schedule=[4],
+            cutoff=1.0e-9,
+            max_iterations=2,
+            vumps_tol=1.0e-6,
+            energy_tol=1.0e-6,
+            energy_mismatch_tol=1.0e-6,
+            stable_iterations=2,
+            canonical_seed=0,
         )
+        expanded = result.psi
 
         @test maximum(link_dimensions(expanded)) == 4
         @test nsites(expanded) == sites_per_cell(spec.config)
@@ -350,8 +360,20 @@ end
     H = InfiniteSum{MPO}(Model("ising"), sites; J=1.0, h=1.2)
     expanded = expand_subspace(psi, H, 2; cutoff=1e-8)
     @test maximum(link_dimensions(expanded)) > maximum(link_dimensions(psi))
-    expanded_to_four = expand_subspace(psi, H, 4; cutoff=1e-8)
-    @test maximum(link_dimensions(expanded_to_four)) == 4
+    grown = run_vumps(
+        H,
+        psi;
+        maxdim_schedule=[4],
+        cutoff=1e-8,
+        max_iterations=3,
+        vumps_tol=1e-5,
+        energy_tol=1e-4,
+        energy_mismatch_tol=1e-4,
+        stable_iterations=2,
+    )
+    @test maximum(link_dimensions(grown.psi)) == 4
+    @test length(grown.expansions) >= 2
+    @test all(record -> record.stage == 1 && record.target == 4, grown.expansions)
     @test !InfiniteCylinderDMRG._subspace_expansion_progressed(
         [2, 2], [1, 3]
     )
