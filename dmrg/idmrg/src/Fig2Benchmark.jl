@@ -1934,7 +1934,7 @@ function _parse_fig2_convergence_lines(lines)
         energy_left = _fig2_convergence_float(fields[4], columns[4], row)
         energy_right = _fig2_convergence_float(fields[5], columns[5], row)
         energy_mismatch = _fig2_convergence_float(fields[6], columns[6], row)
-        delta_energy = if row == 1 && fields[7] == "missing"
+        delta_energy = if fields[7] == "missing"
             missing
         else
             _fig2_convergence_float(fields[7], columns[7], row)
@@ -1995,8 +1995,13 @@ function _normalize_fig2_convergence_sentinel!(path)
     ))
 
     normalized = copy(lines)
-    first_fields[7] = "missing"
-    normalized[2] = join(first_fields, '\t')
+    for line_index in 2:length(normalized)
+        fields = split(normalized[line_index], '\t'; keepempty=true)
+        if length(fields) >= 7 && fields[7] == "Inf"
+            fields[7] = "missing"
+            normalized[line_index] = join(fields, '\t')
+        end
+    end
     _parse_fig2_convergence_lines(normalized)
     _write_fig2_bytes(path, join(normalized, '\n') * '\n')
     return String(path)
@@ -2067,6 +2072,7 @@ function _validate_fig2_convergence_tsv(
     stable_count = 0
     stage_converged = false
     previous_energy = nothing
+    previous_maxlinkdim = nothing
     for (row_number, row) in enumerate(parsed)
         if row.stage == current_stage + 1
             current_stage > 0 && !stage_converged && throw(ArgumentError(
@@ -2076,6 +2082,8 @@ function _validate_fig2_convergence_tsv(
             expected_iteration = 1
             stable_count = 0
             stage_converged = false
+            previous_energy = nothing
+            previous_maxlinkdim = nothing
         elseif row.stage == current_stage
             stage_converged && throw(ArgumentError(
                 "convergence.tsv stage $(row.stage) contains rows after its converged row"
@@ -2094,8 +2102,8 @@ function _validate_fig2_convergence_tsv(
         row.maxlinkdim <= schedule[row.stage] || throw(ArgumentError(
             "convergence.tsv maxlinkdim $(row.maxlinkdim) at row $row_number exceeds stage $(row.stage) cap $(schedule[row.stage])"
         ))
-        row_number == 1 && !ismissing(row.delta_energy) && throw(ArgumentError(
-            "convergence.tsv first delta_energy must be the normalized missing sentinel"
+        row.iteration == 1 && !ismissing(row.delta_energy) && throw(ArgumentError(
+            "convergence.tsv first delta_energy for stage $(row.stage) must be the normalized missing sentinel"
         ))
         for (name, value) in (
             "energy_mismatch" => row.energy_mismatch,
@@ -2125,13 +2133,19 @@ function _validate_fig2_convergence_tsv(
             "convergence.tsv precision_error at row $row_number disagrees with max(eps_left,eps_right)"
         ))
         energy = (row.energy_left + row.energy_right) / 2
-        if isnothing(previous_energy)
-            ismissing(row.delta_energy) || throw(ArgumentError(
-                "convergence.tsv first delta_energy must be the normalized missing sentinel"
-            ))
+        if ismissing(row.delta_energy)
+            if row.iteration != 1 && !(
+                !isnothing(previous_maxlinkdim) &&
+                    previous_maxlinkdim < schedule[row.stage]
+            )
+                throw(ArgumentError(
+                    "convergence.tsv delta_energy at row $row_number is missing after stage $(row.stage) already reached its target maxlinkdim"
+                ))
+            end
+            stable_count = 0
         else
-            ismissing(row.delta_energy) && throw(ArgumentError(
-                "convergence.tsv delta_energy at row $row_number is missing"
+            !isnothing(previous_energy) || throw(ArgumentError(
+                "convergence.tsv first delta_energy for stage $(row.stage) must be the normalized missing sentinel"
             ))
             replayed_delta_energy = abs(energy - previous_energy)
             _fig2_same_float(
@@ -2141,6 +2155,7 @@ function _validate_fig2_convergence_tsv(
             ))
         end
         stable_now = !ismissing(row.delta_energy) &&
+            row.maxlinkdim == schedule[row.stage] &&
             all(isfinite, (
                 row.precision_error,
                 row.delta_energy,
@@ -2159,6 +2174,7 @@ function _validate_fig2_convergence_tsv(
         stage_converged = row.converged
         expected_iteration += 1
         previous_energy = energy
+        previous_maxlinkdim = row.maxlinkdim
     end
 
     observed_stages = unique(row.stage for row in parsed)
