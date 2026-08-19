@@ -238,6 +238,41 @@ end
     end
 end
 
+@testset "paper QN subspace expansion reaches requested target" begin
+    manifest = joinpath(@__DIR__, "..", "benchmarks", "fqahc_fig2.toml")
+    spec = load_fig2_benchmark(manifest)
+    candidate_id = first(
+        InfiniteCylinderDMRG._default_fig2_candidate_ids(
+            spec, 4, 1, nothing
+        ),
+    )
+    saved_default_rng = copy(Random.default_rng())
+    saved_index_rng = copy(ITensors.index_id_rng())
+    try
+        Random.seed!(Random.default_rng(), 0)
+        Random.seed!(ITensors.index_id_rng(), 0)
+        prepared = InfiniteCylinderDMRG._prepare_fig2_candidate_state(
+            spec, spec.config, candidate_id, nothing
+        )
+        hamiltonian = build_infinite_mpo(
+            spec.config, spec.model, prepared.sites
+        )
+        expected_sites = siteinds(only, prepared.psi.AL)
+        expected_flux = flux(prepared.psi.AL)
+        expanded = expand_subspace(
+            prepared.psi, hamiltonian, 4; cutoff=1.0e-9
+        )
+
+        @test maximum(link_dimensions(expanded)) == 4
+        @test nsites(expanded) == sites_per_cell(spec.config)
+        @test siteinds(only, expanded.AL) == expected_sites
+        @test flux(expanded.AL) == expected_flux
+    finally
+        copy!(Random.default_rng(), saved_default_rng)
+        copy!(ITensors.index_id_rng(), saved_index_rng)
+    end
+end
+
 @testset "pinned VUMPS iteration boundary" begin
     initspin(_) = "↑"
     sites = infsiteinds("S=1/2", 1; initstate=initspin)
@@ -315,6 +350,11 @@ end
     H = InfiniteSum{MPO}(Model("ising"), sites; J=1.0, h=1.2)
     expanded = expand_subspace(psi, H, 2; cutoff=1e-8)
     @test maximum(link_dimensions(expanded)) > maximum(link_dimensions(psi))
+    expanded_to_four = expand_subspace(psi, H, 4; cutoff=1e-8)
+    @test maximum(link_dimensions(expanded_to_four)) == 4
+    @test !InfiniteCylinderDMRG._subspace_expansion_progressed(
+        [2, 2], [1, 3]
+    )
 
     stalled_H = InfiniteSum{MPO}(Model("ising"), sites; J=0.0, h=0.0)
     error = try
