@@ -54,6 +54,7 @@ source "$config_path"
 : "${FIG2_DIMENSIONS:?FIG2_DIMENSIONS is required}"
 : "${FIG2_FLUX_UNITS:?FIG2_FLUX_UNITS is required}"
 : "${FIG2_THREADS:?FIG2_THREADS is required}"
+export JULIA_DEPOT_PATH
 
 repo=$(/usr/bin/realpath -m "$W003_REPO")
 output=$(/usr/bin/realpath -m "$FIG2_OUTPUT")
