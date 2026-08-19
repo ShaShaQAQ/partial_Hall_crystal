@@ -9,11 +9,23 @@ set -euo pipefail
 export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
 
 : "${PBS_JOBID:?run_fig2_stage.pbs must run inside PBS}"
-: "${FIG2_JOB_CONFIG:?FIG2_JOB_CONFIG is required}"
-
 results_base=/home/public/shajy/codex/results/fqahc-fig2
 results_prefix=/home/public/shajy/codex/results/fqahc-fig2/
+result_root="$results_base/pbs/${PBS_JOBID}"
+mkdir -p "$result_root"
+record_exit() {
+  exit_code=$?
+  printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"
+  trap - EXIT
+  exit "$exit_code"
+}
+trap record_exit EXIT
+
+: "${FIG2_JOB_CONFIG:?FIG2_JOB_CONFIG is required}"
+: "${FIG2_JOB_LAUNCHER:?FIG2_JOB_LAUNCHER is required}"
+
 config_path=$(/usr/bin/realpath -m "$FIG2_JOB_CONFIG")
+launcher_path=$(/usr/bin/realpath -m "$FIG2_JOB_LAUNCHER")
 case "$config_path" in
   "$results_base"/job_configs/*.env) ;;
   *)
@@ -21,7 +33,15 @@ case "$config_path" in
     exit 2
     ;;
 esac
+case "$launcher_path" in
+  "$results_base"/job_configs/*.pbs) ;;
+  *)
+    echo "FIG2_JOB_LAUNCHER must be an immutable file under $results_base/job_configs" >&2
+    exit 2
+    ;;
+esac
 test -r "$config_path"
+test -r "$launcher_path"
 # shellcheck disable=SC1090
 source "$config_path"
 
@@ -64,15 +84,7 @@ test -x "$JULIA_BIN"
 test -f "$manifest"
 test -f "$repo/dmrg/idmrg/bin/run_fig2_benchmark.jl"
 
-result_root="$results_base/pbs/${PBS_JOBID}"
 mkdir -p "$result_root" "$output"
-record_exit() {
-  exit_code=$?
-  printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"
-  trap - EXIT
-  exit "$exit_code"
-}
-trap record_exit EXIT
 
 exec 9>> "$output/.fig2_stage.lock"
 if ! /usr/bin/flock -n 9; then
@@ -114,6 +126,7 @@ export LC_ALL=C
   hostname
   printf 'pbs_job_id=%s\n' "$PBS_JOBID"
   printf 'job_config=%s\n' "$config_path"
+  printf 'job_launcher=%s\n' "$launcher_path"
   printf 'git_commit=%s\n' "$head_commit"
   printf 'origin_dmrg=%s\n' "$origin_commit"
   printf 'stage=%s\n' "$FIG2_STAGE"
@@ -124,6 +137,7 @@ export LC_ALL=C
   git status --porcelain --untracked-files=no
   sha256sum \
     "$config_path" \
+    "$launcher_path" \
     "$manifest" \
     "$repo/dmrg/idmrg/src/Fig2Benchmark.jl" \
     "$repo/dmrg/idmrg/src/VUMPSRunner.jl" \

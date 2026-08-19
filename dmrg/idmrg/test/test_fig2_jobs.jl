@@ -47,6 +47,113 @@ function run_fig2_submitter_dry_run(
     end
 end
 
+function run_fig2_submitter_generation(
+    submitter::AbstractString,
+    repository::AbstractString;
+    qsub_exit_code::Integer=0,
+)
+    return mktempdir() do directory
+        qsub_capture = joinpath(directory, "qsub_args.txt")
+        launcher_snapshot = joinpath(directory, "launcher.pbs")
+        mock_qsub = joinpath(directory, "qsub")
+        write(
+            mock_qsub,
+            """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "\$@" > "\$QSUB_CAPTURE"
+last_argument=\${!#}
+cp "\$last_argument" "\$QSUB_LAUNCHER_SNAPSHOT"
+if [[ "\$QSUB_EXIT_CODE" != 0 ]]; then
+  exit "\$QSUB_EXIT_CODE"
+fi
+printf '999999.w003\\n'
+""",
+        )
+        chmod(mock_qsub, 0o700)
+
+        stdout_path = joinpath(directory, "stdout.log")
+        stderr_path = joinpath(directory, "stderr.log")
+        stage = "job_contract_$(getpid())_$(time_ns())"
+        command = addenv(
+            `bash $submitter`,
+            "W003_REPO" => repository,
+            "QSUB_BIN" => mock_qsub,
+            "QSUB_CAPTURE" => qsub_capture,
+            "QSUB_LAUNCHER_SNAPSHOT" => launcher_snapshot,
+            "QSUB_EXIT_CODE" => string(qsub_exit_code),
+            "DRY_RUN" => "0",
+            "FIG2_MANIFEST" => joinpath(
+                repository,
+                "dmrg",
+                "idmrg",
+                "benchmarks",
+                "fqahc_fig2.toml",
+            ),
+            "FIG2_STAGE" => stage,
+            "FIG2_OUTPUT" =>
+                "/home/public/shajy/codex/results/fqahc-fig2/$stage",
+            "FIG2_DIMENSIONS" => "32",
+            "FIG2_FLUX_UNITS" => "0",
+            "FIG2_THREADS" => "4",
+            "FIG2_DEPENDENCY" => "",
+            "FIG2_WALLTIME" => "00:20:00",
+        )
+        process = open(stdout_path, "w") do stdout_io
+            open(stderr_path, "w") do stderr_io
+                run(
+                    pipeline(
+                        ignorestatus(command);
+                        stdout=stdout_io,
+                        stderr=stderr_io,
+                    ),
+                )
+            end
+        end
+
+        stdout = read(stdout_path, String)
+        stderr = read(stderr_path, String)
+        qsub_arguments =
+            isfile(qsub_capture) ? readlines(qsub_capture) : String[]
+        snapshot =
+            isfile(launcher_snapshot) ? read(launcher_snapshot, String) : ""
+        config_match = match(
+            r"^export FIG2_JOB_CONFIG=(.+)$"m,
+            snapshot,
+        )
+        config = isnothing(config_match) ? "" : only(config_match.captures)
+        launcher = isempty(qsub_arguments) ? "" : last(qsub_arguments)
+        config_mode = isfile(config) ? stat(config).mode & 0o777 : nothing
+        launcher_mode =
+            isfile(launcher) ? stat(launcher).mode & 0o777 : nothing
+        config_exists_after = isfile(config)
+        launcher_exists_after = isfile(launcher)
+
+        job_config_root =
+            "/home/public/shajy/codex/results/fqahc-fig2/job_configs/"
+        for path in (config, launcher)
+            if startswith(path, job_config_root) &&
+                    startswith(basename(path), "$stage.")
+                rm(path; force=true)
+            end
+        end
+
+        return (
+            exitcode=process.exitcode,
+            stdout,
+            stderr,
+            qsub_arguments,
+            snapshot,
+            config,
+            launcher,
+            config_mode,
+            launcher_mode,
+            config_exists_after,
+            launcher_exists_after,
+            stage,
+        )
+    end
+end
+
 @testset "Fig. 2 W003 production job contract" begin
     job_directory = joinpath(@__DIR__, "..", "jobs")
     runner = joinpath(job_directory, "run_fig2_stage.pbs")
@@ -92,6 +199,22 @@ end
         @test occursin("qstat -f", source)
         @test occursin("/usr/bin/time -v", source)
         @test occursin("run_fig2_benchmark.jl", source)
+        @test occursin(
+            ": \"\${FIG2_JOB_LAUNCHER:?FIG2_JOB_LAUNCHER is required}\"",
+            source,
+        )
+        @test occursin("job_launcher=%s", source)
+        result_root_position = findfirst("result_root=", source)
+        config_requirement_position = findfirst(
+            ": \"\${FIG2_JOB_CONFIG:?FIG2_JOB_CONFIG is required}\"",
+            source,
+        )
+        @test !isnothing(result_root_position)
+        @test !isnothing(config_requirement_position)
+        if !isnothing(result_root_position) &&
+                !isnothing(config_requirement_position)
+            @test first(result_root_position) < first(config_requirement_position)
+        end
         for argument in (
             "--manifest=",
             "--stage=",
@@ -120,8 +243,68 @@ end
         @test occursin(
             "/home/public/shajy/codex/results/fqahc-fig2/", source
         )
+        @test occursin("launcher=\$(mktemp", source)
+        @test occursin("export FIG2_JOB_CONFIG=%q", source)
+        @test occursin("export FIG2_JOB_LAUNCHER=%q", source)
+        @test occursin(
+            "chmod 0444 \"\$config\" \"\$launcher\"",
+            source,
+        )
+        @test !occursin("-v \"FIG2_JOB_CONFIG=", source)
+        qsub_override_supported = occursin("QSUB_BIN", source)
+        @test qsub_override_supported
 
         repository = normpath(joinpath(@__DIR__, "..", "..", ".."))
+        if qsub_override_supported
+            @testset "submitter generates the launcher passed to qsub" begin
+                result = run_fig2_submitter_generation(
+                    submitter,
+                    repository,
+                )
+                @test result.exitcode == 0
+                @test result.config_mode == 0o444
+                @test result.launcher_mode == 0o444
+                @test result.config_exists_after
+                @test result.launcher_exists_after
+                @test last(result.qsub_arguments) == result.launcher
+                @test !any(==("-v"), result.qsub_arguments)
+                @test occursin("#PBS -q cmt\n", result.snapshot)
+                @test occursin(
+                    "#PBS -l nodes=1:ppn=24\n",
+                    result.snapshot,
+                )
+                @test occursin(
+                    "#PBS -l walltime=12:00:00\n",
+                    result.snapshot,
+                )
+                @test occursin(
+                    "export FIG2_JOB_CONFIG=$(result.config)\n",
+                    result.snapshot,
+                )
+                @test occursin(
+                    "export FIG2_JOB_LAUNCHER=$(result.launcher)\n",
+                    result.snapshot,
+                )
+                exec_match = match(r"^exec (.+)$"m, result.snapshot)
+                @test !isnothing(exec_match)
+                if !isnothing(exec_match)
+                    @test normpath(only(exec_match.captures)) ==
+                        normpath(runner)
+                end
+            end
+
+            @testset "failed qsub removes orphan submission files" begin
+                result = run_fig2_submitter_generation(
+                    submitter,
+                    repository;
+                    qsub_exit_code=17,
+                )
+                @test result.exitcode == 17
+                @test !result.config_exists_after
+                @test !result.launcher_exists_after
+            end
+        end
+
         @testset "submitter accepts the declared thread counts" begin
             for threads in (4, 12, 24)
                 result = run_fig2_submitter_dry_run(
@@ -131,6 +314,11 @@ end
                 )
                 @test result.exitcode == 0
                 @test occursin("FIG2_THREADS=$threads\n", result.stdout)
+                @test occursin(
+                    "FIG2_JOB_LAUNCHER=<generated-on-submit>\n",
+                    result.stdout,
+                )
+                @test !occursin("-v FIG2_JOB_CONFIG", result.stdout)
                 @test isempty(result.stderr)
             end
         end

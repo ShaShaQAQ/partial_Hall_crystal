@@ -280,16 +280,19 @@ Submit the default `D=32,64,128` seven-flux pilot with:
 dmrg/idmrg/jobs/submit_fig2_stage.sh
 ```
 
-The submitter writes one read-only configuration under
-`/home/public/shajy/codex/results/fqahc-fig2/job_configs`, then passes only that
-path through PBS. This avoids comma parsing in PBS `-v` values. The runner
-requires `HEAD == origin/DMRG`, refuses tracked or staged W003 changes, holds an
-advisory lock on the output root, and records the node, PBS request, source and
-manifest hashes, package versions, thread environment, `/usr/bin/time -v`, and
-exit code under `results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is
-resubmitted with the same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid;
-the benchmark ledger audits completed candidate checksums and resumes from the
-last valid wavefunction.
+The submitter writes a read-only configuration and a read-only PBS launcher
+under `/home/public/shajy/codex/results/fqahc-fig2/job_configs`. The launcher
+exports the two exact immutable paths in its script body and then executes the
+checked-in runner; it does not depend on W003 propagating user variables from
+`qsub -v` through the site `bypass` wrapper. The runner requires
+`HEAD == origin/DMRG`, refuses tracked or staged W003 changes, holds an advisory
+lock on the output root, and records the node, PBS request, launcher,
+configuration, source and manifest hashes, package versions, thread
+environment, `/usr/bin/time -v`, and exit code under
+`results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is resubmitted with the
+same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid; the benchmark ledger
+audits completed candidate checksums and resumes from the last valid
+wavefunction.
 
 The default walltime is 12 hours through `D=128`, 36 hours for `D=256`, 72
 hours through `D=1000`, and 120 hours above `D=1000`. Override it explicitly

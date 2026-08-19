@@ -15,6 +15,7 @@ FIG2_DIMENSIONS=${FIG2_DIMENSIONS:-32,64,128}
 FIG2_FLUX_UNITS=${FIG2_FLUX_UNITS:-0,0.5,1,1.5,2,2.5,3}
 FIG2_THREADS=${FIG2_THREADS:-24}
 FIG2_DEPENDENCY=${FIG2_DEPENDENCY:-}
+QSUB_BIN=${QSUB_BIN:-qsub}
 DRY_RUN=${DRY_RUN:-0}
 
 [[ "$FIG2_STAGE" =~ ^[A-Za-z0-9._-]+$ ]] || {
@@ -91,12 +92,13 @@ if [[ "$DRY_RUN" == 1 ]]; then
   printf 'FIG2_FLUX_UNITS=%s\n' "$FIG2_FLUX_UNITS"
   printf 'FIG2_THREADS=%s\n' "$FIG2_THREADS"
   printf 'FIG2_WALLTIME=%s\n' "$FIG2_WALLTIME"
+  printf 'FIG2_JOB_LAUNCHER=<generated-on-submit>\n'
   if [[ -n "$FIG2_DEPENDENCY" ]]; then
-    printf 'qsub -N %s -l walltime=%s -W depend=afterok:%s -v FIG2_JOB_CONFIG=<generated-on-submit> %s\n' \
-      "$job_name" "$FIG2_WALLTIME" "$FIG2_DEPENDENCY" "$runner"
+    printf 'qsub -N %s -l walltime=%s -W depend=afterok:%s <generated-on-submit>\n' \
+      "$job_name" "$FIG2_WALLTIME" "$FIG2_DEPENDENCY"
   else
-    printf 'qsub -N %s -l walltime=%s -v FIG2_JOB_CONFIG=<generated-on-submit> %s\n' \
-      "$job_name" "$FIG2_WALLTIME" "$runner"
+    printf 'qsub -N %s -l walltime=%s <generated-on-submit>\n' \
+      "$job_name" "$FIG2_WALLTIME"
   fi
   exit 0
 fi
@@ -104,6 +106,20 @@ fi
 config_directory="$results_base/job_configs"
 mkdir -p "$config_directory"
 umask 077
+config=
+launcher=
+cleanup_unsubmitted_files() {
+  for submission_file in "$launcher" "$config"; do
+    case "$submission_file" in
+      "$config_directory"/"$FIG2_STAGE".*.env|\
+      "$config_directory"/"$FIG2_STAGE".*.pbs)
+        rm -f -- "$submission_file"
+        ;;
+    esac
+  done
+}
+trap cleanup_unsubmitted_files EXIT
+
 config=$(mktemp "$config_directory/${FIG2_STAGE}.XXXXXX.env")
 {
   printf 'W003_REPO=%q\n' "$W003_REPO"
@@ -117,18 +133,32 @@ config=$(mktemp "$config_directory/${FIG2_STAGE}.XXXXXX.env")
   printf 'FIG2_THREADS=%q\n' "$FIG2_THREADS"
   printf 'FIG2_WALLTIME=%q\n' "$FIG2_WALLTIME"
 } > "$config"
-chmod 0444 "$config"
+
+launcher=$(mktemp "$config_directory/${FIG2_STAGE}.XXXXXX.pbs")
+sed -n '1,/^$/p' "$runner" > "$launcher"
+{
+  printf 'export FIG2_JOB_CONFIG=%q\n' "$config"
+  printf 'export FIG2_JOB_LAUNCHER=%q\n' "$launcher"
+  printf 'exec %q\n' "$runner"
+} >> "$launcher"
+chmod 0444 "$config" "$launcher"
 
 qsub_args=(
   -N "$job_name"
   -l "walltime=$FIG2_WALLTIME"
-  -v "FIG2_JOB_CONFIG=$config"
 )
 if [[ -n "$FIG2_DEPENDENCY" ]]; then
   qsub_args+=(-W "depend=afterok:$FIG2_DEPENDENCY")
 fi
 
-job_id=$(qsub "${qsub_args[@]}" "$runner")
+if [[ "$QSUB_BIN" == */* ]]; then
+  test -x "$QSUB_BIN"
+else
+  command -v "$QSUB_BIN" >/dev/null
+fi
+job_id=$("$QSUB_BIN" "${qsub_args[@]}" "$launcher")
+trap - EXIT
 printf 'job_id=%s\n' "$job_id"
 printf 'job_config=%s\n' "$config"
+printf 'job_launcher=%s\n' "$launcher"
 printf 'output=%s\n' "$output"
