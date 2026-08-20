@@ -270,6 +270,19 @@ end
     end
 end
 
+@testset "Fig. 2 production uses bounded powers-of-two maxdim staging" begin
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(2) == [2]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(4) == [4]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(32) ==
+        [4, 8, 16, 32]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(1000) ==
+        [4, 8, 16, 32, 64, 128, 256, 512, 1000]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(2000) ==
+        [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2000]
+    @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(0)
+    @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(true)
+end
+
 if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
     @testset "real Fig. 2 default runner proves checkpoint bond dimension" begin
         haskey(ENV, "IDMRG_TEST_ARTIFACTS") || error(
