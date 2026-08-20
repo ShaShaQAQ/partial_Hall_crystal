@@ -330,7 +330,8 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
         @test checkpoint_maxlinkdim == evidence.achieved_maxlinkdim
 
         summary = TOML.parsefile(joinpath(output, "summary.toml"))
-        @test summary["optimization"]["maxdim_schedule"] == [dimension]
+        @test summary["optimization"]["maxdim_schedule"] ==
+            InfiniteCylinderDMRG._fig2_maxdim_schedule(dimension)
         smoke_optimization_data = summary["optimization"]
         smoke_optimization = (
             vumps_tol=Float64(smoke_optimization_data["vumps_tol"]),
@@ -1341,13 +1342,50 @@ if all(
         )
     end
 
+    function synthetic_fig2_convergence_rows(
+        schedule;
+        final_maxlinkdim=last(schedule),
+        final_converged=true,
+    )
+        rows = NamedTuple[]
+        for (stage, stage_maxdim) in enumerate(schedule)
+            is_final = stage == length(schedule)
+            maxlinkdim = is_final ? final_maxlinkdim : stage_maxdim
+            push!(rows, (
+                stage,
+                iteration=1,
+                maxlinkdim,
+                delta_energy="missing",
+                converged=false,
+            ))
+            if !is_final || final_converged
+                push!(rows, (
+                    stage,
+                    iteration=2,
+                    maxlinkdim,
+                    delta_energy=1.0e-8,
+                    converged=false,
+                ))
+                push!(rows, (
+                    stage,
+                    iteration=3,
+                    maxlinkdim,
+                    delta_energy=1.0e-8,
+                    converged=true,
+                ))
+            end
+        end
+        return rows
+    end
+
     function write_fake_candidate_files(
         directory,
         marker;
         requested_maxdim,
         achieved_maxlinkdim=requested_maxdim,
         checkpoint_maxlinkdim=achieved_maxlinkdim,
-        summary_maxdim_schedule=[requested_maxdim],
+        summary_maxdim_schedule=
+            InfiniteCylinderDMRG._fig2_maxdim_schedule(requested_maxdim),
         summary_converged=true,
         summary_valid=true,
         fixed_cut_valid=summary_converged,
@@ -1355,29 +1393,11 @@ if all(
         convergence_energy_per_site=summary_energy_per_site,
         summary_optimization_overrides=Dict{String,Any}(),
         sector_weights=Dict(0 => 1.0),
-        convergence_rows=[
-            (
-                stage=1,
-                iteration=1,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy="missing",
-                converged=false,
-            ),
-            (
-                stage=1,
-                iteration=2,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy=1.0e-8,
-                converged=false,
-            ),
-            (
-                stage=1,
-                iteration=3,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy=1.0e-8,
-                converged=true,
-            ),
-        ],
+        convergence_rows=synthetic_fig2_convergence_rows(
+            summary_maxdim_schedule;
+            final_maxlinkdim=achieved_maxlinkdim,
+            final_converged=summary_converged,
+        ),
     )
         mkpath(directory)
         open(joinpath(directory, "state.h5"), "w") do io
@@ -3612,31 +3632,11 @@ if all(
         requested_maxdim=dimension,
         achieved_maxlinkdim=requested_maxdim,
         checkpoint_maxlinkdim=achieved_maxlinkdim,
-        summary_maxdim_schedule=[requested_maxdim],
+        summary_maxdim_schedule=
+            InfiniteCylinderDMRG._fig2_maxdim_schedule(dimension),
         summary_optimization_overrides=Dict{String,Any}(),
-        convergence_rows=[
-            (
-                stage=1,
-                iteration=1,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy="missing",
-                converged=false,
-            ),
-            (
-                stage=1,
-                iteration=2,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy=1.0e-8,
-                converged=false,
-            ),
-            (
-                stage=1,
-                iteration=3,
-                maxlinkdim=achieved_maxlinkdim,
-                delta_energy=1.0e-8,
-                converged=true,
-            ),
-        ],
+        convergence_rows=
+            synthetic_fig2_convergence_rows(summary_maxdim_schedule),
     )
         spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
         operations = Fig2BenchmarkOperations(
@@ -3686,6 +3686,8 @@ if all(
     end
 
     @testset "claimed bond dimension is proved by every candidate artifact" begin
+        claimed_schedule = InfiniteCylinderDMRG._fig2_maxdim_schedule(3000)
+        valid_claimed_rows = synthetic_fig2_convergence_rows(claimed_schedule)
         cases = [
             (
                 label="requested D disagrees with ledger dimension",
@@ -3737,50 +3739,27 @@ if all(
             ),
             (
                 label="final convergence flag disagrees with summary",
-                kwargs=(; convergence_rows=[(
-                    stage=1,
-                    iteration=1,
-                    maxlinkdim=3000,
-                    delta_energy="missing",
-                    converged=false,
-                )]),
+                kwargs=(; convergence_rows=valid_claimed_rows[1:(end - 1)]),
                 fragments=("summary", "final"),
             ),
             (
                 label="final convergence row has the wrong maxlinkdim",
-                kwargs=(; convergence_rows=[
-                    (
-                        stage=1,
-                        iteration=1,
-                        maxlinkdim=2000,
-                        delta_energy="missing",
-                        converged=false,
-                    ),
-                    (
-                        stage=1,
-                        iteration=2,
-                        maxlinkdim=2000,
-                        delta_energy=1.0e-8,
-                        converged=false,
-                    ),
-                    (
-                        stage=1,
-                        iteration=3,
-                        maxlinkdim=2000,
-                        delta_energy=1.0e-8,
-                        converged=true,
-                    ),
-                ]),
+                kwargs=(; convergence_rows=synthetic_fig2_convergence_rows(
+                    claimed_schedule; final_maxlinkdim=2000
+                )),
                 fragments=("final", "maxlinkdim"),
             ),
             (
                 label="convergence integer columns are parsed strictly",
-                kwargs=(; convergence_rows=[(
-                    stage=1,
-                    iteration=1,
-                    maxlinkdim="3000.0",
-                    converged=true,
-                )]),
+                kwargs=(; convergence_rows=vcat(
+                    valid_claimed_rows[1:(end - 3)],
+                    [(
+                        stage=length(claimed_schedule),
+                        iteration=1,
+                        maxlinkdim="3000.0",
+                        converged=false,
+                    )],
+                )),
                 fragments=("convergence.tsv", "maxlinkdim"),
             ),
         ]

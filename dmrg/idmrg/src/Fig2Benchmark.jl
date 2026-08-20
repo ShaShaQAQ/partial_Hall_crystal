@@ -2656,7 +2656,7 @@ function _validate_fig2_candidate_artifacts(
         ArgumentError("candidate summary converged flag is missing")
     )
     summary_schedule = _fig2_summary_maxdim_schedule(summary)
-    summary_schedule == [dimension] || throw(
+    summary_schedule == _fig2_maxdim_schedule(dimension) || throw(
         ArgumentError("candidate summary maxdim schedule disagrees with requested maxdim")
     )
     convergence_optimization = _fig2_summary_convergence_optimization(
@@ -5602,6 +5602,24 @@ function _fig2_candidate_seed(
     return Int(mod(seed, UInt64(typemax(Int))))
 end
 
+function _fig2_maxdim_schedule(target::Integer)
+    !(target isa Bool) && target > 0 || throw(
+        ArgumentError("Fig. 2 maxdim target must be a positive integer")
+    )
+    target <= typemax(Int) || throw(
+        ArgumentError("Fig. 2 maxdim target exceeds the supported Int range")
+    )
+    final_target = Int(target)
+    final_target <= 4 && return [final_target]
+
+    schedule = Int[4]
+    while last(schedule) <= fld(final_target, 2)
+        push!(schedule, 2 * last(schedule))
+    end
+    last(schedule) == final_target || push!(schedule, final_target)
+    return schedule
+end
+
 function _default_fig2_run_candidate(
     spec,
     dimension,
@@ -5623,7 +5641,7 @@ function _default_fig2_run_candidate(
     settings = SinglePointSettings(
         config,
         spec.model,
-        [dimension],
+        _fig2_maxdim_schedule(dimension),
         optimization.cutoff,
         optimization.vumps_tol,
         optimization.energy_tol,
