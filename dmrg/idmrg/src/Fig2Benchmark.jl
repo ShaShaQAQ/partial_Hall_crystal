@@ -2168,6 +2168,11 @@ function _validate_fig2_convergence_tsv(
         stable_count = stable_now ? stable_count + 1 : 0
         expected_converged = stable_now &&
             stable_count >= contract.stable_iterations
+        row.converged && row.maxlinkdim != schedule[row.stage] && throw(
+            ArgumentError(
+                "convergence.tsv final converged row $row_number for stage $(row.stage) has the wrong maxlinkdim: achieved=$(row.maxlinkdim), target=$(schedule[row.stage])"
+            )
+        )
         row.converged == expected_converged || throw(ArgumentError(
             "convergence.tsv converged flag at row $row_number disagrees with replayed production tolerances and stable-iteration count"
         ))
