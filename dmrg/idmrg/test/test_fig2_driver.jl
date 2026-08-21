@@ -546,6 +546,8 @@ end
     @test :mixed_fidelity in fields
     @test :momentum_counting_evidence in fields
     @test :provenance_valid ∉ fields
+    @test :progress_audit in fieldnames(Fig2BenchmarkOperations)
+    @test "progress.toml" in InfiniteCylinderDMRG.FIG2_REQUIRED_CANDIDATE_FILES
 end
 
 @testset "Fig. 2 restart validation executes the checkpoint loader" begin
@@ -1070,6 +1072,31 @@ if all(
         )
     end
 
+    function synthetic_progress_audit(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        final_checkpoint,
+    )
+        _ = (spec, dimension, point, phi_y, candidate_id, final_checkpoint)
+        path = joinpath(candidate_directory, "progress.toml")
+        data = TOML.parsefile(path)
+        data["format"] == "fqahc_fig2_synthetic_progress_v1" || error(
+            "invalid synthetic progress format"
+        )
+        return (;
+            complete=data["complete"],
+            event_count=Int(data["event_count"]),
+            resume_count=Int(data["resume_count"]),
+            latest_maxlinkdim=Int(data["latest_maxlinkdim"]),
+            final_state_sha256=String(data["final_state_sha256"]),
+            progress_sha256=InfiniteCylinderDMRG._fig2_file_sha256(path),
+        )
+    end
+
     function write_synthetic_fig2_acceptance_report!(
         spec,
         directory;
@@ -1079,6 +1106,7 @@ if all(
             spec,
             directory;
             checkpoint_audit=synthetic_checkpoint_audit,
+            progress_audit=synthetic_progress_audit,
             candidate_ids_provider,
         )
     end
@@ -1092,6 +1120,7 @@ if all(
             spec,
             directory;
             checkpoint_audit=synthetic_checkpoint_audit,
+            progress_audit=synthetic_progress_audit,
             candidate_ids_provider,
         )
     end
@@ -1148,6 +1177,7 @@ if all(
             data -> data["expected_endpoint_pump"] = 1.1,
             spec -> mktempdir() do directory
                 operations = Fig2BenchmarkOperations(
+                    progress_audit=synthetic_progress_audit,
                     provenance=synthetic_fig2_provenance,
                 )
                 run_fig2_benchmark(
@@ -1532,6 +1562,20 @@ if all(
                 "synthetic-checkpoint:maxlinkdim=$checkpoint_maxlinkdim:$marker\n",
             )
         end
+        synthetic_state_path = joinpath(directory, "state.h5")
+        open(joinpath(directory, "progress.toml"), "w") do io
+            TOML.print(io, Dict(
+                "format" => "fqahc_fig2_synthetic_progress_v1",
+                "complete" => true,
+                "event_count" => 3,
+                "resume_count" => 0,
+                "latest_maxlinkdim" => achieved_maxlinkdim,
+                "final_state_sha256" =>
+                    InfiniteCylinderDMRG._fig2_file_sha256(
+                        synthetic_state_path
+                    ),
+            ); sorted=true)
+        end
         summary_optimization = Dict{String,Any}(
             "maxdim_schedule" => summary_maxdim_schedule,
             "multisite_update_alg" => "parallel",
@@ -1692,6 +1736,7 @@ if all(
             candidate_calls = String[]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["only"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -1843,6 +1888,7 @@ if all(
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["only"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -1919,6 +1965,8 @@ if all(
                             Float64(row["phi_y"]),
                             "only",
                             metadata["generation_provenance"],
+                            ;
+                            progress_audit=synthetic_progress_audit,
                         )
                         nothing
                     catch error
@@ -2437,6 +2485,7 @@ if all(
             candidate_ids = (args...) -> ["alpha", "beta"]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=candidate_ids,
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -2534,6 +2583,7 @@ if all(
                     spec,
                     directory;
                     checkpoint_audit=synthetic_checkpoint_audit,
+                    progress_audit=synthetic_progress_audit,
                     candidate_ids_provider=candidate_ids,
                 )
                 nothing
@@ -3146,6 +3196,7 @@ if all(
             function operations_for(commit, job)
                 return Fig2BenchmarkOperations(
                     checkpoint_audit=synthetic_checkpoint_audit,
+                    progress_audit=synthetic_progress_audit,
                     provenance=(spec, output, runtime_seconds) ->
                         synthetic_fig2_provenance(
                             spec,
@@ -3267,6 +3318,7 @@ if all(
             ]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["only"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -3403,6 +3455,7 @@ if all(
         spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
         curve_rule = spec.data["paper_curve_rule"]
         operations = Fig2BenchmarkOperations(
+            progress_audit=synthetic_progress_audit,
             provenance=synthetic_fig2_provenance,
             candidate_ids=(args...) -> ["only"],
             run_candidate=(spec, requested_dimension, point, phi_y, candidate_id,
@@ -3792,6 +3845,7 @@ if all(
     )
         spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
         operations = Fig2BenchmarkOperations(
+            progress_audit=synthetic_progress_audit,
             provenance=synthetic_fig2_provenance,
             candidate_ids=(args...) -> ["only"],
             run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -4006,6 +4060,7 @@ if all(
             )
         end
         operations = Fig2BenchmarkOperations(
+            progress_audit=synthetic_progress_audit,
             provenance=synthetic_fig2_provenance,
             candidate_ids=(args...) -> ["only"],
             run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -4309,6 +4364,7 @@ if all(
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["not_restartable"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -4384,6 +4440,7 @@ if all(
                             restart_valid=true,
                             checkpoint_maxlinkdim=1,
                         ),
+                        progress_audit=synthetic_progress_audit,
                     )
                     nothing
                 catch error
@@ -4437,6 +4494,7 @@ if all(
             calls = String[]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["failed_low_energy", "good"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -4594,6 +4652,7 @@ if all(
                 point == 1 ? ["alpha", "beta"] : ["warm", "cold"]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=candidate_ids,
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -4727,6 +4786,7 @@ if all(
             calls = NamedTuple[]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(spec, dimension, point, previous) ->
                     point == 1 ? ["alpha", "beta"] : ["warm", "cold"],
@@ -4830,6 +4890,27 @@ if all(
             @test [row["candidate_id"] for row in ledger["selection"]] ==
                 ["beta", "warm"]
             @test all(row["state_sha256"] != "" for row in ledger["candidate"])
+            @test all(
+                row["progress_complete"] === true for row in ledger["candidate"]
+            )
+            @test all(
+                row["progress_event_count"] == 3 for row in ledger["candidate"]
+            )
+            @test all(
+                row["progress_resume_count"] == 0 for row in ledger["candidate"]
+            )
+            @test all(
+                row["progress_latest_maxlinkdim"] == row["dimension"] for
+                row in ledger["candidate"]
+            )
+            @test all(
+                row["progress_final_state_sha256"] == row["state_sha256"] for
+                row in ledger["candidate"]
+            )
+            @test all(
+                row["progress_sha256"] == row["checksums"]["progress.toml"] for
+                row in ledger["candidate"]
+            )
 
             warm_row = only(filter(
                 row -> row["point"] == 2 && row["candidate_id"] == "warm",
@@ -4918,12 +4999,30 @@ if all(
                     "density.tsv",
                     "entanglement_spectrum.tsv",
                     "schmidt_sectors.tsv",
+                    "progress.toml",
                     "momentum_entanglement_spectrum.tsv",
                     "mixed_fidelity.tsv",
                     "candidate.toml",
                 )
                     @test isfile(joinpath(candidate_directory, filename))
                 end
+                metadata = TOML.parsefile(joinpath(
+                    candidate_directory, "candidate.toml"
+                ))
+                for key in (
+                    "progress_complete",
+                    "progress_event_count",
+                    "progress_resume_count",
+                    "progress_latest_maxlinkdim",
+                    "progress_final_state_sha256",
+                    "progress_sha256",
+                )
+                    @test metadata[key] == candidate[key]
+                end
+                @test metadata["progress_sha256"] ==
+                    candidate["checksums"]["progress.toml"]
+                @test metadata["progress_final_state_sha256"] ==
+                    candidate["checksums"]["state.h5"]
             end
 
             raw_path = joinpath(directory, "pump_raw.tsv")
@@ -4954,6 +5053,7 @@ if all(
                     spec,
                     directory;
                     checkpoint_audit=(args...) -> throw(InterruptException()),
+                    progress_audit=synthetic_progress_audit,
                     candidate_ids_provider=operations.candidate_ids,
                 )
             catch error
@@ -5146,6 +5246,82 @@ if all(
 
             ledger_path = joinpath(directory, "ledger.toml")
             ledger_bytes = read(ledger_path)
+            progress_candidate = unselected
+            progress_directory = joinpath(
+                directory, progress_candidate["directory"]
+            )
+            progress_path = joinpath(progress_directory, "progress.toml")
+            progress_metadata_path = joinpath(
+                progress_directory, "candidate.toml"
+            )
+            progress_bytes = read(progress_path)
+            progress_metadata_bytes = read(progress_metadata_path)
+            forged_final_state_sha256 = repeat("0", 64)
+            @test forged_final_state_sha256 !=
+                progress_candidate["state_sha256"]
+
+            forged_progress = TOML.parse(String(copy(progress_bytes)))
+            forged_progress["final_state_sha256"] =
+                forged_final_state_sha256
+            open(progress_path, "w") do io
+                TOML.print(io, forged_progress; sorted=true)
+            end
+            forged_progress_sha256 =
+                InfiniteCylinderDMRG._fig2_file_sha256(progress_path)
+
+            forged_metadata = TOML.parse(
+                String(copy(progress_metadata_bytes))
+            )
+            forged_metadata["progress_final_state_sha256"] =
+                forged_final_state_sha256
+            forged_metadata["progress_sha256"] = forged_progress_sha256
+            open(progress_metadata_path, "w") do io
+                TOML.print(io, forged_metadata; sorted=true)
+            end
+            forged_metadata_sha256 =
+                InfiniteCylinderDMRG._fig2_file_sha256(progress_metadata_path)
+
+            forged_ledger = TOML.parse(String(copy(ledger_bytes)))
+            forged_row = only(filter(
+                row -> Int(row["dimension"]) ==
+                        Int(progress_candidate["dimension"]) &&
+                    Int(row["point"]) == Int(progress_candidate["point"]) &&
+                    String(row["candidate_id"]) ==
+                        String(progress_candidate["candidate_id"]),
+                forged_ledger["candidate"],
+            ))
+            forged_row["progress_final_state_sha256"] =
+                forged_final_state_sha256
+            forged_row["progress_sha256"] = forged_progress_sha256
+            forged_row["checksums"]["progress.toml"] =
+                forged_progress_sha256
+            forged_row["checksums"]["candidate.toml"] =
+                forged_metadata_sha256
+            open(ledger_path, "w") do io
+                TOML.print(io, forged_ledger; sorted=true)
+            end
+
+            forged_progress_report =
+                write_synthetic_fig2_acceptance_report!(
+                    spec,
+                    directory;
+                    candidate_ids_provider=operations.candidate_ids,
+                )
+            assert_integrity_failure(forged_progress_report)
+            @test occursin(
+                "final-state",
+                lowercase(forged_progress_report["restart"]["reason"]),
+            )
+            open(progress_path, "w") do io
+                write(io, progress_bytes)
+            end
+            open(progress_metadata_path, "w") do io
+                write(io, progress_metadata_bytes)
+            end
+            open(ledger_path, "w") do io
+                write(io, ledger_bytes)
+            end
+
             fixed_candidate_ids = (spec, dimension, point, previous_state) ->
                 point == 1 ? ["alpha", "beta"] : ["warm", "cold"]
 
@@ -5170,6 +5346,7 @@ if all(
                     spec,
                     directory;
                     checkpoint_audit=synthetic_checkpoint_audit,
+                    progress_audit=synthetic_progress_audit,
                     candidate_ids_provider=fixed_candidate_ids,
                 )
             end
@@ -5225,6 +5402,7 @@ if all(
                     spec,
                     directory;
                     checkpoint_audit=synthetic_checkpoint_audit,
+                    progress_audit=synthetic_progress_audit,
                     candidate_ids_provider=fixed_candidate_ids,
                 )
             end
@@ -5366,6 +5544,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5454,6 +5633,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5559,6 +5739,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5634,6 +5815,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5797,6 +5979,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5898,6 +6081,7 @@ if all(
                         spec,
                         directory;
                         checkpoint_audit=synthetic_checkpoint_audit,
+                        progress_audit=synthetic_progress_audit,
                         candidate_ids_provider=operations.candidate_ids,
                     )
                     nothing
@@ -5961,6 +6145,8 @@ if all(
                         Float64(selected_candidate["phi_y"]),
                         String(selected_candidate["candidate_id"]),
                         metadata["generation_provenance"],
+                        ;
+                        progress_audit=synthetic_progress_audit,
                     )
                     nothing
                 catch error
@@ -6038,21 +6224,50 @@ if all(
                 directory, selected_candidate["directory"], "state.h5"
             )
             checkpoint_bytes = read(checkpoint_path)
+            progress_path = joinpath(
+                directory, selected_candidate["directory"], "progress.toml"
+            )
+            progress_bytes = read(progress_path)
             open(checkpoint_path, "w") do io
                 write(io, "corrupt-but-checksummed-checkpoint\n")
             end
             checkpoint_forged_row = deepcopy(selected_candidate)
             checkpoint_sha256 =
                 InfiniteCylinderDMRG._fig2_file_sha256(checkpoint_path)
+            checkpoint_progress = TOML.parsefile(progress_path)
+            checkpoint_progress["final_state_sha256"] = checkpoint_sha256
+            open(progress_path, "w") do io
+                TOML.print(io, checkpoint_progress; sorted=true)
+            end
+            checkpoint_progress_sha256 =
+                InfiniteCylinderDMRG._fig2_file_sha256(progress_path)
+            checkpoint_metadata = TOML.parsefile(candidate_path)
+            checkpoint_metadata["progress_final_state_sha256"] =
+                checkpoint_sha256
+            checkpoint_metadata["progress_sha256"] =
+                checkpoint_progress_sha256
+            open(candidate_path, "w") do io
+                TOML.print(io, checkpoint_metadata; sorted=true)
+            end
             checkpoint_forged_row["checksums"]["state.h5"] =
                 checkpoint_sha256
             checkpoint_forged_row["state_sha256"] = checkpoint_sha256
+            checkpoint_forged_row["checksums"]["progress.toml"] =
+                checkpoint_progress_sha256
+            checkpoint_forged_row["progress_sha256"] =
+                checkpoint_progress_sha256
+            checkpoint_forged_row["progress_final_state_sha256"] =
+                checkpoint_sha256
+            checkpoint_forged_row["checksums"]["candidate.toml"] =
+                InfiniteCylinderDMRG._fig2_file_sha256(candidate_path)
             checkpoint_forgery_error = try
                 InfiniteCylinderDMRG._validate_persisted_fig2_candidate_files(
                     spec,
                     directory,
                     checkpoint_forged_row,
                     current_generation_provenance,
+                    ;
+                    progress_audit=synthetic_progress_audit,
                 )
                 nothing
             catch error
@@ -6066,6 +6281,12 @@ if all(
             open(checkpoint_path, "w") do io
                 write(io, checkpoint_bytes)
             end
+            open(progress_path, "w") do io
+                write(io, progress_bytes)
+            end
+            open(candidate_path, "w") do io
+                write(io, candidate_bytes)
+            end
 
             low_dimension_error = try
                 InfiniteCylinderDMRG._validate_persisted_fig2_candidate_files(
@@ -6077,6 +6298,7 @@ if all(
                         restart_valid=true,
                         checkpoint_maxlinkdim=1,
                     ),
+                    progress_audit=synthetic_progress_audit,
                 )
                 nothing
             catch error
@@ -6102,6 +6324,8 @@ if all(
                     directory,
                     metadata_forged_row,
                     current_generation_provenance,
+                    ;
+                    progress_audit=synthetic_progress_audit,
                 )
             end
             @test occursin("checkpoint", lowercase(metadata_checkpoint_error))
@@ -6117,6 +6341,8 @@ if all(
                     directory,
                     ledger_forged_row,
                     current_generation_provenance,
+                    ;
+                    progress_audit=synthetic_progress_audit,
                 )
             end
             @test occursin("checkpoint", lowercase(ledger_checkpoint_error))
@@ -6311,6 +6537,7 @@ if all(
             load_calls = NamedTuple[]
             operations = Fig2BenchmarkOperations(
                 checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(spec, dimension, point, previous) ->
                     point == 1 ? ["alpha", "beta"] : ["warm", "cold"],
@@ -6504,6 +6731,7 @@ if all(
         mktempdir() do directory
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
             operations = Fig2BenchmarkOperations(
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> String[],
                 run_candidate=(args...) -> error("must not run"),
@@ -6586,6 +6814,7 @@ if all(
         mktempdir() do directory
             configured_threads = Int[]
             operations = Fig2BenchmarkOperations(
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["only"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
@@ -6653,6 +6882,7 @@ if all(
         mktempdir() do directory
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
             operations = Fig2BenchmarkOperations(
+                progress_audit=synthetic_progress_audit,
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(args...) -> ["only"],
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,

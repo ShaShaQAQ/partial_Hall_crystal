@@ -16,7 +16,13 @@ function run_fig2_benchmark_main(
         fluxes=settings.fluxes,
         operations,
     )
-    report = write_fig2_acceptance_report!(spec, settings.output)
+    report = write_fig2_acceptance_report!(
+        spec,
+        settings.output;
+        checkpoint_audit=operations.checkpoint_audit,
+        progress_audit=operations.progress_audit,
+        candidate_ids_provider=operations.candidate_ids,
+    )
     return (; run, report)
 end
 

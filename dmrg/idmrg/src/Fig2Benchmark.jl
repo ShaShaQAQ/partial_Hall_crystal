@@ -23,6 +23,7 @@ const FIG2_REQUIRED_CANDIDATE_FILES = (
     "density.tsv",
     "entanglement_spectrum.tsv",
     "schmidt_sectors.tsv",
+    "progress.toml",
     "momentum_entanglement_spectrum.tsv",
     "mixed_fidelity.tsv",
     "candidate.toml",
@@ -111,6 +112,7 @@ function _default_fig2_run_candidate end
 function _default_fig2_load_state end
 function _default_fig2_provenance end
 function _default_fig2_persisted_checkpoint_audit end
+function _default_fig2_progress_audit end
 
 Base.@kwdef struct Fig2BenchmarkOperations
     candidate_ids::Function=_default_fig2_candidate_ids
@@ -118,6 +120,7 @@ Base.@kwdef struct Fig2BenchmarkOperations
     load_state::Function=_default_fig2_load_state
     provenance::Function=_default_fig2_provenance
     checkpoint_audit::Function=_default_fig2_persisted_checkpoint_audit
+    progress_audit::Function=_default_fig2_progress_audit
 end
 
 struct Fig2Selection
@@ -1426,6 +1429,117 @@ function _fig2_validate_progress_artifact(
         latest_maxlinkdim=progress.maxlinkdim,
         final_state_sha256,
         progress_sha256=_fig2_file_sha256(path),
+    )
+end
+
+function _default_fig2_progress_audit(
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+    final_checkpoint,
+)
+    return _fig2_validate_progress_artifact(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        final_checkpoint,
+    )
+end
+
+function _fig2_candidate_progress_audit(
+    progress_audit,
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+    final_checkpoint,
+    expected_maxlinkdim,
+)
+    result = progress_audit(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        final_checkpoint,
+    )
+    result isa NamedTuple || throw(
+        ArgumentError("Fig. 2 candidate progress audit result is invalid")
+    )
+    required = (
+        :complete,
+        :event_count,
+        :resume_count,
+        :latest_maxlinkdim,
+        :final_state_sha256,
+        :progress_sha256,
+    )
+    all(name -> hasproperty(result, name), required) || throw(
+        ArgumentError("Fig. 2 candidate progress audit fields are incomplete")
+    )
+    result.complete === true || throw(
+        ArgumentError("Fig. 2 candidate progress audit is not complete")
+    )
+    event_count = result.event_count
+    event_count isa Integer && !(event_count isa Bool) && event_count > 0 || throw(
+        ArgumentError("Fig. 2 candidate progress event count is invalid")
+    )
+    resume_count = result.resume_count
+    resume_count isa Integer && !(resume_count isa Bool) && resume_count >= 0 || throw(
+        ArgumentError("Fig. 2 candidate progress resume count is invalid")
+    )
+    latest_maxlinkdim = result.latest_maxlinkdim
+    latest_maxlinkdim isa Integer && !(latest_maxlinkdim isa Bool) &&
+        latest_maxlinkdim > 0 || throw(
+        ArgumentError("Fig. 2 candidate progress maxlinkdim is invalid")
+    )
+    expected_maxlinkdim isa Integer && !(expected_maxlinkdim isa Bool) &&
+        expected_maxlinkdim > 0 || throw(
+        ArgumentError("Fig. 2 candidate expected progress maxlinkdim is invalid")
+    )
+    Int(latest_maxlinkdim) == Int(expected_maxlinkdim) || throw(
+        ArgumentError(
+            "Fig. 2 candidate progress maxlinkdim disagrees with achieved maxlinkdim"
+        )
+    )
+    final_state_sha256 = result.final_state_sha256
+    progress_sha256 = result.progress_sha256
+    all(
+        value -> value isa AbstractString && occursin(r"^[0-9a-f]{64}$", value),
+        (final_state_sha256, progress_sha256),
+    ) || throw(
+        ArgumentError("Fig. 2 candidate progress checksum is invalid")
+    )
+    final_path = abspath(final_checkpoint)
+    progress_path = joinpath(abspath(candidate_directory), "progress.toml")
+    isfile(final_path) && filesize(final_path) > 0 || throw(
+        ArgumentError("Fig. 2 candidate final checkpoint is missing")
+    )
+    isfile(progress_path) && filesize(progress_path) > 0 || throw(
+        ArgumentError("Fig. 2 candidate progress.toml is missing")
+    )
+    _fig2_file_sha256(final_path) == final_state_sha256 || throw(
+        ArgumentError("Fig. 2 candidate progress final-state checksum disagrees")
+    )
+    _fig2_file_sha256(progress_path) == progress_sha256 || throw(
+        ArgumentError("Fig. 2 candidate progress.toml checksum disagrees")
+    )
+    return (;
+        complete=true,
+        event_count=Int(event_count),
+        resume_count=Int(resume_count),
+        latest_maxlinkdim=Int(latest_maxlinkdim),
+        final_state_sha256=String(final_state_sha256),
+        progress_sha256=String(progress_sha256),
     )
 end
 
@@ -3316,6 +3430,8 @@ function _validate_fig2_candidate_artifacts(
     phi_y,
     candidate_id,
     current_generation_provenance,
+    ;
+    progress_audit=_default_fig2_progress_audit,
 )
     snapshot = _fig2_validated_snapshot(spec)
     state_path = joinpath(directory, "state.h5")
@@ -3425,6 +3541,37 @@ function _validate_fig2_candidate_artifacts(
     achieved_maxlinkdim <= requested_maxdim || throw(
         ArgumentError("candidate metadata achieved maxlinkdim exceeds requested maxdim")
     )
+    progress = _fig2_candidate_progress_audit(
+        progress_audit,
+        spec,
+        directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        state_path,
+        achieved_maxlinkdim,
+    )
+    get(metadata, "progress_complete", nothing) === progress.complete || throw(
+        ArgumentError("candidate metadata progress completion flag disagrees")
+    )
+    for (key, measured) in (
+        "progress_event_count" => progress.event_count,
+        "progress_resume_count" => progress.resume_count,
+        "progress_latest_maxlinkdim" => progress.latest_maxlinkdim,
+    )
+        get(metadata, key, nothing) == measured || throw(
+            ArgumentError("candidate metadata $key disagrees with progress audit")
+        )
+    end
+    for (key, measured) in (
+        "progress_final_state_sha256" => progress.final_state_sha256,
+        "progress_sha256" => progress.progress_sha256,
+    )
+        get(metadata, key, nothing) == measured || throw(
+            ArgumentError("candidate metadata $key disagrees with progress audit")
+        )
+    end
     sector_audit = _validate_fig2_sector_artifacts(
         spec, directory, metadata
     )
@@ -3524,6 +3671,7 @@ function _validate_fig2_candidate_artifacts(
         metadata,
         replayed_energy_per_site,
         final_convergence,
+        progress,
     )
 end
 
@@ -3539,6 +3687,8 @@ function _complete_fig2_candidate!(
     mixed_reference,
     relative_directory,
     generation_provenance,
+    ;
+    progress_audit=_default_fig2_progress_audit,
 )
     directory = joinpath(output, relative_directory)
     for filename in FIG2_REQUIRED_CANDIDATE_FILES[1:7]
@@ -3556,6 +3706,17 @@ function _complete_fig2_candidate!(
     ))
     _fig2_validate_mixed_reference_point(
         mixed_reference, dimension, point
+    )
+    progress = _fig2_candidate_progress_audit(
+        progress_audit,
+        spec,
+        directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        joinpath(directory, "state.h5"),
+        evidence.achieved_maxlinkdim,
     )
     _write_fig2_bytes(
         joinpath(directory, "momentum_entanglement_spectrum.tsv"),
@@ -3582,6 +3743,12 @@ function _complete_fig2_candidate!(
         "fidelity_to_previous" => evidence.fidelity_to_previous,
         "fidelity_valid" => evidence.fidelity_valid,
         "restart_valid" => evidence.restart_valid,
+        "progress_complete" => progress.complete,
+        "progress_event_count" => progress.event_count,
+        "progress_resume_count" => progress.resume_count,
+        "progress_latest_maxlinkdim" => progress.latest_maxlinkdim,
+        "progress_final_state_sha256" => progress.final_state_sha256,
+        "progress_sha256" => progress.progress_sha256,
         "provenance_valid" => true,
         "generation_provenance" => deepcopy(generation_provenance),
         "reason" => evidence.reason,
@@ -3603,6 +3770,8 @@ function _complete_fig2_candidate!(
         phi_y,
         candidate_id,
         generation_provenance,
+        ;
+        progress_audit,
     )
 
     checksums = Dict{String,String}()
@@ -3624,6 +3793,14 @@ function _complete_fig2_candidate!(
         "candidate_id" => String(candidate_id),
         "directory" => relative_directory,
         "state_sha256" => checksums["state.h5"],
+        "progress_complete" => artifact_audit.progress.complete,
+        "progress_event_count" => artifact_audit.progress.event_count,
+        "progress_resume_count" => artifact_audit.progress.resume_count,
+        "progress_latest_maxlinkdim" =>
+            artifact_audit.progress.latest_maxlinkdim,
+        "progress_final_state_sha256" =>
+            artifact_audit.progress.final_state_sha256,
+        "progress_sha256" => checksums["progress.toml"],
         "generation_provenance_sha256" =>
             _fig2_generation_provenance_sha256(generation_provenance),
         "checksums" => checksums,
@@ -4035,6 +4212,7 @@ function _validate_persisted_fig2_candidate_files(
     current_generation_provenance,
     ;
     checkpoint_audit=_default_fig2_persisted_checkpoint_audit,
+    progress_audit=_default_fig2_progress_audit,
 )
     get(row, "complete", false) === true || throw(
         ArgumentError("persisted Fig. 2 candidate is not marked complete")
@@ -4051,7 +4229,7 @@ function _validate_persisted_fig2_candidate_files(
         ArgumentError("persisted candidate checksums are missing")
     )
     directory = joinpath(root, relative_directory)
-    _validate_fig2_candidate_artifacts(
+    artifact_audit = _validate_fig2_candidate_artifacts(
         spec,
         directory,
         dimension,
@@ -4059,6 +4237,8 @@ function _validate_persisted_fig2_candidate_files(
         Float64(row["phi_y"]),
         candidate_id,
         current_generation_provenance,
+        ;
+        progress_audit,
     )
     for filename in FIG2_REQUIRED_CANDIDATE_FILES
         haskey(checksums, filename) || throw(
@@ -4075,7 +4255,26 @@ function _validate_persisted_fig2_candidate_files(
     get(row, "state_sha256", "") == String(checksums["state.h5"]) || throw(
         ArgumentError("persisted candidate state checksum is inconsistent")
     )
+    get(row, "progress_sha256", "") == String(checksums["progress.toml"]) || throw(
+        ArgumentError("persisted candidate progress checksum is inconsistent")
+    )
     metadata = TOML.parsefile(joinpath(directory, "candidate.toml"))
+    progress = artifact_audit.progress
+    for (key, measured) in (
+        "progress_complete" => progress.complete,
+        "progress_event_count" => progress.event_count,
+        "progress_resume_count" => progress.resume_count,
+        "progress_latest_maxlinkdim" => progress.latest_maxlinkdim,
+        "progress_final_state_sha256" => progress.final_state_sha256,
+        "progress_sha256" => progress.progress_sha256,
+    )
+        get(row, key, nothing) == measured || throw(
+            ArgumentError("persisted candidate ledger $key disagrees with progress audit")
+        )
+        get(metadata, key, nothing) == measured || throw(
+            ArgumentError("persisted candidate metadata $key disagrees with progress audit")
+        )
+    end
     checkpoint_path = joinpath(directory, "state.h5")
     checkpoint_result = checkpoint_audit(
         spec, checkpoint_path, Float64(row["phi_y"])
@@ -4393,6 +4592,7 @@ function run_fig2_benchmark(
             row,
             generation_provenance;
             checkpoint_audit=operations.checkpoint_audit,
+            progress_audit=operations.progress_audit,
         ),
         values(persisted_candidates),
     )
@@ -4551,6 +4751,8 @@ function run_fig2_benchmark(
                     mixed_reference,
                     relative_directory,
                     generation_provenance,
+                    ;
+                    progress_audit=operations.progress_audit,
                 )
                 push!(candidates, (;
                     candidate_id,
@@ -4773,6 +4975,7 @@ function _fig2_acceptance_integrity_inputs(
     spec,
     root;
     checkpoint_audit=_default_fig2_persisted_checkpoint_audit,
+    progress_audit=_default_fig2_progress_audit,
     candidate_ids_provider=_default_fig2_candidate_ids,
 )
     _fig2_validated_snapshot(spec)
@@ -4809,6 +5012,7 @@ function _fig2_acceptance_integrity_inputs(
             row,
             generation_provenance;
             checkpoint_audit,
+            progress_audit,
         ),
         values(candidates),
     )
@@ -5911,6 +6115,7 @@ function write_fig2_acceptance_report!(
     output::AbstractString,
     ;
     checkpoint_audit=_default_fig2_persisted_checkpoint_audit,
+    progress_audit=_default_fig2_progress_audit,
     candidate_ids_provider=_default_fig2_candidate_ids,
 )
     _fig2_validated_snapshot(spec)
@@ -5918,7 +6123,11 @@ function write_fig2_acceptance_report!(
     mkpath(root)
     integrity = try
         _fig2_acceptance_integrity_inputs(
-            spec, root; checkpoint_audit, candidate_ids_provider
+            spec,
+            root;
+            checkpoint_audit,
+            progress_audit,
+            candidate_ids_provider,
         )
     catch error
         error isa InterruptException && rethrow()
