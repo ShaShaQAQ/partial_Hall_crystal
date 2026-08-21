@@ -14,6 +14,16 @@ const FIG2_SYNTHETIC_LY = 2 * Int(FIG2_SYNTHETIC_MANIFEST["Ny"])
 const FIG2_SYNTHETIC_SITES_PER_CELL =
     FIG2_SYNTHETIC_LY * Int(FIG2_SYNTHETIC_MANIFEST["x_period"])
 
+struct Fig2WarmScheduleProbeState{T}
+    AL::T
+    maxlinkdim::Int
+end
+
+InfiniteCylinderDMRG.link_dimensions(state::Fig2WarmScheduleProbeState) =
+    [state.maxlinkdim]
+
+struct Fig2WarmScheduleCaptured <: Exception end
+
 @testset "immutable Fig. 2 benchmark manifest" begin
     manifest = TOML.parsefile(FIG2_MANIFEST_PATH)
     @test manifest["format"] == "fqahc_fig2_benchmark_v3"
@@ -279,8 +289,92 @@ end
         [4, 8, 16, 32, 64, 128, 256, 512, 1000]
     @test InfiniteCylinderDMRG._fig2_maxdim_schedule(2000) ==
         [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2000]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(8, 8) == [8]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(8, 16) == [8, 16]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(6, 16) == [8, 16]
+    @test InfiniteCylinderDMRG._fig2_maxdim_schedule(1, 16) ==
+        [4, 8, 16]
     @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(0)
     @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(true)
+    @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(17, 16)
+    @test_throws ArgumentError InfiniteCylinderDMRG._fig2_maxdim_schedule(true, 16)
+end
+
+
+@testset "default Fig. 2 runner wires warm-compatible maxdim staging" begin
+    spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
+    occupied_sites = first(fig2_initial_candidates(spec.config)).occupied_sites
+    _, _, product_state = initial_infinite_mps(
+        spec.config; occupied_sites
+    )
+    warm_state = Fig2WarmScheduleProbeState(product_state.AL, 8)
+    captured_schedules = Vector{Int}[]
+
+    function capture_settings(settings, H, psi, operations; transfer_rng)
+        push!(captured_schedules, copy(settings.maxdim_schedule))
+        throw(Fig2WarmScheduleCaptured())
+    end
+    capture_error(f::Function) = try
+        f()
+        nothing
+    catch error
+        error
+    end
+
+    mktempdir() do directory
+        for (point, dimension, expected) in (
+            (2, 8, [8]),
+            (3, 16, [8, 16]),
+        )
+            error = capture_error() do
+                InfiniteCylinderDMRG._default_fig2_run_candidate(
+                    spec,
+                    dimension,
+                    point,
+                    0.0,
+                    "warm",
+                    warm_state,
+                    joinpath(directory, "warm_$point");
+                    build_hamiltonian=(args...) -> :synthetic_hamiltonian,
+                    run_prepared_point=capture_settings,
+                )
+            end
+            @test error isa Fig2WarmScheduleCaptured
+            @test last(captured_schedules) == expected
+        end
+
+        cold_id = "cold_$(last(fig2_initial_candidates(spec.config)).id)"
+        cold_error = capture_error() do
+            InfiniteCylinderDMRG._default_fig2_run_candidate(
+                spec,
+                16,
+                3,
+                0.0,
+                cold_id,
+                warm_state,
+                joinpath(directory, "cold");
+                build_hamiltonian=(args...) -> :synthetic_hamiltonian,
+                run_prepared_point=capture_settings,
+            )
+        end
+        @test cold_error isa Fig2WarmScheduleCaptured
+        @test last(captured_schedules) == [4, 8, 16]
+
+        oversized_error = capture_error() do
+            InfiniteCylinderDMRG._default_fig2_run_candidate(
+                spec,
+                16,
+                3,
+                0.0,
+                "warm",
+                Fig2WarmScheduleProbeState(product_state.AL, 17),
+                joinpath(directory, "oversized");
+                build_hamiltonian=(args...) -> :synthetic_hamiltonian,
+                run_prepared_point=capture_settings,
+            )
+        end
+        @test oversized_error isa ArgumentError
+    end
 end
 
 if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
@@ -3683,6 +3777,33 @@ if all(
             fluxes=[0.0],
             operations,
         )
+    end
+
+    @testset "persisted candidate audit accepts only canonical maxdim suffixes" begin
+        for schedule in ([32], [16, 32])
+            mktempdir() do directory
+                run = run_claimed_dimension_case(
+                    directory;
+                    dimension=32,
+                    summary_maxdim_schedule=schedule,
+                )
+                @test run isa Fig2BenchmarkRun
+                @test only(run.selections).dimension == 32
+            end
+        end
+
+        for schedule in ([16], [8, 32], [12, 16, 32], [16, 32, 32])
+            mktempdir() do directory
+                message = fig2_argument_error_message() do
+                    run_claimed_dimension_case(
+                        directory;
+                        dimension=32,
+                        summary_maxdim_schedule=schedule,
+                    )
+                end
+                @test occursin("maxdim schedule", message)
+            end
+        end
     end
 
     @testset "claimed bond dimension is proved by every candidate artifact" begin

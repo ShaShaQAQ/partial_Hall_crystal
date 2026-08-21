@@ -2656,7 +2656,11 @@ function _validate_fig2_candidate_artifacts(
         ArgumentError("candidate summary converged flag is missing")
     )
     summary_schedule = _fig2_summary_maxdim_schedule(summary)
-    summary_schedule == _fig2_maxdim_schedule(dimension) || throw(
+    full_schedule = _fig2_maxdim_schedule(dimension)
+    suffix_start = length(full_schedule) - length(summary_schedule) + 1
+    is_bounded_suffix = !isempty(summary_schedule) && suffix_start >= 1 &&
+        summary_schedule == full_schedule[suffix_start:end]
+    is_bounded_suffix || throw(
         ArgumentError("candidate summary maxdim schedule disagrees with requested maxdim")
     )
     convergence_optimization = _fig2_summary_convergence_optimization(
@@ -5620,6 +5624,25 @@ function _fig2_maxdim_schedule(target::Integer)
     return schedule
 end
 
+function _fig2_maxdim_schedule(initial::Integer, target::Integer)
+    !(initial isa Bool) && initial > 0 || throw(
+        ArgumentError("Fig. 2 initial maxdim must be a positive integer")
+    )
+    initial <= typemax(Int) || throw(
+        ArgumentError("Fig. 2 initial maxdim exceeds the supported Int range")
+    )
+    schedule = _fig2_maxdim_schedule(target)
+    initial_maxdim = Int(initial)
+    initial_maxdim <= last(schedule) || throw(
+        ArgumentError(
+            "Fig. 2 initial maxdim=$initial_maxdim exceeds target maxdim=$(last(schedule))"
+        )
+    )
+    first_stage = findfirst(stage -> stage >= initial_maxdim, schedule)
+    isnothing(first_stage) && error("Fig. 2 maxdim schedule has no compatible stage")
+    return schedule[first_stage:end]
+end
+
 function _default_fig2_run_candidate(
     spec,
     dimension,
@@ -5629,6 +5652,8 @@ function _default_fig2_run_candidate(
     previous_state,
     candidate_directory;
     runner_override::Union{Nothing,Fig2RunnerOverride}=nothing,
+    build_hamiltonian=build_infinite_mpo,
+    run_prepared_point=_run_prepared_point,
 )
     optimization = _fig2_runner_optimization(spec, runner_override)
     config = with_flux(spec.config, phi_y)
@@ -5638,10 +5663,11 @@ function _default_fig2_run_candidate(
     psi = prepared.psi
     sites = prepared.sites
     occupied_sites = prepared.occupied_sites
+    initial_maxdim = maximum(link_dimensions(psi))
     settings = SinglePointSettings(
         config,
         spec.model,
-        _fig2_maxdim_schedule(dimension),
+        _fig2_maxdim_schedule(initial_maxdim, dimension),
         optimization.cutoff,
         optimization.vumps_tol,
         optimization.energy_tol,
@@ -5659,8 +5685,8 @@ function _default_fig2_run_candidate(
         _fig2_candidate_seed(dimension, point, candidate_id),
         true,
     )
-    H = build_infinite_mpo(config, spec.model, sites)
-    result = _run_prepared_point(
+    H = build_hamiltonian(config, spec.model, sites)
+    result = run_prepared_point(
         settings,
         H,
         psi,
