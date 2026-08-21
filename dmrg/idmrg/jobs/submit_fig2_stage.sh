@@ -5,7 +5,7 @@ export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
 
 results_base=/home/public/shajy/codex/results/fqahc-fig2
 results_prefix=/home/public/shajy/codex/results/fqahc-fig2/
-W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark}
+W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-idmrg-production}
 JULIA_BIN=${JULIA_BIN:-/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia}
 JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-/home/public/shajy/codex/depots/idmrg-julia-1.12.5}
 FIG2_MANIFEST=${FIG2_MANIFEST:-$W003_REPO/dmrg/idmrg/benchmarks/fqahc_fig2.toml}

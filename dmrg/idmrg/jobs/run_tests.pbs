@@ -7,7 +7,7 @@
 
 set -euo pipefail
 export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
-: "${W003_REPO:=/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark}"
+: "${W003_REPO:=/home/public/shajy/codex/partial_Hall_crystal-idmrg-production}"
 : "${JULIA_BIN:=/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia}"
 : "${JULIA_DEPOT_PATH:=/home/public/shajy/codex/depots/idmrg-julia-1.12.5}"
 : "${TEST_TARGET:=test/runtests.jl}"

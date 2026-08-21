@@ -273,8 +273,13 @@ function exercise_checkout_auditor(
 end
 
 @testset "Fig. 2 W003 production job contract" begin
+    production_repository =
+        "/home/public/shajy/codex/partial_Hall_crystal-idmrg-production"
+    retired_benchmark_repository =
+        "/home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark"
     job_directory = joinpath(@__DIR__, "..", "jobs")
     runner = joinpath(job_directory, "run_fig2_stage.pbs")
+    test_runner = joinpath(job_directory, "run_tests.pbs")
     submitter = joinpath(job_directory, "submit_fig2_stage.sh")
     contract = joinpath(job_directory, "fig2_job_contract.sh")
     auditor = joinpath(
@@ -291,6 +296,7 @@ end
     )
 
     @test isfile(runner)
+    @test isfile(test_runner)
     @test isfile(submitter)
     @test isfile(contract)
     @test isfile(auditor)
@@ -367,10 +373,19 @@ end
         @test occursin("FIG2_MANIFEST_SHA256", source)
         @test occursin("fig2_validate_walltime", source)
         @test occursin("pbs_walltime", source)
+        @test occursin(production_repository, source)
+        @test !occursin(retired_benchmark_repository, source)
     end
 
     if isfile(contract)
         @test success(`bash -n $contract`)
+    end
+
+    if isfile(test_runner)
+        source = read(test_runner, String)
+        @test success(`bash -n $test_runner`)
+        @test occursin(production_repository, source)
+        @test !occursin(retired_benchmark_repository, source)
     end
 
     if isfile(auditor)
@@ -445,6 +460,8 @@ end
         @test occursin(
             "/home/public/shajy/codex/results/fqahc-fig2/", source
         )
+        @test occursin(production_repository, source)
+        @test !occursin(retired_benchmark_repository, source)
         @test occursin("launcher=\$(mktemp", source)
         @test occursin("export FIG2_JOB_CONFIG=%q", source)
         @test occursin("export FIG2_JOB_LAUNCHER=%q", source)

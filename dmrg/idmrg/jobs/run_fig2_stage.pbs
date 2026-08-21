@@ -61,8 +61,8 @@ export JULIA_DEPOT_PATH
 repo=$(/usr/bin/realpath -m "$W003_REPO")
 output=$(/usr/bin/realpath -m "$FIG2_OUTPUT")
 manifest=$(/usr/bin/realpath -m "$FIG2_MANIFEST")
-[[ "$repo" == /home/public/shajy/codex/partial_Hall_crystal-idmrg-benchmark ]] || {
-  echo "W003_REPO is not the dedicated benchmark checkout" >&2
+[[ "$repo" == /home/public/shajy/codex/partial_Hall_crystal-idmrg-production ]] || {
+  echo "W003_REPO is not the dedicated production checkout" >&2
   exit 2
 }
 job_contract="$repo/dmrg/idmrg/jobs/fig2_job_contract.sh"
