@@ -280,11 +280,15 @@ Submit the default `D=32,64,128` seven-flux pilot with:
 dmrg/idmrg/jobs/submit_fig2_stage.sh
 ```
 
-The submitter writes a read-only configuration and a read-only PBS launcher
-under `/home/public/shajy/codex/results/fqahc-fig2/job_configs`. The launcher
-exports the two exact immutable paths in its script body and then executes the
-checked-in runner; it does not depend on W003 propagating user variables from
-`qsub -v` through the site `bypass` wrapper. The runner requires
+The submitter copies the benchmark manifest, then writes that manifest, the
+job configuration, and the PBS launcher as three read-only artifacts under
+`/home/public/shajy/codex/results/fqahc-fig2/job_configs`. The configuration
+contains the copied manifest's SHA-256; the runner rejects a changed checksum,
+an artifact outside that directory, or an artifact that is no longer mode
+`0444`. The launcher exports the two exact configuration/launcher paths in its
+script body and then executes the checked-in runner; it does not depend on W003
+propagating user variables from `qsub -v` through the site `bypass` wrapper. The
+runner requires
 `HEAD == origin/DMRG` and refuses tracked or staged W003 changes using Julia's
 stdlib `LibGit2` (the compute nodes do not provide a `git` CLI), holds an
 advisory lock on the output root, and records the node, PBS request, checkout
@@ -293,15 +297,20 @@ thread environment, `/usr/bin/time -v`, and exit code under
 `results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is resubmitted with the
 same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid; the benchmark ledger
 audits completed candidate checksums and resumes from the last valid
-wavefunction.
+wavefunction. The root `provenance.toml` and every candidate's immutable
+generation provenance additionally persist the measured Julia, BLAS, Strided,
+and block-sparse threading state and reject a state inconsistent with the
+production contract.
 
-The default walltime is 12 hours through `D=128`, 36 hours for `D=256`, 72
-hours through `D=1000`, and 120 hours above `D=1000`. Override it explicitly
-with `FIG2_WALLTIME=HH:MM:SS`. A later stage can be chained only after a verified
-predecessor with `FIG2_DEPENDENCY=<job-id>`. `FIG2_THREADS` defaults to 24 and
-may be set to 4 or 12 only for the declared utilization comparison; BLAS, OMP,
-MKL, and ITensor Strided threading remain at one while ITensor block-sparse
-threading is enabled by the Julia driver.
+The hard walltime caps are 12 hours through `D=128`, 36 hours for `D=256`, 72
+hours through `D=1000`, and 120 hours above `D=1000`. A smaller value may be set
+with `FIG2_WALLTIME=HH:MM:SS`; the submitter and compute-node runner both reject
+values above the dimension-specific cap, and the runner also checks the actual
+PBS allocation against the immutable job configuration. A later stage can be
+chained only after a verified predecessor with `FIG2_DEPENDENCY=<job-id>`.
+`FIG2_THREADS` defaults to 24 and may be set to 4 or 12 only for the declared
+utilization comparison; BLAS, OMP, MKL, and ITensor Strided threading remain at
+one while ITensor block-sparse threading is enabled by the Julia driver.
 
 At zero flux, every deterministic product-state candidate is retained and the
 lowest converged valid energy per site is selected. At later flux points, the

@@ -17,6 +17,11 @@ FIG2_THREADS=${FIG2_THREADS:-24}
 FIG2_DEPENDENCY=${FIG2_DEPENDENCY:-}
 QSUB_BIN=${QSUB_BIN:-qsub}
 DRY_RUN=${DRY_RUN:-0}
+job_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+job_contract="$job_directory/fig2_job_contract.sh"
+test -f "$job_contract"
+# shellcheck disable=SC1090
+source "$job_contract"
 
 [[ "$FIG2_STAGE" =~ ^[A-Za-z0-9._-]+$ ]] || {
   echo "FIG2_STAGE contains an unsafe character" >&2
@@ -47,35 +52,12 @@ esac
   exit 2
 }
 
-IFS=',' read -r -a dimensions <<< "$FIG2_DIMENSIONS"
-((${#dimensions[@]} > 0)) || {
-  echo "FIG2_DIMENSIONS must not be empty" >&2
-  exit 2
-}
-max_dimension=0
-for dimension in "${dimensions[@]}"; do
-  [[ "$dimension" =~ ^[0-9]+$ ]] && ((dimension > 0)) || {
-    echo "FIG2_DIMENSIONS must contain positive integers" >&2
-    exit 2
-  }
-  ((dimension > max_dimension)) && max_dimension=$dimension
-done
+max_dimension=$(fig2_max_dimension_csv "$FIG2_DIMENSIONS")
 
 if [[ -z ${FIG2_WALLTIME:-} ]]; then
-  if ((max_dimension <= 128)); then
-    FIG2_WALLTIME=12:00:00
-  elif ((max_dimension <= 256)); then
-    FIG2_WALLTIME=36:00:00
-  elif ((max_dimension <= 1000)); then
-    FIG2_WALLTIME=72:00:00
-  else
-    FIG2_WALLTIME=120:00:00
-  fi
+  FIG2_WALLTIME=$(fig2_max_walltime "$max_dimension")
 fi
-[[ "$FIG2_WALLTIME" =~ ^[0-9]{2,3}:[0-5][0-9]:[0-5][0-9]$ ]] || {
-  echo "FIG2_WALLTIME must use HH:MM:SS" >&2
-  exit 2
-}
+fig2_validate_walltime "$max_dimension" "$FIG2_WALLTIME"
 
 runner="$W003_REPO/dmrg/idmrg/jobs/run_fig2_stage.pbs"
 test -f "$runner"
@@ -92,6 +74,7 @@ if [[ "$DRY_RUN" == 1 ]]; then
   printf 'FIG2_FLUX_UNITS=%s\n' "$FIG2_FLUX_UNITS"
   printf 'FIG2_THREADS=%s\n' "$FIG2_THREADS"
   printf 'FIG2_WALLTIME=%s\n' "$FIG2_WALLTIME"
+  printf 'FIG2_JOB_MANIFEST=<copied-on-submit>\n'
   printf 'FIG2_JOB_LAUNCHER=<generated-on-submit>\n'
   if [[ -n "$FIG2_DEPENDENCY" ]]; then
     printf 'qsub -N %s -l walltime=%s -W depend=afterok:%s <generated-on-submit>\n' \
@@ -108,11 +91,13 @@ mkdir -p "$config_directory"
 umask 077
 config=
 launcher=
+job_manifest=
 cleanup_unsubmitted_files() {
-  for submission_file in "$launcher" "$config"; do
+  for submission_file in "$launcher" "$config" "$job_manifest"; do
     case "$submission_file" in
       "$config_directory"/"$FIG2_STAGE".*.env|\
-      "$config_directory"/"$FIG2_STAGE".*.pbs)
+      "$config_directory"/"$FIG2_STAGE".*.pbs|\
+      "$config_directory"/"$FIG2_STAGE".*.manifest.toml)
         rm -f -- "$submission_file"
         ;;
     esac
@@ -120,12 +105,17 @@ cleanup_unsubmitted_files() {
 }
 trap cleanup_unsubmitted_files EXIT
 
+job_manifest=$(mktemp "$config_directory/${FIG2_STAGE}.XXXXXX.manifest.toml")
+cp -- "$FIG2_MANIFEST" "$job_manifest"
+manifest_sha256=$(sha256sum "$job_manifest" | awk '{print $1}')
+
 config=$(mktemp "$config_directory/${FIG2_STAGE}.XXXXXX.env")
 {
   printf 'W003_REPO=%q\n' "$W003_REPO"
   printf 'JULIA_BIN=%q\n' "$JULIA_BIN"
   printf 'JULIA_DEPOT_PATH=%q\n' "$JULIA_DEPOT_PATH"
-  printf 'FIG2_MANIFEST=%q\n' "$FIG2_MANIFEST"
+  printf 'FIG2_MANIFEST=%q\n' "$job_manifest"
+  printf 'FIG2_MANIFEST_SHA256=%q\n' "$manifest_sha256"
   printf 'FIG2_STAGE=%q\n' "$FIG2_STAGE"
   printf 'FIG2_OUTPUT=%q\n' "$output"
   printf 'FIG2_DIMENSIONS=%q\n' "$FIG2_DIMENSIONS"
@@ -141,7 +131,7 @@ sed -n '1,/^$/p' "$runner" > "$launcher"
   printf 'export FIG2_JOB_LAUNCHER=%q\n' "$launcher"
   printf 'exec %q\n' "$runner"
 } >> "$launcher"
-chmod 0444 "$config" "$launcher"
+chmod 0444 "$job_manifest" "$config" "$launcher"
 
 qsub_args=(
   -N "$job_name"
@@ -161,4 +151,5 @@ trap - EXIT
 printf 'job_id=%s\n' "$job_id"
 printf 'job_config=%s\n' "$config"
 printf 'job_launcher=%s\n' "$launcher"
+printf 'job_manifest=%s\n' "$job_manifest"
 printf 'output=%s\n' "$output"

@@ -1,10 +1,14 @@
 using Test
 using LibGit2
+using SHA
 
 function run_fig2_submitter_dry_run(
     submitter::AbstractString,
     repository::AbstractString,
     threads::Integer,
+    ;
+    dimensions::AbstractString="32",
+    walltime::AbstractString="12:00:00",
 )
     return mktempdir() do directory
         stdout_path = joinpath(directory, "stdout.log")
@@ -23,11 +27,11 @@ function run_fig2_submitter_dry_run(
             "FIG2_STAGE" => "thread_allowlist_test",
             "FIG2_OUTPUT" =>
                 "/home/public/shajy/codex/results/fqahc-fig2/thread_allowlist_test",
-            "FIG2_DIMENSIONS" => "32",
+            "FIG2_DIMENSIONS" => dimensions,
             "FIG2_FLUX_UNITS" => "0",
             "FIG2_THREADS" => string(threads),
             "FIG2_DEPENDENCY" => "",
-            "FIG2_WALLTIME" => "12:00:00",
+            "FIG2_WALLTIME" => walltime,
         )
         process = open(stdout_path, "w") do stdout_io
             open(stderr_path, "w") do stderr_io
@@ -123,15 +127,32 @@ printf '999999.w003\\n'
         )
         config = isnothing(config_match) ? "" : only(config_match.captures)
         launcher = isempty(qsub_arguments) ? "" : last(qsub_arguments)
+        config_source = isfile(config) ? read(config, String) : ""
+        manifest_match = match(r"^FIG2_MANIFEST=(.+)$"m, config_source)
+        job_manifest = isnothing(manifest_match) ? "" :
+            only(manifest_match.captures)
         config_mode = isfile(config) ? stat(config).mode & 0o777 : nothing
         launcher_mode =
             isfile(launcher) ? stat(launcher).mode & 0o777 : nothing
+        manifest_mode =
+            isfile(job_manifest) ? stat(job_manifest).mode & 0o777 : nothing
+        manifest_bytes =
+            isfile(job_manifest) ? read(job_manifest) : UInt8[]
         config_exists_after = isfile(config)
         launcher_exists_after = isfile(launcher)
+        manifest_exists_after = isfile(job_manifest)
 
         job_config_root =
             "/home/public/shajy/codex/results/fqahc-fig2/job_configs/"
-        for path in (config, launcher)
+        submission_files_after = if isdir(job_config_root)
+            sort(filter(
+                path -> startswith(basename(path), "$stage."),
+                readdir(job_config_root; join=true),
+            ))
+        else
+            String[]
+        end
+        for path in (config, launcher, job_manifest)
             if startswith(path, job_config_root) &&
                     startswith(basename(path), "$stage.")
                 rm(path; force=true)
@@ -145,11 +166,17 @@ printf '999999.w003\\n'
             qsub_arguments,
             snapshot,
             config,
+            config_source,
             launcher,
+            job_manifest,
             config_mode,
             launcher_mode,
+            manifest_mode,
+            manifest_bytes,
             config_exists_after,
             launcher_exists_after,
+            manifest_exists_after,
+            submission_files_after,
             stage,
         )
     end
@@ -249,6 +276,7 @@ end
     job_directory = joinpath(@__DIR__, "..", "jobs")
     runner = joinpath(job_directory, "run_fig2_stage.pbs")
     submitter = joinpath(job_directory, "submit_fig2_stage.sh")
+    contract = joinpath(job_directory, "fig2_job_contract.sh")
     auditor = joinpath(
         @__DIR__,
         "..",
@@ -264,6 +292,7 @@ end
 
     @test isfile(runner)
     @test isfile(submitter)
+    @test isfile(contract)
     @test isfile(auditor)
     @test isfile(benchmark_source)
 
@@ -335,6 +364,13 @@ end
             @test occursin(argument, source)
         end
         @test occursin("job_status.toml", source)
+        @test occursin("FIG2_MANIFEST_SHA256", source)
+        @test occursin("fig2_validate_walltime", source)
+        @test occursin("pbs_walltime", source)
+    end
+
+    if isfile(contract)
+        @test success(`bash -n $contract`)
     end
 
     if isfile(auditor)
@@ -413,7 +449,7 @@ end
         @test occursin("export FIG2_JOB_CONFIG=%q", source)
         @test occursin("export FIG2_JOB_LAUNCHER=%q", source)
         @test occursin(
-            "chmod 0444 \"\$config\" \"\$launcher\"",
+            "chmod 0444 \"\$job_manifest\" \"\$config\" \"\$launcher\"",
             source,
         )
         @test !occursin("-v \"FIG2_JOB_CONFIG=", source)
@@ -430,10 +466,38 @@ end
                 @test result.exitcode == 0
                 @test result.config_mode == 0o444
                 @test result.launcher_mode == 0o444
+                @test result.manifest_mode == 0o444
                 @test result.config_exists_after
                 @test result.launcher_exists_after
+                @test result.manifest_exists_after
                 @test last(result.qsub_arguments) == result.launcher
                 @test !any(==("-v"), result.qsub_arguments)
+                source_manifest = joinpath(
+                    repository,
+                    "dmrg",
+                    "idmrg",
+                    "benchmarks",
+                    "fqahc_fig2.toml",
+                )
+                @test result.job_manifest != source_manifest
+                @test startswith(
+                    result.job_manifest,
+                    "/home/public/shajy/codex/results/fqahc-fig2/job_configs/",
+                )
+                @test endswith(result.job_manifest, ".manifest.toml")
+                @test result.manifest_bytes == read(source_manifest)
+                @test occursin(
+                    "FIG2_MANIFEST=$(result.job_manifest)\n",
+                    result.config_source,
+                )
+                @test occursin(
+                    "FIG2_MANIFEST_SHA256=$(bytes2hex(sha256(result.manifest_bytes)))\n",
+                    result.config_source,
+                )
+                @test occursin(
+                    "job_manifest=$(result.job_manifest)\n",
+                    result.stdout,
+                )
                 @test occursin("#PBS -q cmt\n", result.snapshot)
                 @test occursin(
                     "#PBS -l nodes=1:ppn=24\n",
@@ -468,6 +532,8 @@ end
                 @test result.exitcode == 17
                 @test !result.config_exists_after
                 @test !result.launcher_exists_after
+                @test !result.manifest_exists_after
+                @test isempty(result.submission_files_after)
             end
         end
 
@@ -500,6 +566,39 @@ end
                 )
                 @test result.exitcode == 2
                 @test result.stderr == rejection_message
+            end
+        end
+
+        @testset "submitter enforces dimension-specific walltime caps" begin
+            for (dimensions, cap, over_cap) in (
+                ("32,64,128", "12:00:00", "12:00:01"),
+                ("256", "36:00:00", "36:00:01"),
+                ("512", "72:00:00", "72:00:01"),
+                ("1000", "72:00:00", "72:00:01"),
+                ("2000", "120:00:00", "120:00:01"),
+                ("3000", "120:00:00", "120:00:01"),
+            )
+                accepted = run_fig2_submitter_dry_run(
+                    submitter,
+                    repository,
+                    24;
+                    dimensions,
+                    walltime=cap,
+                )
+                @test accepted.exitcode == 0
+                @test occursin("FIG2_WALLTIME=$cap\n", accepted.stdout)
+                @test isempty(accepted.stderr)
+
+                rejected = run_fig2_submitter_dry_run(
+                    submitter,
+                    repository,
+                    24;
+                    dimensions,
+                    walltime=over_cap,
+                )
+                @test rejected.exitcode == 2
+                @test occursin("walltime", lowercase(rejected.stderr))
+                @test occursin("cap", lowercase(rejected.stderr))
             end
         end
     end

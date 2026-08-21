@@ -1004,6 +1004,9 @@ function _default_fig2_provenance(spec, output, runtime_seconds)
         "julia_version" => string(VERSION),
         "pbs_job_id" => get(ENV, "PBS_JOBID", ""),
         "threads" => Threads.nthreads(),
+        "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+        "strided_threads" => ITensors.Strided.get_num_threads(),
+        "blocksparse_threaded" => ITensors.using_threaded_blocksparse(),
         "runtime_seconds" => runtime_seconds,
         "active_project" => active_project,
         "project_manifest" => project_manifest,
@@ -1020,12 +1023,30 @@ const FIG2_GENERATION_PROVENANCE_KEYS = (
     "julia_version",
     "pbs_job_id",
     "threads",
+    "blas_threads",
+    "strided_threads",
+    "blocksparse_threaded",
     "active_project",
     "project_manifest",
     "project_manifest_sha256",
     "benchmark_source",
     "benchmark_source_sha256",
 )
+
+function _fig2_threading_provenance_valid(provenance)
+    threads = get(provenance, "threads", nothing)
+    blas_threads = get(provenance, "blas_threads", nothing)
+    strided_threads = get(provenance, "strided_threads", nothing)
+    blocksparse_threaded = get(provenance, "blocksparse_threaded", nothing)
+    return threads isa Integer && !(threads isa Bool) &&
+        Int(threads) == Threads.nthreads() &&
+        blas_threads isa Integer && !(blas_threads isa Bool) &&
+        Int(blas_threads) == 1 &&
+        strided_threads isa Integer && !(strided_threads isa Bool) &&
+        Int(strided_threads) == 1 &&
+        blocksparse_threaded isa Bool &&
+        blocksparse_threaded == (Int(threads) > 1)
+end
 
 function _fig2_generation_provenance(spec, provenance)
     provenance isa AbstractDict || throw(
@@ -1058,10 +1079,8 @@ function _fig2_generation_provenance(spec, provenance)
         occursin(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", pbs_job_id) || throw(
         ArgumentError("execution provenance PBS job ID is invalid")
     )
-    threads = get(provenance, "threads", nothing)
-    threads isa Integer && !(threads isa Bool) &&
-        Int(threads) == Threads.nthreads() || throw(
-        ArgumentError("execution provenance thread count is invalid")
+    _fig2_threading_provenance_valid(provenance) || throw(
+        ArgumentError("execution provenance measured threading state is invalid")
     )
     get(provenance, "active_project", "") == active_project &&
         get(provenance, "project_manifest", "") == project_manifest &&
@@ -1095,6 +1114,9 @@ function _fig2_validate_generation_compatibility(stored, current)
         "git_tree_clean",
         "julia_version",
         "threads",
+        "blas_threads",
+        "strided_threads",
+        "blocksparse_threaded",
         "active_project",
         "project_manifest",
         "project_manifest_sha256",
@@ -4715,7 +4737,6 @@ function _fig2_provenance_result(
         benchmark_source = abspath(@__FILE__)
         commit = get(provenance, "git_commit", "")
         pbs_job_id = get(provenance, "pbs_job_id", "")
-        threads = get(provenance, "threads", nothing)
         runtime_seconds = get(provenance, "runtime_seconds", nothing)
         valid =
             get(provenance, "format", "") == "fqahc_fig2_provenance_v2" &&
@@ -4727,8 +4748,7 @@ function _fig2_provenance_result(
             get(provenance, "julia_version", "") == string(VERSION) &&
             pbs_job_id isa AbstractString &&
             occursin(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", pbs_job_id) &&
-            threads isa Integer && !(threads isa Bool) &&
-            Int(threads) == Threads.nthreads() &&
+            _fig2_threading_provenance_valid(provenance) &&
             runtime_seconds isa Real && !(runtime_seconds isa Bool) &&
             isfinite(Float64(runtime_seconds)) && Float64(runtime_seconds) >= 0 &&
             get(provenance, "active_project", "") == active_project &&

@@ -954,6 +954,9 @@ if all(
             "julia_version" => string(VERSION),
             "pbs_job_id" => pbs_job_id,
             "threads" => Threads.nthreads(),
+            "blas_threads" => 1,
+            "strided_threads" => 1,
+            "blocksparse_threaded" => Threads.nthreads() > 1,
             "runtime_seconds" => runtime_seconds,
             "active_project" => active_project,
             "project_manifest" => project_manifest,
@@ -2823,6 +2826,27 @@ if all(
             @test !result.valid
             @test occursin("commit", lowercase(result.reason))
         end
+
+        for (key, invalid) in (
+            ("blas_threads", 2),
+            ("strided_threads", 2),
+            ("blocksparse_threaded", Threads.nthreads() == 1),
+        )
+            tampered = deepcopy(synthetic)
+            tampered[key] = invalid
+            @test_throws ArgumentError InfiniteCylinderDMRG._fig2_generation_provenance(
+                spec, tampered
+            )
+            mktempdir() do directory
+                InfiniteCylinderDMRG._write_fig2_toml(
+                    joinpath(directory, "provenance.toml"), tampered
+                )
+                result = InfiniteCylinderDMRG._fig2_provenance_result(
+                    spec, directory
+                )
+                @test !result.valid
+            end
+        end
     end
 
     @testset "Fig. 2 repository HEAD resolver supports worktrees and packed refs" begin
@@ -3170,6 +3194,10 @@ if all(
                 generation = metadata["generation_provenance"]
                 @test generation["git_commit"] == first_commit
                 @test generation["pbs_job_id"] == "first.w003"
+                @test generation["blas_threads"] == 1
+                @test generation["strided_threads"] == 1
+                @test generation["blocksparse_threaded"] ===
+                    (Threads.nthreads() > 1)
                 @test generation["benchmark_source_sha256"] ==
                     synthetic_fig2_provenance(
                         spec, directory, 0.0
@@ -4736,6 +4764,10 @@ if all(
                 @test provenance["julia_version"] == "1.12.5"
                 @test !isempty(provenance["pbs_job_id"])
                 @test provenance["threads"] == Threads.nthreads()
+                @test provenance["blas_threads"] == 1
+                @test provenance["strided_threads"] == 1
+                @test provenance["blocksparse_threaded"] ===
+                    (Threads.nthreads() > 1)
                 @test provenance["runtime_seconds"] >= 0
                 @test occursin(
                     r"^[0-9a-f]{64}$",
