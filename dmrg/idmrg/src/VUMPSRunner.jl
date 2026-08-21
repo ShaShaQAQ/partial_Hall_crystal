@@ -179,6 +179,55 @@ struct SubspaceExpansionRecord
     end
 end
 
+struct VUMPSProgressEvent
+    sequence::Int
+    kind::Symbol
+    stage::Int
+    iteration::Int
+    target::Int
+    psi::InfiniteCanonicalMPS
+    expansion::Union{Nothing,SubspaceExpansionRecord}
+    record::Union{Nothing,VUMPSRecord}
+
+    function VUMPSProgressEvent(
+        sequence::Integer,
+        kind::Symbol,
+        stage::Integer,
+        iteration::Integer,
+        target::Integer,
+        psi::InfiniteCanonicalMPS,
+        expansion::Union{Nothing,SubspaceExpansionRecord},
+        record::Union{Nothing,VUMPSRecord},
+    )
+        sequence > 0 || throw(ArgumentError("progress event sequence must be positive"))
+        stage > 0 || throw(ArgumentError("progress event stage must be positive"))
+        iteration > 0 || throw(ArgumentError("progress event iteration must be positive"))
+        target > 0 || throw(ArgumentError("progress event target must be positive"))
+        kind in (:expansion, :iteration) || throw(
+            ArgumentError("progress event kind must be :expansion or :iteration")
+        )
+        if kind == :expansion
+            !isnothing(expansion) && isnothing(record) || throw(
+                ArgumentError("expansion progress event has inconsistent records")
+            )
+        else
+            isnothing(expansion) && !isnothing(record) || throw(
+                ArgumentError("iteration progress event has inconsistent records")
+            )
+        end
+        return new(
+            Int(sequence),
+            kind,
+            Int(stage),
+            Int(iteration),
+            Int(target),
+            psi,
+            expansion,
+            record,
+        )
+    end
+end
+
 struct VUMPSResult
     psi::InfiniteCanonicalMPS
     records::Vector{VUMPSRecord}
@@ -206,6 +255,18 @@ function _numerically_real_energy(energy::Number, imaginary_tol::Float64)
     isfinite(real_energy) ||
         throw(ArgumentError("energy estimate does not fit finite Float64 output"))
     return real_energy
+end
+
+const SUPPORTED_MULTISITE_UPDATE_ALGS = (:sequential, :parallel)
+
+function _validate_multisite_update_alg(multisite_update_alg)
+    multisite_update_alg isa Symbol &&
+        multisite_update_alg in SUPPORTED_MULTISITE_UPDATE_ALGS || throw(
+        ArgumentError(
+            "multisite_update_alg must be :sequential or :parallel"
+        )
+    )
+    return multisite_update_alg
 end
 
 function unit_cell_energy(
@@ -241,12 +302,14 @@ function vumps_iteration(
     psi::InfiniteCanonicalMPS;
     vumps_tol::Real,
     imaginary_tol::Real=1e-12,
+    multisite_update_alg=:sequential,
     solver_tol=(x -> x / 100),
     eager::Bool=true,
 )
     isfinite(vumps_tol) && vumps_tol > 0 ||
         throw(ArgumentError("vumps_tol must be finite and positive"))
     tolerance = _validate_imaginary_tolerance(imaginary_tol)
+    update_alg = _validate_multisite_update_alg(multisite_update_alg)
     eps_left = fill(Float64(vumps_tol), nsites(psi))
     eps_right = fill(Float64(vumps_tol), nsites(psi))
     result = nothing
@@ -257,7 +320,7 @@ function vumps_iteration(
         (ϵᴸ!)=eps_left,
         (ϵᴿ!)=eps_right,
         time_step=-Inf,
-        multisite_update_alg="sequential",
+        multisite_update_alg=string(update_alg),
         solver_tol,
         eager,
     )
@@ -611,6 +674,57 @@ function _normalize_right_link_convention(psi::InfiniteCanonicalMPS)
     return _dualize_right_canonical_links(psi)
 end
 
+function _isometry_residual(tensor, retained_index)
+    gram = tensor * dag(prime(tensor, retained_index))
+    identity = ITensors.denseblocks(delta(inds(gram)...))
+    return norm(gram - identity)
+end
+
+function _is_strictly_canonical_vumps_state(
+    psi::InfiniteCanonicalMPS;
+    tolerance::Real=1e-10,
+)
+    isfinite(tolerance) && tolerance > 0 || throw(
+        ArgumentError("canonical-state tolerance must be finite and positive")
+    )
+    site_count = nsites(psi)
+    all(component -> nsites(component) == site_count, (psi.AL, psi.C, psi.AR)) ||
+        return false
+    all(
+        component -> translator(component) === translator(psi.AL),
+        (psi.C, psi.AR),
+    ) || return false
+    siteinds(only, psi.AL) == siteinds(only, psi.AR) || return false
+    left_ids = Set(id.(linkinds(only, psi.AL)))
+    right_ids = Set(id.(linkinds(only, psi.AR)))
+    isempty(intersect(left_ids, right_ids)) || return false
+
+    for site in 1:site_count
+        order(psi.AL[site]) == 3 || return false
+        order(psi.AR[site]) == 3 || return false
+        order(psi.C[site]) == 2 || return false
+        left_common = commoninds(psi.AL[site], psi.AL[site + 1])
+        right_common = commoninds(psi.AR[site - 1], psi.AR[site])
+        length(left_common) == 1 || return false
+        length(right_common) == 1 || return false
+        left_retained = only(left_common)
+        right_retained = only(right_common)
+        left_residual = _isometry_residual(psi.AL[site], left_retained)
+        right_residual = _isometry_residual(psi.AR[site], right_retained)
+        all(isfinite, (left_residual, right_residual)) || return false
+        max(left_residual, right_residual) <= tolerance || return false
+
+        left_center = psi.AL[site] * psi.C[site]
+        right_center = psi.C[site - 1] * psi.AR[site]
+        center_norms = (norm(left_center), norm(right_center), norm(psi.C[site]))
+        all(value -> isfinite(value) && value > 0, center_norms) || return false
+        center_scale = max(center_norms[1], center_norms[2], 1.0)
+        center_residual = norm(left_center - right_center) / center_scale
+        isfinite(center_residual) && center_residual <= tolerance || return false
+    end
+    return true
+end
+
 function _canonical_rng_seed(seed::Integer)
     seed isa Bool && throw(ArgumentError("canonical RNG seed must be an integer"))
     0 <= seed <= typemax(UInt64) || throw(
@@ -642,6 +756,7 @@ function _canonicalize_vumps_state(
     expected_sites = siteinds(only, psi.AL)
     expected_dims = link_dimensions(psi)
     expected_flux = flux(psi.AL)
+    _is_strictly_canonical_vumps_state(psi) && return psi
     canonical = _with_canonical_rng(rng_seed) do
         _normalize_right_link_convention(
             _canonical_from_left_isometries(psi.AL)
@@ -669,6 +784,24 @@ function _canonicalize_vumps_state(
         "VUMPS canonicalization reused a left link ID on the right-canonical chain"
     )
     for site in 1:nsites(canonical)
+        left_retained = only(commoninds(
+            canonical.AL[site], canonical.AL[site + 1]
+        ))
+        right_retained = only(commoninds(
+            canonical.AR[site - 1], canonical.AR[site]
+        ))
+        left_residual = _isometry_residual(
+            canonical.AL[site], left_retained
+        )
+        right_residual = _isometry_residual(
+            canonical.AR[site], right_retained
+        )
+        isfinite(left_residual) && left_residual <= 1e-10 || error(
+            "VUMPS canonicalization left a nonisometric AL tensor at site $site"
+        )
+        isfinite(right_residual) && right_residual <= 1e-10 || error(
+            "VUMPS canonicalization left a nonisometric AR tensor at site $site"
+        )
         left_center = canonical.AL[site] * canonical.C[site]
         right_center = canonical.C[site - 1] * canonical.AR[site]
         scale = max(norm(left_center), norm(right_center), 1.0)
@@ -691,10 +824,13 @@ function run_vumps(
     energy_mismatch_tol::Real=10 * vumps_tol,
     stable_iterations::Integer=2,
     imaginary_tol::Real=1e-12,
+    multisite_update_alg=:sequential,
     solver_tol=(x -> x / 100),
     eager::Bool=true,
     canonical_seed::Integer=0,
+    progress_callback=nothing,
 )
+    update_alg = _validate_multisite_update_alg(multisite_update_alg)
     targets = _validate_vumps_schedule(
         maxdim_schedule,
         cutoff,
@@ -716,6 +852,7 @@ function run_vumps(
     records = VUMPSRecord[]
     expansions = SubspaceExpansionRecord[]
     current = psi
+    event_sequence = 0
 
     for (stage, target) in enumerate(targets)
         previous_energy = nothing
@@ -729,17 +866,28 @@ function run_vumps(
                     current, H, target; cutoff
                 )
                 after = link_dimensions(current)
-                push!(
-                    expansions,
-                    SubspaceExpansionRecord(
+                expansion_record = SubspaceExpansionRecord(
                         stage,
                         target,
                         before,
                         after,
                         true,
                         elapsed_seconds,
-                    ),
-                )
+                    )
+                push!(expansions, expansion_record)
+                event_sequence += 1
+                if !isnothing(progress_callback)
+                    progress_callback(VUMPSProgressEvent(
+                        event_sequence,
+                        :expansion,
+                        stage,
+                        iteration,
+                        target,
+                        current,
+                        expansion_record,
+                        nothing,
+                    ))
+                end
                 previous_energy = nothing
                 stable_count = 0
             end
@@ -749,6 +897,7 @@ function run_vumps(
                 current;
                 vumps_tol,
                 imaginary_tol,
+                multisite_update_alg=update_alg,
                 solver_tol,
                 eager,
             )
@@ -785,9 +934,7 @@ function run_vumps(
                     stable_iterations,
                     energy_normalization_sites,
                 )
-            push!(
-                records,
-                VUMPSRecord(
+            iteration_record = VUMPSRecord(
                     stage,
                     iteration,
                     current_maxdim,
@@ -800,8 +947,21 @@ function run_vumps(
                     precision_error,
                     step.elapsed_seconds,
                     converged,
-                ),
-            )
+                )
+            push!(records, iteration_record)
+            event_sequence += 1
+            if !isnothing(progress_callback)
+                progress_callback(VUMPSProgressEvent(
+                    event_sequence,
+                    :iteration,
+                    stage,
+                    iteration,
+                    target,
+                    current,
+                    nothing,
+                    iteration_record,
+                ))
+            end
             previous_energy = energy
             if converged
                 stage_converged = true

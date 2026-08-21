@@ -198,6 +198,23 @@ end
         current = expand_subspace(
             prepared.psi, hamiltonian, dimension; cutoff=1.0e-8
         )
+        @test isnothing(
+            InfiniteCylinderDMRG._validate_checkpoint_state(
+                current, spec.config
+            ),
+        )
+        expansion_canonical =
+            InfiniteCylinderDMRG._canonicalize_vumps_state(current)
+        @test isnothing(
+            InfiniteCylinderDMRG._validate_checkpoint_state(
+                expansion_canonical, spec.config
+            ),
+        )
+        @test siteinds(only, expansion_canonical.AL) ==
+            siteinds(only, current.AL)
+        @test link_dimensions(expansion_canonical) ==
+            link_dimensions(current)
+        @test flux(expansion_canonical.AL) == flux(current.AL)
         for _ in 1:3
             current = vumps_iteration(
                 hamiltonian, current; vumps_tol=1.0e2, imaginary_tol=1.0e-12
@@ -299,6 +316,21 @@ end
     @test step.energy_right isa Float64
     @test isfinite(step.elapsed_seconds)
     @test step.elapsed_seconds >= 0
+    parallel_step = vumps_iteration(
+        H,
+        psi;
+        vumps_tol=1e-5,
+        multisite_update_alg=:parallel,
+    )
+    @test parallel_step.psi isa InfiniteCanonicalMPS
+    @test all(isfinite, parallel_step.eps_left)
+    @test all(isfinite, parallel_step.eps_right)
+    @test_throws ArgumentError vumps_iteration(
+        H,
+        psi;
+        vumps_tol=1e-5,
+        multisite_update_alg=:unsupported,
+    )
     @test_throws ArgumentError vumps_iteration(
         H, psi; vumps_tol=1e-5, imaginary_tol=-1e-12
     )
@@ -453,6 +485,23 @@ end
     @test stopped.records[1].iteration == 1
     @test !stopped.records[1].converged
     @test isempty(stopped.expansions)
+
+    parallel_stopped = run_vumps(
+        H,
+        psi;
+        options...,
+        max_iterations=1,
+        multisite_update_alg=:parallel,
+    )
+    @test !parallel_stopped.converged
+    @test length(parallel_stopped.records) == 1
+    @test_throws ArgumentError run_vumps(
+        H,
+        psi;
+        options...,
+        max_iterations=1,
+        multisite_update_alg=:unsupported,
+    )
 
     expanded_stop = run_vumps(
         H, psi; options..., maxdim_schedule=[2], max_iterations=1

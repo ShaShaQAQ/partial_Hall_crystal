@@ -1,4 +1,4 @@
-format = "fqahc_fig2_benchmark_v3"
+format = "fqahc_fig2_benchmark_v4"
 paper_title = "Generic integer and fractional quantum anomalous Hall crystals from interaction-driven band folding"
 paper_doi = "10.1103/mh3v-fb9w"
 paper_zotero_key = "A7PSUI68"
@@ -64,6 +64,8 @@ uncertainty = [
 ]
 
 [optimization]
+multisite_update_alg = "parallel"
+progress_generations_to_keep = 2
 cutoff = 1.0e-9
 vumps_tol = 1.0e-6
 energy_tol = 1.0e-6

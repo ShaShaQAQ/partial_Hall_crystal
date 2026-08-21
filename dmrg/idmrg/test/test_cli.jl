@@ -41,6 +41,7 @@ end
         "--transfer_neigs=3",
         "--maxiter=17",
         "--stability=4",
+        "--multisite_update_alg=parallel",
         "--threads=2",
         "--output=out/single",
         "--checkpoint=out/checkpoint.h5",
@@ -64,6 +65,7 @@ end
     @test settings.transfer_neigs == 3
     @test settings.max_iterations == 17
     @test settings.stable_iterations == 4
+    @test settings.multisite_update_alg == :parallel
     @test settings.threads == 2
     @test settings.output == "out/single"
     @test settings.checkpoint == "out/checkpoint.h5"
@@ -71,6 +73,8 @@ end
     @test settings.occupied_sites == [2]
     @test settings.seed == 1234
     @test settings.allow_nonconverged
+    @test InfiniteCylinderDMRG._optimization_metadata(settings).multisite_update_alg ==
+        "parallel"
     @test InfiniteCylinderDMRG._optimization_metadata(settings).model == (
         t1=1.25,
         t3=0.3,
@@ -98,6 +102,7 @@ end
     @test defaults.transfer_neigs == 4
     @test defaults.max_iterations == 50
     @test defaults.stable_iterations == 2
+    @test defaults.multisite_update_alg == :sequential
     @test defaults.threads == 1
     @test defaults.checkpoint == joinpath("out/defaults", "state.h5")
     @test isnothing(defaults.load)
@@ -122,6 +127,7 @@ end
         ([valid; "--Ly=8"], "duplicate option --Ly"),
         ([valid[1:5]; "--maxdim=1,bad"; valid[7:end]], "--maxdim"),
         ([valid; "--allow_nonconverged=yes"], "--allow_nonconverged"),
+        ([valid; "--multisite_update_alg=jacobi"], "--multisite_update_alg"),
         ([valid[1:4]; "--phi_y=NaN"; valid[6:end]], "--phi_y must be finite"),
         ([valid; "--cutoff=Inf"], "--cutoff must be finite"),
         ([valid[1:5]; "--maxdim=1,1"; valid[7:end]], "strictly increasing"),

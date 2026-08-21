@@ -26,7 +26,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
 
 @testset "immutable Fig. 2 benchmark manifest" begin
     manifest = TOML.parsefile(FIG2_MANIFEST_PATH)
-    @test manifest["format"] == "fqahc_fig2_benchmark_v3"
+    @test manifest["format"] == "fqahc_fig2_benchmark_v4"
     @test manifest["geometry"] == "paper_straight"
     @test manifest["Ny"] == 6
     @test manifest["x_period"] == 3
@@ -80,6 +80,8 @@ struct Fig2WarmScheduleCaptured <: Exception end
     @test manifest["momentum_convention"] ==
         "sector_relative_canonical_cyclic_orbit"
     @test manifest["optimization"] == Dict(
+        "multisite_update_alg" => "parallel",
+        "progress_generations_to_keep" => 2,
         "cutoff" => 1.0e-9,
         "vumps_tol" => 1.0e-6,
         "energy_tol" => 1.0e-6,
@@ -177,6 +179,7 @@ end
         "momentum_residual_tol" => 2.0e-6,
         "max_iterations" => 51,
         "stable_iterations" => 3,
+        "progress_generations_to_keep" => 3,
     )
     for (key, value) in optimization_alternatives
         @testset "optimization.$key" begin
@@ -309,9 +312,11 @@ end
     )
     warm_state = Fig2WarmScheduleProbeState(product_state.AL, 8)
     captured_schedules = Vector{Int}[]
+    captured_algorithms = Symbol[]
 
     function capture_settings(settings, H, psi, operations; transfer_rng)
         push!(captured_schedules, copy(settings.maxdim_schedule))
+        push!(captured_algorithms, settings.multisite_update_alg)
         throw(Fig2WarmScheduleCaptured())
     end
     capture_error(f::Function) = try
@@ -341,6 +346,7 @@ end
             end
             @test error isa Fig2WarmScheduleCaptured
             @test last(captured_schedules) == expected
+            @test last(captured_algorithms) == :parallel
         end
 
         cold_id = "cold_$(last(fig2_initial_candidates(spec.config)).id)"
@@ -359,6 +365,7 @@ end
         end
         @test cold_error isa Fig2WarmScheduleCaptured
         @test last(captured_schedules) == [4, 8, 16]
+        @test last(captured_algorithms) == :parallel
 
         oversized_error = capture_error() do
             InfiniteCylinderDMRG._default_fig2_run_candidate(
@@ -424,6 +431,7 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
         @test checkpoint_maxlinkdim == evidence.achieved_maxlinkdim
 
         summary = TOML.parsefile(joinpath(output, "summary.toml"))
+        @test summary["optimization"]["multisite_update_alg"] == "parallel"
         @test summary["optimization"]["maxdim_schedule"] ==
             InfiniteCylinderDMRG._fig2_maxdim_schedule(dimension)
         smoke_optimization_data = summary["optimization"]
@@ -446,6 +454,25 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
         @test final_convergence.converged
         @test final_convergence.maxlinkdim == evidence.achieved_maxlinkdim
 
+        progress_path = joinpath(output, "progress.toml")
+        @test isfile(progress_path)
+        progress = TOML.parsefile(progress_path)
+        @test progress["format"] == "fqahc_fig2_progress_summary_v1"
+        @test progress["complete"] === true
+        @test progress["event_count"] >= 2
+        @test progress["resume_count"] == 0
+        progress_audit = InfiniteCylinderDMRG._fig2_validate_progress_artifact(
+            spec,
+            output,
+            dimension,
+            1,
+            0.0,
+            candidate_id,
+            checkpoint,
+        )
+        @test progress_audit.complete
+        @test progress_audit.latest_maxlinkdim == evidence.achieved_maxlinkdim
+
         report = Dict(
             "format" => "fqahc_fig2_real_claimed_dimension_smoke_v1",
             "candidate_id" => candidate_id,
@@ -460,6 +487,8 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
             "final_convergence_converged" => final_convergence.converged,
             "restart_valid" => evidence.restart_valid,
             "state_sha256" => InfiniteCylinderDMRG._fig2_file_sha256(checkpoint),
+            "progress_sha256" =>
+                InfiniteCylinderDMRG._fig2_file_sha256(progress_path),
         )
         open(joinpath(output, "claimed_dimension_smoke.toml"), "w") do io
             TOML.print(io, report; sorted=true)
@@ -1098,7 +1127,7 @@ if all(
 
     @testset "Fig. 2 manifest snapshot rejects post-load runtime drift" begin
         @test TOML.parsefile(FIG2_MANIFEST_PATH)["format"] ==
-            "fqahc_fig2_benchmark_v3"
+            "fqahc_fig2_benchmark_v4"
 
         function drift_error(tamper::Function, action::Function)
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
@@ -1505,6 +1534,7 @@ if all(
         end
         summary_optimization = Dict{String,Any}(
             "maxdim_schedule" => summary_maxdim_schedule,
+            "multisite_update_alg" => "parallel",
             "vumps_tol" => 1.0e-6,
             "energy_tol" => 1.0e-6,
             "energy_mismatch_tol" => 1.0e-6,
@@ -3847,6 +3877,13 @@ if all(
                 label="summary has the wrong maxdim schedule",
                 kwargs=(; summary_maxdim_schedule=[2000]),
                 fragments=("summary", "maxdim"),
+            ),
+            (
+                label="summary update algorithm disagrees with the manifest",
+                kwargs=(; summary_optimization_overrides=Dict(
+                    "multisite_update_alg" => "sequential",
+                )),
+                fragments=("summary", "multisite_update_alg", "manifest"),
             ),
             (
                 label="summary vumps tolerance disagrees with the manifest",

@@ -1,6 +1,10 @@
-const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v3"
+const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v4"
 const FIG2_LEDGER_FORMAT = "fqahc_fig2_ledger_v3"
 const FIG2_CANDIDATE_FORMAT = "fqahc_fig2_candidate_v4"
+const FIG2_PROGRESS_EVENT_FORMAT = "fqahc_fig2_progress_event_v1"
+const FIG2_PROGRESS_POINTER_FORMAT = "fqahc_fig2_progress_pointer_v1"
+const FIG2_PROGRESS_SUMMARY_FORMAT = "fqahc_fig2_progress_summary_v1"
+const FIG2_PROGRESS_CONVERGENCE_STATE_POLICY = "reset_on_resume"
 const FIG2_MIXED_REFERENCE_ABSENT = "absent"
 const FIG2_PAPER_CURVE_FLUX_UNITS_2PI = collect(0.0:0.125:3.0)
 const FIG2_PAPER_CURVE_DELTA_Q = Float64[
@@ -355,6 +359,9 @@ function _validate_fig2_manifest(data)
     )
 
     optimization = _fig2_required(data, "optimization")
+    _fig2_required(optimization, "multisite_update_alg") == "parallel" || throw(
+        ArgumentError("Fig. 2 multisite update algorithm must be parallel")
+    )
     optimization_targets = (
         "cutoff" => 1.0e-9,
         "vumps_tol" => 1.0e-6,
@@ -381,6 +388,16 @@ function _validate_fig2_manifest(data)
     )
     stable_iterations == 2 || throw(
         ArgumentError("Fig. 2 optimization stable_iterations is not fixed")
+    )
+    progress_generations_to_keep = _fig2_positive_integer(
+        optimization,
+        "progress_generations_to_keep",
+        "Fig. 2 optimization progress_generations_to_keep",
+    )
+    progress_generations_to_keep == 2 || throw(
+        ArgumentError(
+            "Fig. 2 optimization progress_generations_to_keep is not fixed"
+        )
     )
     stable_iterations <= max_iterations || throw(
         ArgumentError("Fig. 2 stable_iterations cannot exceed max_iterations")
@@ -588,6 +605,7 @@ function _fig2_runner_optimization(
     if isnothing(override)
         optimization = snapshot["optimization"]
         return (;
+            multisite_update_alg=Symbol(optimization["multisite_update_alg"]),
             cutoff=Float64(optimization["cutoff"]),
             vumps_tol=Float64(optimization["vumps_tol"]),
             energy_tol=Float64(optimization["energy_tol"]),
@@ -620,6 +638,7 @@ function _fig2_runner_optimization(
         ArgumentError("Fig. 2 smoke runner iteration overrides are invalid")
     )
     return (;
+        multisite_update_alg=Symbol(snapshot["optimization"]["multisite_update_alg"]),
         cutoff=override.cutoff,
         vumps_tol=override.vumps_tol,
         energy_tol=override.energy_tol,
@@ -776,6 +795,638 @@ end
 
 function _write_fig2_toml(path::AbstractString, data)
     return _write_fig2_bytes(path, _render_summary(data))
+end
+
+function _fig2_progress_identity(
+    spec,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+)
+    snapshot = _fig2_validated_snapshot(spec)
+    dimension isa Integer && !(dimension isa Bool) && dimension > 0 || throw(
+        ArgumentError("Fig. 2 progress dimension must be a positive integer")
+    )
+    point isa Integer && !(point isa Bool) && point > 0 || throw(
+        ArgumentError("Fig. 2 progress point must be a positive integer")
+    )
+    phi_y isa Real && !(phi_y isa Bool) && isfinite(phi_y) || throw(
+        ArgumentError("Fig. 2 progress flux must be finite")
+    )
+    candidate_id isa AbstractString &&
+        occursin(r"^[A-Za-z0-9_.-]+$", candidate_id) || throw(
+        ArgumentError("Fig. 2 progress candidate ID is invalid")
+    )
+    config = with_flux(spec.config, Float64(phi_y))
+    return Dict{String,Any}(
+        "manifest_sha256" => spec.sha256,
+        "configuration_signature" => configuration_signature(config),
+        "dimension" => Int(dimension),
+        "point" => Int(point),
+        "phi_y" => Float64(phi_y),
+        "candidate_id" => String(candidate_id),
+        "multisite_update_alg" =>
+            String(snapshot["optimization"]["multisite_update_alg"]),
+        "progress_generations_to_keep" => Int(
+            snapshot["optimization"]["progress_generations_to_keep"]
+        ),
+        "convergence_state_policy" =>
+            FIG2_PROGRESS_CONVERGENCE_STATE_POLICY,
+        "git_commit" => _fig2_repository_commit(),
+        "benchmark_source_sha256" => _fig2_file_sha256(@__FILE__),
+    )
+end
+
+const FIG2_PROGRESS_IDENTITY_KEYS = (
+    "manifest_sha256",
+    "configuration_signature",
+    "dimension",
+    "point",
+    "phi_y",
+    "candidate_id",
+    "multisite_update_alg",
+    "progress_generations_to_keep",
+    "convergence_state_policy",
+    "git_commit",
+    "benchmark_source_sha256",
+)
+
+function _fig2_validate_progress_identity(data, expected)
+    data isa AbstractDict || throw(
+        ArgumentError("Fig. 2 progress metadata must be a table")
+    )
+    for key in FIG2_PROGRESS_IDENTITY_KEYS
+        get(data, key, nothing) == expected[key] || throw(ArgumentError(
+            "Fig. 2 progress $key disagrees with the requested candidate identity"
+        ))
+    end
+    return nothing
+end
+
+function _fig2_progress_schedule(schedule, dimension)
+    schedule isa AbstractVector || throw(
+        ArgumentError("Fig. 2 progress maxdim schedule must be an array")
+    )
+    all(value -> value isa Integer && !(value isa Bool), schedule) || throw(
+        ArgumentError("Fig. 2 progress maxdim schedule must contain integers")
+    )
+    targets = Int.(schedule)
+    isempty(targets) && throw(
+        ArgumentError("Fig. 2 progress maxdim schedule must not be empty")
+    )
+    full = _fig2_maxdim_schedule(dimension)
+    first_stage = findfirst(==(first(targets)), full)
+    !isnothing(first_stage) && full[first_stage:end] == targets || throw(
+        ArgumentError("Fig. 2 progress maxdim schedule is not a canonical suffix")
+    )
+    return targets
+end
+
+function _fig2_progress_path(root, value, description)
+    value isa AbstractString || throw(
+        ArgumentError("Fig. 2 progress $description path must be a string")
+    )
+    relative = normpath(String(value))
+    !isabspath(relative) && relative != "." || throw(
+        ArgumentError("Fig. 2 progress $description path must be relative")
+    )
+    parts = splitpath(relative)
+    all(part -> !isempty(part) && part != "." && part != "..", parts) || throw(
+        ArgumentError("Fig. 2 progress $description path is unsafe")
+    )
+    resolved = abspath(joinpath(root, relative))
+    relative_check = relpath(resolved, abspath(root))
+    relative_check == relative || throw(
+        ArgumentError("Fig. 2 progress $description path escapes the candidate directory")
+    )
+    return resolved, relative
+end
+
+function _fig2_progress_positive_integer(data, key)
+    value = get(data, key, nothing)
+    value isa Integer && !(value isa Bool) && value > 0 || throw(
+        ArgumentError("Fig. 2 progress $key must be a positive integer")
+    )
+    return Int(value)
+end
+
+function _fig2_progress_nonnegative_integer(data, key)
+    value = get(data, key, nothing)
+    value isa Integer && !(value isa Bool) && value >= 0 || throw(
+        ArgumentError("Fig. 2 progress $key must be a nonnegative integer")
+    )
+    return Int(value)
+end
+
+function _fig2_progress_event_payload(event::VUMPSProgressEvent)
+    if event.kind == :expansion
+        expansion = something(event.expansion)
+        return Dict{String,Any}(
+            "expansion" => Dict(
+                "stage" => expansion.stage,
+                "target" => expansion.target,
+                "before" => expansion.before,
+                "after" => expansion.after,
+                "progressed" => expansion.progressed,
+                "elapsed_seconds" => expansion.elapsed_seconds,
+            ),
+        )
+    end
+    record = something(event.record)
+    return Dict{String,Any}(
+        "iteration_record" => Dict(
+            "stage" => record.stage,
+            "iteration" => record.iteration,
+            "maxlinkdim" => record.maxlinkdim,
+            "energy_left" => record.energy_left,
+            "energy_right" => record.energy_right,
+            "energy_mismatch" => record.energy_mismatch,
+            "delta_energy" => isfinite(record.delta_energy) ?
+                record.delta_energy : "missing",
+            "eps_left" => record.eps_left,
+            "eps_right" => record.eps_right,
+            "precision_error" => record.precision_error,
+            "elapsed_seconds" => record.elapsed_seconds,
+            "converged" => record.converged,
+        ),
+    )
+end
+
+function _fig2_read_progress_pointer(root, identity)
+    pointer_path = joinpath(root, ".progress", "latest.toml")
+    isfile(pointer_path) || return nothing
+    pointer = Dict{String,Any}(TOML.parsefile(pointer_path))
+    get(pointer, "format", "") == FIG2_PROGRESS_POINTER_FORMAT || throw(
+        ArgumentError("unsupported Fig. 2 progress pointer format")
+    )
+    _fig2_validate_progress_identity(pointer, identity)
+    _fig2_progress_positive_integer(pointer, "event_sequence")
+    _fig2_progress_positive_integer(pointer, "runner_event_sequence")
+    _fig2_progress_nonnegative_integer(pointer, "resume_count")
+    _fig2_progress_positive_integer(pointer, "maxlinkdim")
+    _fig2_progress_positive_integer(pointer, "progress_generations_to_keep")
+    return pointer
+end
+
+function _fig2_prune_progress_generations!(
+    root,
+    state_paths,
+    generations_to_keep::Integer,
+)
+    generations_to_keep > 0 || throw(
+        ArgumentError("Fig. 2 progress retention must be positive")
+    )
+    generation_root = abspath(joinpath(root, ".progress", "generations"))
+    isdir(generation_root) || return nothing
+    retained = Set{String}()
+    for relative in Iterators.take(state_paths, generations_to_keep)
+        absolute, _ = _fig2_progress_path(root, relative, "state")
+        dirname(absolute) == generation_root || throw(
+            ArgumentError(
+                "Fig. 2 progress generation is outside its state directory"
+            )
+        )
+        push!(retained, absolute)
+    end
+    for name in readdir(generation_root)
+        occursin(r"^state_[0-9]{8}_[0-9]+_[0-9]+\.h5$", name) || continue
+        path = abspath(joinpath(generation_root, name))
+        dirname(path) == generation_root || error(
+            "Fig. 2 progress generation path escaped its directory"
+        )
+        path in retained || rm(path)
+    end
+    return nothing
+end
+
+function _fig2_persist_progress_event!(
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+    maxdim_schedule,
+    event::VUMPSProgressEvent;
+    resume_count::Integer,
+    canonicalize_state=nothing,
+    save_state=save_checkpoint,
+)
+    resume_count >= 0 || throw(
+        ArgumentError("Fig. 2 progress resume count must be nonnegative")
+    )
+    root = abspath(candidate_directory)
+    mkpath(root)
+    identity = _fig2_progress_identity(
+        spec, dimension, point, phi_y, candidate_id
+    )
+    schedule = _fig2_progress_schedule(maxdim_schedule, dimension)
+    event.stage <= length(schedule) && schedule[event.stage] == event.target || throw(
+        ArgumentError("Fig. 2 progress event target disagrees with its schedule")
+    )
+    previous = _fig2_read_progress_pointer(root, identity)
+    event_sequence = isnothing(previous) ? 1 :
+        _fig2_progress_positive_integer(previous, "event_sequence") + 1
+    if isnothing(previous)
+        resume_count == 0 && event.sequence == 1 || throw(ArgumentError(
+            "first Fig. 2 progress event must start sequence one without a resume"
+        ))
+    else
+        previous_resume = _fig2_progress_nonnegative_integer(
+            previous, "resume_count"
+        )
+        previous_runner = _fig2_progress_positive_integer(
+            previous, "runner_event_sequence"
+        )
+        same_segment = resume_count == previous_resume &&
+            event.sequence == previous_runner + 1
+        resumed_segment = resume_count == previous_resume + 1 &&
+            event.sequence == 1
+        same_segment || resumed_segment || throw(ArgumentError(
+            "Fig. 2 progress runner sequence or resume count is discontinuous"
+        ))
+    end
+
+    config = with_flux(spec.config, Float64(phi_y))
+    canonical_seed = Int(mod(
+        _derived_seed(
+            _fig2_candidate_seed(dimension, point, candidate_id),
+            :progress,
+            event_sequence,
+        ),
+        UInt64(typemax(Int)),
+    ))
+    canonical = isnothing(canonicalize_state) ?
+        _canonicalize_vumps_state(event.psi; rng_seed=canonical_seed) :
+        canonicalize_state(event.psi)
+    canonical isa InfiniteCanonicalMPS || throw(
+        ArgumentError("Fig. 2 progress canonicalizer returned the wrong state type")
+    )
+    maxlinkdim = maximum(link_dimensions(canonical))
+    maxlinkdim > 0 || error("Fig. 2 progress state has no positive link dimension")
+
+    generation_root = joinpath(root, ".progress", "generations")
+    event_root = joinpath(root, ".progress", "events")
+    mkpath(generation_root)
+    mkpath(event_root)
+    stem = string(
+        lpad(string(event_sequence), 8, '0'),
+        "_",
+        getpid(),
+        "_",
+        time_ns(),
+    )
+    state_path = joinpath(generation_root, "state_$stem.h5")
+    event_path = joinpath(event_root, "event_$stem.toml")
+    !ispath(state_path) && !ispath(event_path) || error(
+        "Fig. 2 progress generation path collision"
+    )
+    save_state(state_path, canonical, config)
+    isfile(state_path) && filesize(state_path) > 0 || throw(
+        ArgumentError("Fig. 2 progress state writer produced no checkpoint")
+    )
+    state_relative = relpath(state_path, root)
+    event_relative = relpath(event_path, root)
+    state_sha256 = _fig2_file_sha256(state_path)
+    previous_event_path = isnothing(previous) ? "" :
+        String(previous["event_path"])
+    previous_event_sha256 = isnothing(previous) ? "" :
+        String(previous["event_sha256"])
+    event_data = Dict{String,Any}(
+        "format" => FIG2_PROGRESS_EVENT_FORMAT,
+        identity...,
+        "event_sequence" => event_sequence,
+        "runner_event_sequence" => event.sequence,
+        "resume_count" => Int(resume_count),
+        "event_kind" => string(event.kind),
+        "stage" => event.stage,
+        "iteration" => event.iteration,
+        "target" => event.target,
+        "maxdim_schedule" => schedule,
+        "maxlinkdim" => maxlinkdim,
+        "state_path" => state_relative,
+        "state_sha256" => state_sha256,
+        "previous_event_path" => previous_event_path,
+        "previous_event_sha256" => previous_event_sha256,
+        "pbs_job_id" => get(ENV, "PBS_JOBID", ""),
+    )
+    merge!(event_data, _fig2_progress_event_payload(event))
+    _write_fig2_toml(event_path, event_data)
+    event_sha256 = _fig2_file_sha256(event_path)
+    pointer = Dict{String,Any}(
+        "format" => FIG2_PROGRESS_POINTER_FORMAT,
+        identity...,
+        "event_sequence" => event_sequence,
+        "runner_event_sequence" => event.sequence,
+        "resume_count" => Int(resume_count),
+        "event_kind" => string(event.kind),
+        "stage" => event.stage,
+        "iteration" => event.iteration,
+        "target" => event.target,
+        "maxdim_schedule" => schedule,
+        "maxlinkdim" => maxlinkdim,
+        "state_path" => state_relative,
+        "state_sha256" => state_sha256,
+        "event_path" => event_relative,
+        "event_sha256" => event_sha256,
+    )
+    _write_fig2_toml(joinpath(root, ".progress", "latest.toml"), pointer)
+    chain = _fig2_validate_progress_chain(root, identity, pointer)
+    _fig2_prune_progress_generations!(
+        root,
+        chain.state_paths,
+        Int(identity["progress_generations_to_keep"]),
+    )
+    return (;
+        event_sequence,
+        runner_event_sequence=event.sequence,
+        resume_count=Int(resume_count),
+        verified_event_count=chain.verified_event_count,
+        maxlinkdim,
+        state_path=state_relative,
+        event_path=event_relative,
+    )
+end
+
+function _fig2_validate_progress_chain(root, identity, pointer)
+    expected_sequence = _fig2_progress_positive_integer(
+        pointer, "event_sequence"
+    )
+    event_path = String(get(pointer, "event_path", ""))
+    event_sha256 = String(get(pointer, "event_sha256", ""))
+    isempty(event_path) && throw(
+        ArgumentError("Fig. 2 progress pointer event path is missing")
+    )
+    occursin(r"^[0-9a-f]{64}$", event_sha256) || throw(
+        ArgumentError("Fig. 2 progress pointer event checksum is invalid")
+    )
+    latest = nothing
+    verified = 0
+    state_paths = String[]
+    while true
+        absolute, relative = _fig2_progress_path(
+            root, event_path, "event"
+        )
+        isfile(absolute) || throw(
+            ArgumentError("Fig. 2 progress event file is missing")
+        )
+        _fig2_file_sha256(absolute) == event_sha256 || throw(
+            ArgumentError("Fig. 2 progress event checksum mismatch")
+        )
+        event = Dict{String,Any}(TOML.parsefile(absolute))
+        get(event, "format", "") == FIG2_PROGRESS_EVENT_FORMAT || throw(
+            ArgumentError("unsupported Fig. 2 progress event format")
+        )
+        _fig2_validate_progress_identity(event, identity)
+        _fig2_progress_positive_integer(event, "event_sequence") ==
+            expected_sequence || throw(ArgumentError(
+            "Fig. 2 progress event sequence is discontinuous"
+        ))
+        _fig2_progress_positive_integer(event, "runner_event_sequence")
+        _fig2_progress_nonnegative_integer(event, "resume_count")
+        _fig2_progress_positive_integer(event, "maxlinkdim")
+        _fig2_progress_schedule(event["maxdim_schedule"], identity["dimension"])
+        _, state_relative = _fig2_progress_path(
+            root, get(event, "state_path", nothing), "state"
+        )
+        push!(state_paths, state_relative)
+        isnothing(latest) && (latest = event)
+        verified += 1
+        previous_path = get(event, "previous_event_path", nothing)
+        previous_sha256 = get(event, "previous_event_sha256", nothing)
+        previous_path isa AbstractString && previous_sha256 isa AbstractString ||
+            throw(ArgumentError(
+                "Fig. 2 progress previous-event reference is invalid"
+            ))
+        if expected_sequence == 1
+            isempty(previous_path) && isempty(previous_sha256) || throw(
+                ArgumentError("root Fig. 2 progress event has a predecessor")
+            )
+            break
+        end
+        !isempty(previous_path) && occursin(r"^[0-9a-f]{64}$", previous_sha256) ||
+            throw(ArgumentError(
+                "Fig. 2 progress previous-event checksum is invalid"
+            ))
+        event_path = String(previous_path)
+        event_sha256 = String(previous_sha256)
+        expected_sequence -= 1
+    end
+    return (;
+        latest=something(latest),
+        verified_event_count=verified,
+        state_paths,
+    )
+end
+
+function _fig2_load_progress(
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id;
+    load_state=load_checkpoint,
+)
+    root = abspath(candidate_directory)
+    identity = _fig2_progress_identity(
+        spec, dimension, point, phi_y, candidate_id
+    )
+    pointer = _fig2_read_progress_pointer(root, identity)
+    isnothing(pointer) && return nothing
+    chain = _fig2_validate_progress_chain(root, identity, pointer)
+    latest = chain.latest
+    for key in (
+        "event_sequence",
+        "runner_event_sequence",
+        "resume_count",
+        "event_kind",
+        "stage",
+        "iteration",
+        "target",
+        "maxdim_schedule",
+        "maxlinkdim",
+        "state_path",
+        "state_sha256",
+    )
+        get(pointer, key, nothing) == get(latest, key, nothing) || throw(
+            ArgumentError("Fig. 2 progress pointer disagrees with its latest event")
+        )
+    end
+    state_path, state_relative = _fig2_progress_path(
+        root, pointer["state_path"], "state"
+    )
+    isfile(state_path) && filesize(state_path) > 0 || throw(
+        ArgumentError("Fig. 2 progress state checkpoint is missing")
+    )
+    state_sha256 = get(pointer, "state_sha256", nothing)
+    state_sha256 isa AbstractString &&
+        occursin(r"^[0-9a-f]{64}$", state_sha256) || throw(
+        ArgumentError("Fig. 2 progress state checksum is invalid")
+    )
+    _fig2_file_sha256(state_path) == state_sha256 || throw(
+        ArgumentError("Fig. 2 progress state checksum mismatch")
+    )
+    config = with_flux(spec.config, Float64(phi_y))
+    state = load_state(state_path, config)
+    state isa InfiniteCanonicalMPS || throw(
+        ArgumentError("Fig. 2 progress loader returned the wrong state type")
+    )
+    maxlinkdim = maximum(link_dimensions(state))
+    maxlinkdim == _fig2_progress_positive_integer(pointer, "maxlinkdim") || throw(
+        ArgumentError("Fig. 2 progress state maxlinkdim disagrees with its pointer")
+    )
+    event_sequence = _fig2_progress_positive_integer(
+        pointer, "event_sequence"
+    )
+    resume_count = _fig2_progress_nonnegative_integer(
+        pointer, "resume_count"
+    )
+    return (;
+        state,
+        event_sequence,
+        runner_event_sequence=_fig2_progress_positive_integer(
+            pointer, "runner_event_sequence"
+        ),
+        resume_count,
+        next_resume_count=resume_count + 1,
+        verified_event_count=chain.verified_event_count,
+        maxlinkdim,
+        state_path=state_relative,
+        event_path=String(pointer["event_path"]),
+        latest_pointer_sha256=_fig2_file_sha256(
+            joinpath(root, ".progress", "latest.toml")
+        ),
+        pointer,
+    )
+end
+
+function _fig2_finalize_progress!(
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+    final_checkpoint,
+)
+    root = abspath(candidate_directory)
+    progress = _fig2_load_progress(
+        spec, root, dimension, point, phi_y, candidate_id
+    )
+    isnothing(progress) && throw(
+        ArgumentError("Fig. 2 candidate has no restartable progress generation")
+    )
+    final_path = abspath(final_checkpoint)
+    relpath(final_path, root) == "state.h5" || throw(
+        ArgumentError("Fig. 2 final checkpoint is outside the candidate contract")
+    )
+    isfile(final_path) && filesize(final_path) > 0 || throw(
+        ArgumentError("Fig. 2 final checkpoint is missing")
+    )
+    config = with_flux(spec.config, Float64(phi_y))
+    final_state = load_checkpoint(final_path, config)
+    final_maxlinkdim = maximum(link_dimensions(final_state))
+    final_maxlinkdim == progress.maxlinkdim || throw(
+        ArgumentError("Fig. 2 final and progress checkpoint maxlinkdim disagree")
+    )
+    final_state_sha256 = _fig2_file_sha256(final_path)
+    pointer_path = joinpath(root, ".progress", "latest.toml")
+    summary = Dict{String,Any}(
+        "format" => FIG2_PROGRESS_SUMMARY_FORMAT,
+        _fig2_progress_identity(
+            spec, dimension, point, phi_y, candidate_id
+        )...,
+        "complete" => true,
+        "event_count" => progress.verified_event_count,
+        "resume_count" => progress.resume_count,
+        "latest_maxlinkdim" => progress.maxlinkdim,
+        "latest_pointer_path" => relpath(pointer_path, root),
+        "latest_pointer_sha256" => progress.latest_pointer_sha256,
+        "latest_event_path" => progress.event_path,
+        "latest_event_sha256" => String(progress.pointer["event_sha256"]),
+        "latest_state_path" => progress.state_path,
+        "latest_state_sha256" => String(progress.pointer["state_sha256"]),
+        "final_state_path" => relpath(final_path, root),
+        "final_state_sha256" => final_state_sha256,
+        "final_maxlinkdim" => final_maxlinkdim,
+    )
+    _write_fig2_toml(joinpath(root, "progress.toml"), summary)
+    return _fig2_validate_progress_artifact(
+        spec,
+        root,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        final_path,
+    )
+end
+
+function _fig2_validate_progress_artifact(
+    spec,
+    candidate_directory,
+    dimension,
+    point,
+    phi_y,
+    candidate_id,
+    final_checkpoint,
+)
+    root = abspath(candidate_directory)
+    path = joinpath(root, "progress.toml")
+    isfile(path) || throw(
+        ArgumentError("Fig. 2 candidate progress.toml is missing")
+    )
+    summary = Dict{String,Any}(TOML.parsefile(path))
+    get(summary, "format", "") == FIG2_PROGRESS_SUMMARY_FORMAT || throw(
+        ArgumentError("unsupported Fig. 2 progress summary format")
+    )
+    get(summary, "complete", nothing) === true || throw(
+        ArgumentError("Fig. 2 progress summary is not complete")
+    )
+    identity = _fig2_progress_identity(
+        spec, dimension, point, phi_y, candidate_id
+    )
+    _fig2_validate_progress_identity(summary, identity)
+    progress = _fig2_load_progress(
+        spec, root, dimension, point, phi_y, candidate_id
+    )
+    isnothing(progress) && throw(
+        ArgumentError("Fig. 2 progress summary has no latest pointer")
+    )
+    get(summary, "event_count", nothing) == progress.verified_event_count ||
+        throw(ArgumentError("Fig. 2 progress summary event count disagrees"))
+    get(summary, "resume_count", nothing) == progress.resume_count || throw(
+        ArgumentError("Fig. 2 progress summary resume count disagrees")
+    )
+    get(summary, "latest_maxlinkdim", nothing) == progress.maxlinkdim || throw(
+        ArgumentError("Fig. 2 progress summary maxlinkdim disagrees")
+    )
+    get(summary, "latest_pointer_sha256", nothing) ==
+        progress.latest_pointer_sha256 || throw(ArgumentError(
+        "Fig. 2 progress summary pointer checksum disagrees"
+    ))
+    final_path = abspath(final_checkpoint)
+    final_state_sha256 = _fig2_file_sha256(final_path)
+    get(summary, "final_state_sha256", nothing) == final_state_sha256 || throw(
+        ArgumentError("Fig. 2 progress final-state checksum disagrees")
+    )
+    config = with_flux(spec.config, Float64(phi_y))
+    final_state = load_checkpoint(final_path, config)
+    final_maxlinkdim = maximum(link_dimensions(final_state))
+    get(summary, "final_maxlinkdim", nothing) == final_maxlinkdim ==
+        progress.maxlinkdim || throw(ArgumentError(
+        "Fig. 2 progress final-state maxlinkdim disagrees"
+    ))
+    return (;
+        complete=true,
+        event_count=progress.verified_event_count,
+        resume_count=progress.resume_count,
+        latest_maxlinkdim=progress.maxlinkdim,
+        final_state_sha256,
+        progress_sha256=_fig2_file_sha256(path),
+    )
 end
 
 function _ensure_fig2_manifest_copy(spec::Fig2BenchmarkSpec, output)
@@ -2261,6 +2912,16 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
         ArgumentError("candidate summary optimization table is missing")
     )
     expected = snapshot["optimization"]
+    multisite_update_alg = get(
+        optimization, "multisite_update_alg", nothing
+    )
+    multisite_update_alg isa AbstractString || throw(ArgumentError(
+        "candidate summary multisite_update_alg must be a string"
+    ))
+    String(multisite_update_alg) == String(expected["multisite_update_alg"]) ||
+        throw(ArgumentError(
+            "candidate summary multisite_update_alg disagrees with the immutable manifest"
+        ))
     values = Dict{Symbol,Any}()
     for key in ("vumps_tol", "energy_tol", "energy_mismatch_tol")
         value = get(optimization, key, nothing)
@@ -2285,6 +2946,7 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
         )
     )
     return (;
+        multisite_update_alg=Symbol(multisite_update_alg),
         vumps_tol=values[:vumps_tol],
         energy_tol=values[:energy_tol],
         energy_mismatch_tol=values[:energy_mismatch_tol],
@@ -5680,8 +6342,16 @@ function _default_fig2_run_candidate(
     prepared = _prepare_fig2_candidate_state(
         spec, config, candidate_id, previous_state
     )
-    psi = prepared.psi
-    sites = prepared.sites
+    progress = _fig2_load_progress(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+    )
+    psi = isnothing(progress) ? prepared.psi : progress.state
+    sites = isnothing(progress) ? prepared.sites : siteinds(only, psi.AL)
     occupied_sites = prepared.occupied_sites
     initial_maxdim = maximum(link_dimensions(psi))
     settings = SinglePointSettings(
@@ -5697,6 +6367,7 @@ function _default_fig2_run_candidate(
         4,
         optimization.max_iterations,
         optimization.stable_iterations,
+        optimization.multisite_update_alg,
         Base.Threads.nthreads(),
         candidate_directory,
         joinpath(candidate_directory, "state.h5"),
@@ -5706,12 +6377,43 @@ function _default_fig2_run_candidate(
         true,
     )
     H = build_hamiltonian(config, spec.model, sites)
+    progress_resume_count = isnothing(progress) ? 0 :
+        progress.next_resume_count
+    progress_callback = event -> _fig2_persist_progress_event!(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        settings.maxdim_schedule,
+        event;
+        resume_count=progress_resume_count,
+    )
+    candidate_operations = SinglePointOperations(
+        optimize=(candidate_H, candidate_psi, candidate_settings) ->
+            _default_optimize(
+                candidate_H,
+                candidate_psi,
+                candidate_settings;
+                progress_callback,
+            ),
+    )
     result = run_prepared_point(
         settings,
         H,
         psi,
-        SinglePointOperations();
+        candidate_operations;
         transfer_rng=Random.Xoshiro(_derived_seed(0, :fig2, dimension, point, candidate_id)),
+    )
+    _fig2_finalize_progress!(
+        spec,
+        candidate_directory,
+        dimension,
+        point,
+        phi_y,
+        candidate_id,
+        joinpath(candidate_directory, "state.h5"),
     )
     _normalize_fig2_convergence_sentinel!(
         joinpath(candidate_directory, "convergence.tsv")

@@ -21,6 +21,7 @@ const SINGLE_POINT_KEYS = Set([
     "transfer_neigs",
     "maxiter",
     "stability",
+    "multisite_update_alg",
     "threads",
     "output",
     "checkpoint",
@@ -77,6 +78,7 @@ struct SinglePointSettings
     transfer_neigs::Int
     max_iterations::Int
     stable_iterations::Int
+    multisite_update_alg::Symbol
     threads::Int
     output::String
     checkpoint::String
@@ -128,6 +130,16 @@ function _parse_bool_option(value::AbstractString, key::String)
     value == "true" && return true
     value == "false" && return false
     throw(ArgumentError("--$key must be true or false"))
+end
+
+function _parse_multisite_update_alg(options)
+    value = get(options, "multisite_update_alg", "sequential")
+    value in ("sequential", "parallel") || throw(
+        ArgumentError(
+            "--multisite_update_alg must be sequential or parallel"
+        )
+    )
+    return _validate_multisite_update_alg(Symbol(value))
 end
 
 function _parse_maxdim_schedule(value::AbstractString)
@@ -300,6 +312,7 @@ function parse_single_point_args(args=ARGS)
     stable_iterations <= max_iterations || throw(
         ArgumentError("--stability must not exceed --maxiter")
     )
+    multisite_update_alg = _parse_multisite_update_alg(options)
     threads = _positive_int(options, "threads", 1)
     output = _nonempty_path(options["output"], "output")
     checkpoint = haskey(options, "checkpoint") ?
@@ -327,6 +340,7 @@ function parse_single_point_args(args=ARGS)
         transfer_neigs,
         max_iterations,
         stable_iterations,
+        multisite_update_alg,
         threads,
         output,
         checkpoint,
@@ -887,7 +901,12 @@ function configure_cli_threads(threads::Integer)
     )
 end
 
-function _default_optimize(H, psi, settings::SinglePointSettings)
+function _default_optimize(
+    H,
+    psi,
+    settings::SinglePointSettings;
+    progress_callback=nothing,
+)
     return run_vumps(
         H,
         psi;
@@ -899,7 +918,9 @@ function _default_optimize(H, psi, settings::SinglePointSettings)
         energy_mismatch_tol=settings.energy_mismatch_tol,
         stable_iterations=settings.stable_iterations,
         imaginary_tol=settings.imaginary_tol,
+        multisite_update_alg=settings.multisite_update_alg,
         canonical_seed=_single_point_canonical_seed(settings.seed),
+        progress_callback,
     )
 end
 
@@ -922,6 +943,7 @@ function _optimization_metadata(settings::SinglePointSettings)
         transfer_neigs=settings.transfer_neigs,
         max_iterations=settings.max_iterations,
         stable_iterations=settings.stable_iterations,
+        multisite_update_alg=string(settings.multisite_update_alg),
         threads=settings.threads,
         occupied_sites=settings.occupied_sites,
         seed=settings.seed,
@@ -1023,6 +1045,7 @@ function _with_phi(
         settings.transfer_neigs,
         settings.max_iterations,
         settings.stable_iterations,
+        settings.multisite_update_alg,
         settings.threads,
         String(output),
         String(checkpoint),

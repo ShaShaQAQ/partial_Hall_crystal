@@ -51,12 +51,6 @@ function _atomic_replace(writer::Function, path::AbstractString)
     return String(path)
 end
 
-function _isometry_residual(tensor, retained_index)
-    gram = tensor * dag(prime(tensor, retained_index))
-    identity = ITensors.denseblocks(delta(inds(gram)...))
-    return norm(gram - identity)
-end
-
 function _checkpoint_metadata(c::InfiniteCylinderConfig)
     coordinate_convention = c.geometry == :paper_straight ?
         "paper_straight_A1_A2_AB_v1" : "legacy_sheared_site_ring_v1"
