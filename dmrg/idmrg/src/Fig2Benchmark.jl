@@ -362,8 +362,8 @@ function _validate_fig2_manifest(data)
     )
 
     optimization = _fig2_required(data, "optimization")
-    _fig2_required(optimization, "multisite_update_alg") == "parallel" || throw(
-        ArgumentError("Fig. 2 multisite update algorithm must be parallel")
+    _fig2_required(optimization, "multisite_update_alg") == "sequential" || throw(
+        ArgumentError("Fig. 2 multisite update algorithm must be sequential")
     )
     optimization_targets = (
         "cutoff" => 1.0e-9,

@@ -80,7 +80,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
     @test manifest["momentum_convention"] ==
         "sector_relative_canonical_cyclic_orbit"
     @test manifest["optimization"] == Dict(
-        "multisite_update_alg" => "parallel",
+        "multisite_update_alg" => "sequential",
         "progress_generations_to_keep" => 2,
         "cutoff" => 1.0e-9,
         "vumps_tol" => 1.0e-6,
@@ -142,6 +142,14 @@ struct Fig2WarmScheduleCaptured <: Exception end
     ]
     @test InfiniteCylinderDMRG.FIG2_LEDGER_FORMAT ==
         "fqahc_fig2_ledger_v3"
+end
+
+@testset "Fig. 2 uses sequential long-range QN updates" begin
+    spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
+    @test spec.data["optimization"]["multisite_update_alg"] == "sequential"
+    @test InfiniteCylinderDMRG._fig2_runner_optimization(
+        spec
+    ).multisite_update_alg == :sequential
 end
 
 @testset "Fig. 2 manifest rejects scientific and numerical goalpost drift" begin
@@ -346,7 +354,7 @@ end
             end
             @test error isa Fig2WarmScheduleCaptured
             @test last(captured_schedules) == expected
-            @test last(captured_algorithms) == :parallel
+            @test last(captured_algorithms) == :sequential
         end
 
         cold_id = "cold_$(last(fig2_initial_candidates(spec.config)).id)"
@@ -365,7 +373,7 @@ end
         end
         @test cold_error isa Fig2WarmScheduleCaptured
         @test last(captured_schedules) == [4, 8, 16]
-        @test last(captured_algorithms) == :parallel
+        @test last(captured_algorithms) == :sequential
 
         oversized_error = capture_error() do
             InfiniteCylinderDMRG._default_fig2_run_candidate(
@@ -431,7 +439,7 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
         @test checkpoint_maxlinkdim == evidence.achieved_maxlinkdim
 
         summary = TOML.parsefile(joinpath(output, "summary.toml"))
-        @test summary["optimization"]["multisite_update_alg"] == "parallel"
+        @test summary["optimization"]["multisite_update_alg"] == "sequential"
         @test summary["optimization"]["maxdim_schedule"] ==
             InfiniteCylinderDMRG._fig2_maxdim_schedule(dimension)
         smoke_optimization_data = summary["optimization"]
@@ -1578,7 +1586,7 @@ if all(
         end
         summary_optimization = Dict{String,Any}(
             "maxdim_schedule" => summary_maxdim_schedule,
-            "multisite_update_alg" => "parallel",
+            "multisite_update_alg" => "sequential",
             "vumps_tol" => 1.0e-6,
             "energy_tol" => 1.0e-6,
             "energy_mismatch_tol" => 1.0e-6,
@@ -3935,7 +3943,7 @@ if all(
             (
                 label="summary update algorithm disagrees with the manifest",
                 kwargs=(; summary_optimization_overrides=Dict(
-                    "multisite_update_alg" => "sequential",
+                    "multisite_update_alg" => "parallel",
                 )),
                 fragments=("summary", "multisite_update_alg", "manifest"),
             ),

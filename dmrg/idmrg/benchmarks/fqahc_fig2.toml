@@ -64,7 +64,7 @@ uncertainty = [
 ]
 
 [optimization]
-multisite_update_alg = "parallel"
+multisite_update_alg = "sequential"
 progress_generations_to_keep = 2
 cutoff = 1.0e-9
 vumps_tol = 1.0e-6
