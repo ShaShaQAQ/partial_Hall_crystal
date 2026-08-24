@@ -65,6 +65,7 @@ uncertainty = [
 
 [optimization]
 multisite_update_alg = "sequential"
+solver_tolerance_policy = "max_previous_precision_error_or_vumps_tol_over_100"
 progress_generations_to_keep = 2
 cutoff = 1.0e-9
 vumps_tol = 1.0e-6

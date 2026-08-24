@@ -81,6 +81,8 @@ struct Fig2WarmScheduleCaptured <: Exception end
         "sector_relative_canonical_cyclic_orbit"
     @test manifest["optimization"] == Dict(
         "multisite_update_alg" => "sequential",
+        "solver_tolerance_policy" =>
+            "max_previous_precision_error_or_vumps_tol_over_100",
         "progress_generations_to_keep" => 2,
         "cutoff" => 1.0e-9,
         "vumps_tol" => 1.0e-6,
@@ -440,6 +442,8 @@ if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
 
         summary = TOML.parsefile(joinpath(output, "summary.toml"))
         @test summary["optimization"]["multisite_update_alg"] == "sequential"
+        @test summary["optimization"]["solver_tolerance_policy"] ==
+            "max_previous_precision_error_or_vumps_tol_over_100"
         @test summary["optimization"]["maxdim_schedule"] ==
             InfiniteCylinderDMRG._fig2_maxdim_schedule(dimension)
         smoke_optimization_data = summary["optimization"]
@@ -1587,6 +1591,8 @@ if all(
         summary_optimization = Dict{String,Any}(
             "maxdim_schedule" => summary_maxdim_schedule,
             "multisite_update_alg" => "sequential",
+            "solver_tolerance_policy" =>
+                "max_previous_precision_error_or_vumps_tol_over_100",
             "vumps_tol" => 1.0e-6,
             "energy_tol" => 1.0e-6,
             "energy_mismatch_tol" => 1.0e-6,
@@ -3946,6 +3952,13 @@ if all(
                     "multisite_update_alg" => "parallel",
                 )),
                 fragments=("summary", "multisite_update_alg", "manifest"),
+            ),
+            (
+                label="summary solver tolerance policy disagrees with the manifest",
+                kwargs=(; summary_optimization_overrides=Dict(
+                    "solver_tolerance_policy" => "previous_precision_error_over_100",
+                )),
+                fragments=("summary", "solver_tolerance_policy", "manifest"),
             ),
             (
                 label="summary vumps tolerance disagrees with the manifest",

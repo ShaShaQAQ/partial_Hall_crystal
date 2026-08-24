@@ -486,6 +486,27 @@ end
     @test !stopped.records[1].converged
     @test isempty(stopped.expansions)
 
+    solver_tolerance_seeds = Float64[]
+    adaptive_stopped = run_vumps(
+        H,
+        psi;
+        options...,
+        max_iterations=2,
+        solver_tol=seed -> begin
+            push!(solver_tolerance_seeds, Float64(seed))
+            return seed / 100
+        end,
+    )
+    @test !adaptive_stopped.converged
+    @test length(adaptive_stopped.records) == 2
+    @test solver_tolerance_seeds == [
+        options.vumps_tol,
+        max(
+            adaptive_stopped.records[1].precision_error,
+            options.vumps_tol,
+        ),
+    ]
+
     parallel_stopped = run_vumps(
         H,
         psi;

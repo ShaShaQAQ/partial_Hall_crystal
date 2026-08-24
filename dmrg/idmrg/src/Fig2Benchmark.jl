@@ -365,6 +365,10 @@ function _validate_fig2_manifest(data)
     _fig2_required(optimization, "multisite_update_alg") == "sequential" || throw(
         ArgumentError("Fig. 2 multisite update algorithm must be sequential")
     )
+    _fig2_required(optimization, "solver_tolerance_policy") ==
+        VUMPS_SOLVER_TOLERANCE_POLICY || throw(
+        ArgumentError("Fig. 2 solver tolerance policy is not fixed")
+    )
     optimization_targets = (
         "cutoff" => 1.0e-9,
         "vumps_tol" => 1.0e-6,
@@ -831,6 +835,8 @@ function _fig2_progress_identity(
         "candidate_id" => String(candidate_id),
         "multisite_update_alg" =>
             String(snapshot["optimization"]["multisite_update_alg"]),
+        "solver_tolerance_policy" =>
+            String(snapshot["optimization"]["solver_tolerance_policy"]),
         "progress_generations_to_keep" => Int(
             snapshot["optimization"]["progress_generations_to_keep"]
         ),
@@ -849,6 +855,7 @@ const FIG2_PROGRESS_IDENTITY_KEYS = (
     "phi_y",
     "candidate_id",
     "multisite_update_alg",
+    "solver_tolerance_policy",
     "progress_generations_to_keep",
     "convergence_state_policy",
     "git_commit",
@@ -3036,6 +3043,16 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
         throw(ArgumentError(
             "candidate summary multisite_update_alg disagrees with the immutable manifest"
         ))
+    solver_tolerance_policy = get(
+        optimization, "solver_tolerance_policy", nothing
+    )
+    solver_tolerance_policy isa AbstractString || throw(ArgumentError(
+        "candidate summary solver_tolerance_policy must be a string"
+    ))
+    String(solver_tolerance_policy) ==
+        String(expected["solver_tolerance_policy"]) || throw(ArgumentError(
+        "candidate summary solver_tolerance_policy disagrees with the immutable manifest"
+    ))
     values = Dict{Symbol,Any}()
     for key in ("vumps_tol", "energy_tol", "energy_mismatch_tol")
         value = get(optimization, key, nothing)
@@ -3061,6 +3078,7 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
     )
     return (;
         multisite_update_alg=Symbol(multisite_update_alg),
+        solver_tolerance_policy=String(solver_tolerance_policy),
         vumps_tol=values[:vumps_tol],
         energy_tol=values[:energy_tol],
         energy_mismatch_tol=values[:energy_mismatch_tol],

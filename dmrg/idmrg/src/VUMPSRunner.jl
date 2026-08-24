@@ -1,3 +1,6 @@
+const VUMPS_SOLVER_TOLERANCE_POLICY =
+    "max_previous_precision_error_or_vumps_tol_over_100"
+
 function _configuration_signature(c::InfiniteCylinderConfig)
     geometry_code = c.geometry == :legacy_sheared ? "IC$(c.Ly)" : "IP$(c.Ny)"
     signature = "$(geometry_code)x$(c.x_period)n$(c.filling_num)d$(c.filling_den)"
@@ -856,6 +859,7 @@ function run_vumps(
 
     for (stage, target) in enumerate(targets)
         previous_energy = nothing
+        solver_tolerance_seed = Float64(vumps_tol)
         stable_count = 0
         stage_converged = false
 
@@ -889,16 +893,18 @@ function run_vumps(
                     ))
                 end
                 previous_energy = nothing
+                solver_tolerance_seed = Float64(vumps_tol)
                 stable_count = 0
             end
 
+            effective_solver_tol = _ -> solver_tol(solver_tolerance_seed)
             step = vumps_iteration(
                 H,
                 current;
                 vumps_tol,
                 imaginary_tol,
                 multisite_update_alg=update_alg,
-                solver_tol,
+                solver_tol=effective_solver_tol,
                 eager,
             )
             current = step.psi
@@ -963,6 +969,7 @@ function run_vumps(
                 ))
             end
             previous_energy = energy
+            solver_tolerance_seed = max(precision_error, Float64(vumps_tol))
             if converged
                 stage_converged = true
                 break

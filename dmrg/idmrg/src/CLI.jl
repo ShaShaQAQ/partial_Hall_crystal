@@ -944,6 +944,7 @@ function _optimization_metadata(settings::SinglePointSettings)
         max_iterations=settings.max_iterations,
         stable_iterations=settings.stable_iterations,
         multisite_update_alg=string(settings.multisite_update_alg),
+        solver_tolerance_policy=VUMPS_SOLVER_TOLERANCE_POLICY,
         threads=settings.threads,
         occupied_sites=settings.occupied_sites,
         seed=settings.seed,
