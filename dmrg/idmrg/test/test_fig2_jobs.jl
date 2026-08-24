@@ -5,7 +5,7 @@ using SHA
 function run_fig2_submitter_dry_run(
     submitter::AbstractString,
     repository::AbstractString,
-    threads::Integer,
+    threads::Union{Nothing,Integer},
     ;
     dimensions::AbstractString="32",
     walltime::AbstractString="12:00:00",
@@ -13,8 +13,7 @@ function run_fig2_submitter_dry_run(
     return mktempdir() do directory
         stdout_path = joinpath(directory, "stdout.log")
         stderr_path = joinpath(directory, "stderr.log")
-        command = addenv(
-            `bash $submitter`,
+        environment = Pair{String,Union{Nothing,String}}[
             "W003_REPO" => repository,
             "DRY_RUN" => "1",
             "FIG2_MANIFEST" => joinpath(
@@ -29,10 +28,15 @@ function run_fig2_submitter_dry_run(
                 "/home/public/shajy/codex/results/fqahc-fig2/thread_allowlist_test",
             "FIG2_DIMENSIONS" => dimensions,
             "FIG2_FLUX_UNITS" => "0",
-            "FIG2_THREADS" => string(threads),
             "FIG2_DEPENDENCY" => "",
             "FIG2_WALLTIME" => walltime,
+        ]
+        push!(
+            environment,
+            "FIG2_THREADS" =>
+                (isnothing(threads) ? nothing : string(threads)),
         )
+        command = addenv(`bash $submitter`, environment...)
         process = open(stdout_path, "w") do stdout_io
             open(stderr_path, "w") do stderr_io
                 run(
@@ -570,6 +574,17 @@ end
                 @test !occursin("-v FIG2_JOB_CONFIG", result.stdout)
                 @test isempty(result.stderr)
             end
+        end
+
+        @testset "submitter defaults to the measured 12-thread setting" begin
+            result = run_fig2_submitter_dry_run(
+                submitter,
+                repository,
+                nothing,
+            )
+            @test result.exitcode == 0
+            @test occursin("FIG2_THREADS=12\n", result.stdout)
+            @test isempty(result.stderr)
         end
 
         @testset "submitter rejects undeclared thread counts" begin

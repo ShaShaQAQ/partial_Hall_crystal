@@ -255,7 +255,7 @@ example shows the sparse pilot schedule; it must be launched by a W003 PBS job,
 not on the Mac or a W003 login shell:
 
 ```bash
-/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia --threads=24 \
+/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia --threads=12 \
   --startup-file=no --project=dmrg/idmrg \
   dmrg/idmrg/bin/run_fig2_benchmark.jl \
   --manifest=dmrg/idmrg/benchmarks/fqahc_fig2.toml \
@@ -263,7 +263,7 @@ not on the Mac or a W003 login shell:
   --output=/home/public/shajy/codex/results/fqahc-fig2/pilot \
   --dimensions=32,64,128 \
   --flux_units_2pi=0,0.5,1,1.5,2,2.5,3 \
-  --threads=24
+  --threads=12
 ```
 
 The checked-in PBS wrapper is the preferred production entry point. From the
@@ -308,9 +308,11 @@ with `FIG2_WALLTIME=HH:MM:SS`; the submitter and compute-node runner both reject
 values above the dimension-specific cap, and the runner also checks the actual
 PBS allocation against the immutable job configuration. A later stage can be
 chained only after a verified predecessor with `FIG2_DEPENDENCY=<job-id>`.
-`FIG2_THREADS` defaults to 24 and may be set to 4 or 12 only for the declared
-utilization comparison; BLAS, OMP, MKL, and ITensor Strided threading remain at
-one while ITensor block-sparse threading is enabled by the Julia driver.
+`FIG2_THREADS` defaults to the measured 12-thread production setting; 4 and 24
+remain available only for the declared utilization comparison. PBS still
+reserves one complete 24-core node so jobs cannot share the allocation. BLAS,
+OMP, MKL, and ITensor Strided threading remain at one while ITensor block-sparse
+threading is enabled by the Julia driver.
 
 At zero flux, every deterministic product-state candidate is retained and the
 lowest converged valid energy per site is selected. At later flux points, the
