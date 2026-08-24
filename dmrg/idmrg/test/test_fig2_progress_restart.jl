@@ -68,6 +68,12 @@ end
         @test first.event_sequence == 1
         @test first.resume_count == 0
         @test first.verified_event_count == 1
+        @test hasproperty(first, :continuation)
+        if hasproperty(first, :continuation)
+            @test first.continuation isa
+                InfiniteCylinderDMRG.VUMPSProgressContinuation
+            @test first.continuation.psi === psi
+        end
         @test isfile(joinpath(directory, first.state_path))
         @test isfile(joinpath(directory, first.event_path))
 

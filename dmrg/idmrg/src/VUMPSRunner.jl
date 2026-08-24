@@ -231,6 +231,10 @@ struct VUMPSProgressEvent
     end
 end
 
+struct VUMPSProgressContinuation
+    psi::InfiniteCanonicalMPS
+end
+
 struct VUMPSResult
     psi::InfiniteCanonicalMPS
     records::Vector{VUMPSRecord}
@@ -816,6 +820,43 @@ function _canonicalize_vumps_state(
     return canonical
 end
 
+function _apply_vumps_progress_continuation(
+    current::InfiniteCanonicalMPS,
+    response,
+    target::Integer,
+)
+    !(target isa Bool) && target > 0 || throw(
+        ArgumentError("progress continuation target must be positive")
+    )
+    response isa VUMPSProgressContinuation || return current
+    replacement = response.psi
+    nsites(replacement) == nsites(current) || throw(
+        ArgumentError("progress continuation changed the reference-cell size")
+    )
+    translator(replacement) === translator(current) || throw(
+        ArgumentError("progress continuation changed the cell translator")
+    )
+    siteinds(only, replacement.AL) == siteinds(only, current.AL) || throw(
+        ArgumentError("progress continuation changed the site index identities")
+    )
+    linkinds(only, replacement.AL) == linkinds(only, current.AL) || throw(
+        ArgumentError("progress continuation changed the left link identities")
+    )
+    link_dimensions(replacement) == link_dimensions(current) || throw(
+        ArgumentError("progress continuation changed the left link dimensions")
+    )
+    maximum(link_dimensions(replacement)) <= target || throw(
+        ArgumentError("progress continuation exceeds the active maxdim target")
+    )
+    flux(replacement.AL) == flux(current.AL) || throw(
+        ArgumentError("progress continuation changed the conserved QN flux")
+    )
+    _is_strictly_canonical_vumps_state(replacement) || throw(
+        ArgumentError("progress continuation state is not strictly canonical")
+    )
+    return replacement
+end
+
 function run_vumps(
     H,
     psi::InfiniteCanonicalMPS;
@@ -881,7 +922,7 @@ function run_vumps(
                 push!(expansions, expansion_record)
                 event_sequence += 1
                 if !isnothing(progress_callback)
-                    progress_callback(VUMPSProgressEvent(
+                    response = progress_callback(VUMPSProgressEvent(
                         event_sequence,
                         :expansion,
                         stage,
@@ -891,6 +932,9 @@ function run_vumps(
                         expansion_record,
                         nothing,
                     ))
+                    current = _apply_vumps_progress_continuation(
+                        current, response, target
+                    )
                 end
                 previous_energy = nothing
                 solver_tolerance_seed = Float64(vumps_tol)
@@ -957,7 +1001,7 @@ function run_vumps(
             push!(records, iteration_record)
             event_sequence += 1
             if !isnothing(progress_callback)
-                progress_callback(VUMPSProgressEvent(
+                response = progress_callback(VUMPSProgressEvent(
                     event_sequence,
                     :iteration,
                     stage,
@@ -967,6 +1011,9 @@ function run_vumps(
                     nothing,
                     iteration_record,
                 ))
+                current = _apply_vumps_progress_continuation(
+                    current, response, target
+                )
             end
             previous_energy = energy
             solver_tolerance_seed = max(precision_error, Float64(vumps_tol))

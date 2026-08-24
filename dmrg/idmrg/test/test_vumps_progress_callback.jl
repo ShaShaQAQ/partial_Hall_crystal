@@ -66,3 +66,43 @@ struct VUMPSProgressStop <: Exception end
     )
     @test calls[] == 1
 end
+
+@testset "VUMPS callback explicitly adopts a canonical continuation" begin
+    initspin(_) = "↑"
+    sites = infsiteinds("S=1/2", 1; initstate=initspin)
+    current = InfMPS(sites, initspin)
+    replacement = copy(current)
+
+    continuation_available = isdefined(
+        InfiniteCylinderDMRG, :VUMPSProgressContinuation
+    )
+    application_available = isdefined(
+        InfiniteCylinderDMRG, :_apply_vumps_progress_continuation
+    )
+    @test continuation_available
+    @test application_available
+
+    if continuation_available && application_available
+        Continuation = getfield(
+            InfiniteCylinderDMRG, :VUMPSProgressContinuation
+        )
+        apply_continuation = getfield(
+            InfiniteCylinderDMRG, :_apply_vumps_progress_continuation
+        )
+        response = Continuation(replacement)
+
+        @test apply_continuation(current, response, 1) === replacement
+        @test apply_continuation(current, nothing, 1) === current
+        @test apply_continuation(current, Any[:legacy_callback_result], 1) ===
+            current
+
+        inconsistent = copy(current)
+        inconsistent.AR[1] *= -1
+        @test_throws ArgumentError apply_continuation(
+            current, Continuation(inconsistent), 1
+        )
+        @test_throws ArgumentError apply_continuation(
+            current, response, 0
+        )
+    end
+end

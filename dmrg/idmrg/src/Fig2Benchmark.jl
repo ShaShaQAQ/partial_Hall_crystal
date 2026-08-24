@@ -1156,6 +1156,7 @@ function _fig2_persist_progress_event!(
         maxlinkdim,
         state_path=state_relative,
         event_path=event_relative,
+        continuation=VUMPSProgressContinuation(canonical),
     )
 end
 
@@ -6606,17 +6607,20 @@ function _default_fig2_run_candidate(
     H = build_hamiltonian(config, spec.model, sites)
     progress_resume_count = isnothing(progress) ? 0 :
         progress.next_resume_count
-    progress_callback = event -> _fig2_persist_progress_event!(
-        spec,
-        candidate_directory,
-        dimension,
-        point,
-        phi_y,
-        candidate_id,
-        settings.maxdim_schedule,
-        event;
-        resume_count=progress_resume_count,
-    )
+    progress_callback = event -> begin
+        persisted = _fig2_persist_progress_event!(
+            spec,
+            candidate_directory,
+            dimension,
+            point,
+            phi_y,
+            candidate_id,
+            settings.maxdim_schedule,
+            event;
+            resume_count=progress_resume_count,
+        )
+        return persisted.continuation
+    end
     candidate_operations = SinglePointOperations(
         optimize=(candidate_H, candidate_psi, candidate_settings) ->
             _default_optimize(
