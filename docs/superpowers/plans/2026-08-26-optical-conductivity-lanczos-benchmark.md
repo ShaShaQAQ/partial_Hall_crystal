@@ -6,9 +6,51 @@
 
 **Architecture:** 从统一的均匀矢势 Peierls 耦合生成 `H`、`Jx`、`Kxx`，由 `Q*Jx*g` 生成 response Lanczos 起始态，只保存三对角系数并在后处理中计算 resolvent。完整对角化是小系统专用 reference；生产式 Lanczos 和 exact reference 使用同一组算符，并在 benchmark runner 中逐点比较。
 
-**Tech Stack:** Julia 1.12、LinearAlgebra、SparseArrays、Test、KrylovKit（现有 ED）、Plots、JLD2。
+**Tech Stack:** Julia 1.10-compatible Julia、LinearAlgebra、SparseArrays、Test、KrylovKit（现有 ED）、Plots、JLD2；所有数值运行位于 W003。
 
 ---
+
+## Execution environment and W003 synchronization
+
+All Julia tests, full diagonalizations, benchmark runs, and figure generation run on SSH host `W003`, not on the Mac. The Mac is limited to source edits, Git operations, `git diff --check`, and file synchronization.
+
+Use these isolated paths on W003:
+
+```text
+Remote source copy: /home/public/shajy/codex_runs/optical_response_lanczos
+Remote Julia env:   /home/public/shajy/codex_envs/optical_response_lanczos
+Existing repo:      /home/public/shajy/partial_Hall_crystal   (read-only for this task)
+```
+
+Do not run `rsync --delete` against `/home/public/shajy/partial_Hall_crystal`; it contains unrelated untracked calculations. Before each remote test, synchronize the isolated local worktree with:
+
+```bash
+ssh W003 'mkdir -p /home/public/shajy/codex_runs/optical_response_lanczos'
+rsync -az \
+  --exclude='.git/' \
+  --exclude='.worktrees/' \
+  --exclude='case4_4x6_Np4/optical_response_output/' \
+  "$LOCAL_WORKTREE/" \
+  W003:/home/public/shajy/codex_runs/optical_response_lanczos/
+```
+
+Every `julia ...` test command in the tasks below means the following W003 wrapper after that sync:
+
+```bash
+ssh W003 'cd /home/public/shajy/codex_runs/optical_response_lanczos && \
+  julia --project=/home/public/shajy/codex_envs/optical_response_lanczos <arguments>'
+```
+
+After a benchmark run, synchronize generated results back into the isolated local worktree:
+
+```bash
+mkdir -p "$LOCAL_WORKTREE/case4_4x6_Np4/optical_response_output"
+rsync -az \
+  W003:/home/public/shajy/codex_runs/optical_response_lanczos/case4_4x6_Np4/optical_response_output/ \
+  "$LOCAL_WORKTREE/case4_4x6_Np4/optical_response_output/"
+```
+
+The remote runtime uses Julia 1.10.10. All implementation must remain compatible with Julia 1.10; local Julia 1.12-only syntax or APIs are forbidden.
 
 ## File map
 
@@ -672,16 +714,20 @@ git commit -m "test: benchmark optical Lanczos against full ED"
 - Modify: `test/case4_optical_integration_test.jl`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Ensure the local output dependency is available**
+- [ ] **Step 1: Create the isolated Julia environment on W003**
 
 Run:
 
 ```bash
-julia -e 'using Pkg; Pkg.add("JLD2")'
-julia -e 'using JLD2, Plots; println("output dependencies available")'
+ssh W003 'mkdir -p /home/public/shajy/codex_envs/optical_response_lanczos && \
+  julia -e '\''using Pkg; \
+    Pkg.activate("/home/public/shajy/codex_envs/optical_response_lanczos"); \
+    Pkg.add(["KrylovKit", "JLD2", "Plots"])'\'''
+ssh W003 'julia --project=/home/public/shajy/codex_envs/optical_response_lanczos \
+  -e '\''using KrylovKit, JLD2, Plots; println("output dependencies available")'\'''
 ```
 
-Expected: the second command prints `output dependencies available`. This changes only the user's Julia package environment, not repository source files.
+Expected: the second command prints `output dependencies available`. Only the dedicated environment under `/home/public/shajy/codex_envs/optical_response_lanczos` changes; the existing server repository and its untracked `Project.toml`/`Manifest.toml` remain untouched.
 
 - [ ] **Step 2: Add a failing output smoke test**
 
@@ -866,7 +912,20 @@ julia --threads=4 case4_4x6_Np4/benchmark_optical_response.jl
 
 Expected: command exits 0; output contains JLD2, two conductivity PDFs, one convergence PDF, and two text data files. Final scaled maximum error is below `1e-8`.
 
-- [ ] **Step 3: Inspect numerical invariants**
+- [ ] **Step 3: Synchronize W003 benchmark results back to the Mac worktree**
+
+Run on the Mac:
+
+```bash
+mkdir -p "$LOCAL_WORKTREE/case4_4x6_Np4/optical_response_output"
+rsync -az \
+  W003:/home/public/shajy/codex_runs/optical_response_lanczos/case4_4x6_Np4/optical_response_output/ \
+  "$LOCAL_WORKTREE/case4_4x6_Np4/optical_response_output/"
+```
+
+Expected: JLD2, DAT, and PDF files exist locally with the same sizes reported by `ssh W003 'ls -l .../optical_response_output'`.
+
+- [ ] **Step 4: Inspect numerical invariants**
 
 Confirm from the terminal summary and JLD2 data:
 
@@ -879,7 +938,7 @@ errors decrease as M increases
 abs(Dxx_Lanczos - Dxx_exact) / max(1, abs(Dxx_exact)) < 1e-8
 ```
 
-- [ ] **Step 4: Visually inspect the generated PDFs**
+- [ ] **Step 5: Visually inspect the generated PDFs**
 
 Open:
 
@@ -891,7 +950,7 @@ case4_4x6_Np4/optical_response_output/lanczos_convergence.pdf
 
 Expected: exact and final Lanczos curves are visually indistinguishable; convergence plot contains finite positive errors and no missing/NaN points.
 
-- [ ] **Step 5: Run repository hygiene checks**
+- [ ] **Step 6: Run repository hygiene checks**
 
 Run:
 
@@ -902,7 +961,7 @@ git status --short
 
 Expected: no whitespace errors; generated benchmark outputs do not appear as untracked files; only intentional source changes are present.
 
-- [ ] **Step 6: Commit any verification-only numerical fix, if one was required**
+- [ ] **Step 7: Commit any verification-only numerical fix, if one was required**
 
 If Steps 1–5 required a source correction, stage only the files changed for that correction and commit:
 
