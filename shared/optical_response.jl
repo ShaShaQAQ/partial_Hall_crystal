@@ -97,3 +97,73 @@ function truncate_kernel(kernel::ResponseLanczosKernel, m::Int)
         copy(kernel.alpha[1:m]), beta, kernel.source_norm2,
         kernel.breakdown && m == length(kernel.alpha))
 end
+
+
+struct ExactSpectralData
+    deltas::Vector{Float64}
+    weights::Vector{Float64}
+end
+
+
+function exact_spectral_data(
+        eigenvalues::AbstractVector,
+        eigenvectors::AbstractMatrix,
+        E0::Real,
+        source::AbstractVector;
+        gap_tol::Float64=1e-10)
+    deltas_all = real.(eigenvalues .- E0)
+    amplitudes = eigenvectors' * source
+    keep = findall(delta -> delta > gap_tol, deltas_all)
+    return ExactSpectralData(deltas_all[keep], abs2.(amplitudes[keep]))
+end
+
+
+function exact_resolvent(data::ExactSpectralData, z::Number)
+    return sum(data.weights ./ (complex(z) .- data.deltas))
+end
+
+
+function system_area(lat::GenLat)
+    a1 = collect(lat.a1)
+    a2 = collect(lat.a2)
+    T1 = lat.T1[1] .* a1 .+ lat.T1[2] .* a2
+    T2 = lat.T2[1] .* a1 .+ lat.T2[2] .* a2
+    return abs(T1[1] * T2[2] - T1[2] * T2[1])
+end
+
+
+function lanczos_drude_weight(kernel::ResponseLanczosKernel, Kexp::Real)
+    return Float64(Kexp + 2real(lanczos_resolvent(kernel, 0.0 + 0.0im)))
+end
+
+
+function conductivity_parts(
+        G,
+        Kexp::Real,
+        area::Real,
+        omega::Real,
+        eta::Real)
+    area > 0 || throw(ArgumentError("system area must be positive"))
+    eta > 0 || throw(ArgumentError("eta must be positive"))
+    z = complex(omega, eta)
+    chi = G(z) + G(-z)
+    chi0 = 2real(G(0.0 + 0.0im))
+    D = Float64(Kexp + chi0)
+    prefactor = 2pi * im / area
+    drude = prefactor * D / z
+    regular = prefactor * (chi - chi0) / z
+    return (total=drude + regular,
+            drude=drude,
+            regular=regular,
+            drude_weight=D)
+end
+
+
+function scaled_max_error(
+        actual::AbstractVector,
+        reference::AbstractVector)
+    length(actual) == length(reference) ||
+        throw(DimensionMismatch("curve lengths differ"))
+    scale = max(1.0, maximum(abs, reference))
+    return maximum(abs, actual .- reference) / scale
+end
