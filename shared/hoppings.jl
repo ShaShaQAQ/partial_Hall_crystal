@@ -4,15 +4,34 @@
 using LinearAlgebra
 
 # k 空间哈密顿量（Eq.1 of PRL 113, 216404）
+const A_PAPER = [[0.5, -sqrt(3)/2], [0.5, sqrt(3)/2], [-1.0, 0.0]]
+const SIGMA_X = ComplexF64[0 1; 1 0]
+const SIGMA_Y = ComplexF64[0 -im; im 0]
+const SIGMA_Z = ComplexF64[1 0; 0 -1]
+const IDENTITY_2 = Matrix{ComplexF64}(I, 2, 2)
+
+function get_Hk_x_derivatives(k::Vector{Float64},
+                               t1::Float64, t3::Float64)
+    phases = [dot(k, a) for a in A_PAPER]
+    g = [2t1 * cos(phase) for phase in phases]
+    dg = [-2t1 * a[1] * sin(phase)
+          for (a, phase) in zip(A_PAPER, phases)]
+    d2g = [-2t1 * a[1]^2 * cos(phase)
+           for (a, phase) in zip(A_PAPER, phases)]
+    g0 = 2t3 * sum(cos(2phase) for phase in phases)
+    dg0 = -4t3 * sum(a[1] * sin(2phase)
+                     for (a, phase) in zip(A_PAPER, phases))
+    d2g0 = -8t3 * sum(a[1]^2 * cos(2phase)
+                      for (a, phase) in zip(A_PAPER, phases))
+    assemble(v, v0) = (v[1] * SIGMA_X + v[2] * SIGMA_Y +
+                       v[3] * SIGMA_Z + v0 * IDENTITY_2)
+    return (Hk=assemble(g, g0),
+            dHdkx=assemble(dg, dg0),
+            d2Hdkx2=assemble(d2g, d2g0))
+end
+
 function get_Hk(k::Vector{Float64}, t1::Float64, t3::Float64)
-    σx = ComplexF64[0 1; 1 0]
-    σy = ComplexF64[0 -im; im 0]
-    σz = ComplexF64[1 0; 0 -1]
-    I2 = Matrix{ComplexF64}(I, 2, 2)
-    a_paper = [[0.5, -sqrt(3)/2], [0.5, sqrt(3)/2], [-1.0, 0.0]]
-    g  = [2t1 * cos(dot(k, a)) for a in a_paper]
-    g0 = 2t3 * sum(cos(2*dot(k, a)) for a in a_paper)
-    return g[1]*σx + g[2]*σy + g[3]*σz + g0*I2
+    return get_Hk_x_derivatives(k, t1, t3).Hk
 end
 
 # 子格坐标：A=(0,0)，B=(-0.5, sqrt(3)/2)

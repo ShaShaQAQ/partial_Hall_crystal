@@ -1,3 +1,24 @@
+@testset "analytic Bloch kx derivatives" begin
+    t1, t3 = 1.0, 0.2
+    delta1 = 1e-6
+    delta2 = 1e-4
+    for k in ([0.173, -0.291], [1.137, 0.419], [-0.733, 1.271])
+        data = get_Hk_x_derivatives(k, t1, t3)
+        hp1 = get_Hk(k .+ [delta1, 0.0], t1, t3)
+        hm1 = get_Hk(k .- [delta1, 0.0], t1, t3)
+        hp2 = get_Hk(k .+ [delta2, 0.0], t1, t3)
+        hm2 = get_Hk(k .- [delta2, 0.0], t1, t3)
+        d1_fd = (hp1 - hm1) / (2delta1)
+        d2_fd = (hp2 - 2data.Hk + hm2) / delta2^2
+
+        @test data.Hk == get_Hk(k, t1, t3)
+        @test norm(data.dHdkx - d1_fd) /
+              max(norm(data.dHdkx), 1.0) < 1e-9
+        @test norm(data.d2Hdkx2 - d2_fd) /
+              max(norm(data.d2Hdkx2), 1.0) < 2e-7
+    end
+end
+
 @testset "uniform Ax hopping derivatives" begin
     lat = RectLat4x6()
     t1, t3 = 1.0, 0.2
