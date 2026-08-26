@@ -86,7 +86,7 @@ end
 Run:
 
 ```bash
-julia --threads=1 -e 'using Test, LinearAlgebra; include("shared/lattice.jl"); include("shared/hoppings.jl"); include("test/hopping_derivatives_test.jl")'
+julia --threads=1 -e 'using Test, LinearAlgebra; include("shared/lattice.jl"); include("shared/hoppings.jl"); include("shared/basis.jl"); include("shared/ksector.jl"); include("shared/hamiltonian.jl"); include("test/hopping_derivatives_test.jl")'
 ```
 
 Expected: FAIL with `UndefVarError: get_Hk_x_derivatives not defined`.
@@ -363,7 +363,7 @@ In the existing `4x6 optical response integration` test add:
 ```julia
 @test result.Eg ≈ -9.3135758879616 atol=1e-11
 @test result.source_norm2 ≈ 10.844308142783673 atol=1e-8
-@test result.Kexp ≈ 4.4792283713 atol=1e-7
+@test result.Kexp ≈ 4.479235242914201 atol=1e-10
 @test result.operator_convention ==
       "H_A(k)=H(k+A_x*xhat); Jx=dH/dA_x; Kxx=d2H/dA_x2"
 ```
@@ -445,7 +445,7 @@ Expected printed invariants:
 ```text
 sector=2
 E0=-9.313575887962
-<Kxx> approximately 4.4792283713
+<Kxx> approximately 4.479235242914
 ||QJxg||^2 approximately 10.8443081428
 final scaled max error < 1e-8
 ```

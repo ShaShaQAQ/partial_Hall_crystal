@@ -191,8 +191,13 @@ K_{xx}=\frac{H(+\delta A)-2H(0)+H(-\delta A)}{\delta A^2}.
 ```text
 E0                         -9.3135758879616
 ||Q Jx g||^2               10.8443081428  (target tolerance 1e-8)
-<Kxx>                       4.47922837      (finite-difference tolerance 1e-5)
+<Kxx>                       4.479235242914  (analytic target tolerance 1e-10)
 ```
+
+The many-body finite-difference matrix must still agree with analytic `Kxx` to
+relative tolerance `1e-5`. The earlier value `4.47922837` came from a
+`delta A=1e-5` second difference and is retained only as a diagnosis of
+roundoff cancellation, not as the analytic reference value.
 
 ### GREEN：完整响应 benchmark
 
