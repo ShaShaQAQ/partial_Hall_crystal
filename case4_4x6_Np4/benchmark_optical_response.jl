@@ -12,6 +12,9 @@ end
 using LinearAlgebra
 using Printf
 
+const OPTICAL_OPERATOR_CONVENTION =
+    "H_A(k)=H(k+A_x*xhat); Jx=dH/dA_x; Kxx=d2H/dA_x2"
+
 
 function hermiticity_error(operator)
     return norm(operator - operator') / max(norm(operator), 1.0)
@@ -100,7 +103,9 @@ function run_optical_benchmark(
     errors = [scaled_max_error(curve.regular, exact_curve.regular)
               for curve in curves]
 
-    result = (sector=2, Eg=Eg, ground_residual=residual,
+    result = (sector=2,
+              operator_convention=OPTICAL_OPERATOR_CONVENTION,
+              Eg=Eg, ground_residual=residual,
               hermiticity=herm, source_overlap=overlap,
               source_norm2=real(dot(f, f)), Kexp=Kexp, area=area,
               exact_data=exact_data, exact_curve=exact_curve,
@@ -124,6 +129,7 @@ function write_benchmark_outputs(result, output_dir; make_plots=true)
         JLD2.jldsave,
         joinpath(output_dir, "optical_response_benchmark.jld2");
         sector=result.sector,
+        operator_convention=result.operator_convention,
         Eg=result.Eg,
         ground_residual=result.ground_residual,
         hermiticity=result.hermiticity,
@@ -148,6 +154,7 @@ function write_benchmark_outputs(result, output_dir; make_plots=true)
     )
 
     open(joinpath(output_dir, "optical_response_curves.dat"), "w") do io
+        println(io, "# operator_convention: $(result.operator_convention)")
         println(io, "# omega Re_sigma_exact Im_sigma_exact " *
                     "Re_sigma_L Im_sigma_L Re_reg_exact Im_reg_exact " *
                     "Re_reg_L Im_reg_L")
@@ -166,6 +173,7 @@ function write_benchmark_outputs(result, output_dir; make_plots=true)
     end
 
     open(joinpath(output_dir, "lanczos_convergence.dat"), "w") do io
+        println(io, "# operator_convention: $(result.operator_convention)")
         println(io, "# M scaled_max_error_regular")
         for (m, err) in zip(result.m_values, result.errors)
             println(io, "$m $err")
