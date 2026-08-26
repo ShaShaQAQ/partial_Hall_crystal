@@ -5,7 +5,10 @@ using .DMRGFullModel
 using Dates
 using LinearAlgebra
 using Printf
+using Random
+using Serialization
 using ITensors
+using ITensorMPS
 
 function parse_cli(args)
     opts = Dict{String,String}()
@@ -51,6 +54,12 @@ function write_summary(
     energy_tol::Float64,
     density_tol::Float64,
     truncerr_tol::Float64,
+    seed::Int,
+    init_linkdim::Int,
+    init_source::AbstractString,
+    checkpoint_in::AbstractString,
+    checkpoint_out::AbstractString,
+    checkpoint_saved::Bool,
     start_time::DateTime,
     end_time::DateTime,
 )
@@ -64,6 +73,8 @@ function write_summary(
         @printf(io, "target_sweep %d\nstable_sweeps %d\n", target_sweep, stable_sweeps)
         @printf(io, "maxdim %s\ncutoff %.16g\n", join(maxdim, ","), cutoff)
         @printf(io, "energy_tol %.16g\ndensity_tol %.16g\ntruncerr_tol %.16g\n", energy_tol, density_tol, truncerr_tol)
+        @printf(io, "seed %d\ninit_linkdim %d\ninit_source %s\n", seed, init_linkdim, init_source)
+        @printf(io, "checkpoint_in %s\ncheckpoint_out %s\ncheckpoint_saved %s\n", checkpoint_in, checkpoint_out, string(checkpoint_saved))
         if !isempty(result.convergence)
             last = result.convergence[end]
             @printf(io, "actual_sweeps %d\n", last.sweep)
@@ -83,6 +94,84 @@ function write_summary(
         @printf(io, "git_commit %s\n", shell_output(`git rev-parse HEAD`))
         @printf(io, "git_status_short %s\n", isempty(git_status) ? "clean" : git_status)
     end
+end
+
+function checkpoint_property(obj, name::Symbol, default=nothing)
+    return hasproperty(obj, name) ? getproperty(obj, name) : default
+end
+
+function model_params_tuple(params::CylinderModelParams)
+    return (t1=params.t1, t3=params.t3, V1=params.V1, V2=params.V2, V3=params.V3)
+end
+
+function validate_checkpoint(obj, path::AbstractString, lat::CylinderLat, params::CylinderModelParams; Lx::Int, Ly::Int, Np::Int, phi::Float64)
+    checkpoint_property(obj, :format) == "ground_dmrg_checkpoint_v1" || error("unsupported checkpoint format in $path")
+    checkpoint_property(obj, :Lx) == Lx || error("checkpoint Lx mismatch in $path")
+    checkpoint_property(obj, :Ly) == Ly || error("checkpoint Ly mismatch in $path")
+    checkpoint_property(obj, :Ns) == lat.Ns || error("checkpoint Ns mismatch in $path")
+    checkpoint_property(obj, :Np) == Np || error("checkpoint Np mismatch in $path")
+    abs(checkpoint_property(obj, :phi, NaN) - phi) <= 1e-12 || error("checkpoint phi mismatch in $path")
+    checkpoint_property(obj, :params) == model_params_tuple(params) || error("checkpoint model parameters mismatch in $path")
+    return obj
+end
+
+function load_ground_checkpoint(path::AbstractString, lat::CylinderLat, params::CylinderModelParams; Lx::Int, Ly::Int, Np::Int, phi::Float64)
+    isfile(path) || error("missing checkpoint: $path")
+    obj = deserialize(path)
+    validate_checkpoint(obj, path, lat, params; Lx, Ly, Np, phi)
+    return obj
+end
+
+function save_ground_checkpoint(path::AbstractString, result::DMRGRunResult, lat::CylinderLat, params::CylinderModelParams; Lx::Int, Ly::Int, Np::Int, phi::Float64)
+    isempty(path) && return false
+    mkpath(dirname(path))
+    tmp = path * ".tmp"
+    data = (
+        format = "ground_dmrg_checkpoint_v1",
+        saved_at = Dates.format(now(), dateformat"yyyy-mm-ddTHH:MM:SS"),
+        Lx = Lx,
+        Ly = Ly,
+        Ns = lat.Ns,
+        Nuc = lat.Nuc,
+        Np = Np,
+        phi = phi,
+        energy = result.energy,
+        density = copy(result.density),
+        sites = result.sites,
+        psi = result.psi,
+        params = model_params_tuple(params),
+    )
+    serialize(tmp, data)
+    mv(tmp, path; force=true)
+    return true
+end
+
+function read_density_seed_state(path::AbstractString, lat::CylinderLat, Np::Int)
+    isfile(path) || error("missing density seed file: $path")
+    0 <= Np <= lat.Ns || throw(ArgumentError("Np must be between 0 and Ns"))
+    density_by_site = fill(NaN, lat.Ns)
+    for line in eachline(path)
+        stripped = strip(line)
+        isempty(stripped) && continue
+        startswith(stripped, "#") && continue
+        fields = split(stripped)
+        length(fields) >= 6 || error("malformed density row in $path: $line")
+        site = parse(Int, fields[1])
+        1 <= site <= lat.Ns || error("density site index out of range in $path: $site")
+        density_by_site[site] = parse(Float64, fields[6])
+    end
+    any(isnan, density_by_site) && error("density seed file $path does not contain all $(lat.Ns) sites")
+    ranked = sort(collect(1:lat.Ns); by=i -> (-density_by_site[i], i))
+    occupied = Set(ranked[1:Np])
+    return [i in occupied ? "Occ" : "Emp" for i in 1:lat.Ns]
+end
+
+function density_seed_mps(path::AbstractString, lat::CylinderLat, Np::Int; seed::Int, init_linkdim::Int)
+    state = read_density_seed_state(path, lat, Np)
+    sites = siteinds("Fermion", lat.Ns; conserve_qns=true)
+    rng = MersenneTwister(seed)
+    psi0 = random_mps(rng, ComplexF64, sites, state; linkdims=init_linkdim)
+    return sites, psi0
 end
 
 function first_sweep_at_maxdim(maxdim::Vector{Int}, target_maxdim::Int)
@@ -135,10 +224,15 @@ function main(args)
     energy_tol = parse_float(opts, "energy_tol", 1e-7)
     density_tol = parse_float(opts, "density_tol", 1e-5)
     truncerr_tol = parse_float(opts, "truncerr_tol", Inf)
+    seed = parse_int(opts, "seed", 1234)
+    init_linkdim = parse_int(opts, "init_linkdim", 8)
+    init_density = get(opts, "init_density", "")
+    checkpoint_in = get(opts, "checkpoint_in", "")
     threaded_blocksparse = parse_bool(opts, "threaded_blocksparse", false)
     blas_threads = parse_int(opts, "blas_threads", 1)
     disable_strided_threads = parse_bool(opts, "disable_strided_threads", threaded_blocksparse)
     output = get(opts, "output", "dmrg/output_Lx$(Lx)")
+    checkpoint_out = get(opts, "checkpoint_out", joinpath(output, "checkpoint_final.jls"))
     mkpath(output)
 
     configure_threading(;
@@ -161,6 +255,23 @@ function main(args)
         truncerr_tol,
     )
 
+    sites = nothing
+    psi0 = nothing
+    init_source = "default_random_product"
+    if !isempty(checkpoint_in)
+        cp = load_ground_checkpoint(checkpoint_in, lat, params; Lx, Ly, Np, phi)
+        sites = cp.sites
+        psi0 = cp.psi
+        init_source = "checkpoint:$checkpoint_in"
+        @printf("Loaded ground-state checkpoint %s: energy=%.16g saved_at=%s\n", checkpoint_in, cp.energy, checkpoint_property(cp, :saved_at, "unknown"))
+        flush(stdout)
+    elseif !isempty(init_density)
+        sites, psi0 = density_seed_mps(init_density, lat, Np; seed, init_linkdim)
+        init_source = "density_product:$init_density"
+        @printf("Built density-biased product MPS from %s with init_linkdim=%d seed=%d\n", init_density, init_linkdim, seed)
+        flush(stdout)
+    end
+
     result = run_dmrg(
         lat,
         params,
@@ -169,6 +280,10 @@ function main(args)
         nsweeps,
         maxdim,
         cutoff,
+        seed,
+        sites,
+        psi0,
+        init_linkdim,
         adaptive,
         max_sweeps,
         min_sweeps,
@@ -187,6 +302,7 @@ function main(args)
     write_complex_matrix(joinpath(output, "green.dat"), green_function(result.psi); header="# i j Re(<c_i^dag c_j>) Im(<c_i^dag c_j>)")
     write_matrix(joinpath(output, "connected_density.dat"), connected_density_correlation(result.psi); header="# i j <n_i n_j>-<n_i><n_j>")
     write_convergence(joinpath(output, "convergence.dat"), result.convergence)
+    checkpoint_saved = save_ground_checkpoint(checkpoint_out, result, lat, params; Lx, Ly, Np, phi)
 
     write_summary(
         joinpath(output, "summary.dat"),
@@ -208,6 +324,12 @@ function main(args)
         energy_tol,
         density_tol,
         truncerr_tol,
+        seed,
+        init_linkdim,
+        init_source,
+        checkpoint_in,
+        checkpoint_out,
+        checkpoint_saved,
         start_time,
         end_time,
     )

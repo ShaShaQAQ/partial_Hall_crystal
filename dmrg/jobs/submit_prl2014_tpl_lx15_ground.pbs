@@ -1,0 +1,67 @@
+#!/bin/bash
+#PBS -N phc_tpl_lx15_gs
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/prl2014_tpl_lx15_gs.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+OUTROOT=${OUTROOT:-dmrg/output_prl2014_tpl_Lx15_Np36_V10_2_2}
+THREADS=${THREADS:-${PBS_NP:-24}}
+
+if [ "$THREADS" -gt 24 ]; then
+  echo "THREADS=$THREADS exceeds node ppn=24"
+  exit 2
+fi
+
+mkdir -p dmrg/logs "$OUTROOT"
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS="$THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "OUTROOT=$OUTROOT"
+echo "JULIA_NUM_THREADS=$JULIA_NUM_THREADS"
+echo "Working directory: $(pwd)"
+echo "PRL2014 TPL point: Lx=15 Ly=6 Ns=90 Nuc=45 Np=36"
+echo "Parameters: t1=1.0 t3=0.2 V1=10.0 V2=2.0 V3=2.0"
+
+julia -t "$THREADS" --project=. dmrg/run_dmrg.jl \
+  --Lx=15 --Ly=6 --Np=36 \
+  --t1=1.0 --t3=0.2 \
+  --V1=10.0 --V2=2.0 --V3=2.0 \
+  --threaded_blocksparse=true \
+  --blas_threads=1 \
+  --disable_strided_threads=true \
+  --adaptive=true \
+  --nsweeps=50 \
+  --max_sweeps=50 \
+  --min_sweeps=8 \
+  --target_maxdim=2000 \
+  --stable_sweeps=3 \
+  --maxdim=200,400,800,1200,1600,2000 \
+  --cutoff=1e-9 \
+  --energy_tol=1e-6 \
+  --density_tol=2e-5 \
+  --truncerr_tol=5e-8 \
+  --output="$OUTROOT" \
+  2>&1 | tee "dmrg/logs/prl2014_tpl_lx15_gs.live.${PBS_JOBID:-manual}.log"
+
+test -s "$OUTROOT/summary.dat"
+test -s "$OUTROOT/density.dat"
+test -s "$OUTROOT/density_x.dat"
+test -s "$OUTROOT/connected_density.dat"
+
+echo "Job finished at $(date)"
+echo "Output: $OUTROOT"

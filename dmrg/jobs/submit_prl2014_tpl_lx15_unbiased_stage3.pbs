@@ -1,0 +1,13 @@
+#!/bin/bash
+#PBS -N phc_tpl_u_s3
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/prl2014_tpl_lx15_unbiased_stage3.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+CONFIG=dmrg/tpl_ground_configs/prl2014_tpl_lx15_unbiased_20260819_stage3.env \
+  bash dmrg/jobs/run_prl2014_tpl_lx15_ground_stage.pbs
