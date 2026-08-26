@@ -19,45 +19,84 @@
     end
 end
 
-@testset "uniform Ax hopping derivatives" begin
+function single_particle_matrix(lat, hops)
+    operator = zeros(ComplexF64, lat.Ns, lat.Ns)
+    for (target, source, amplitude) in hops
+        operator[target, source] += amplitude
+    end
+    return operator
+end
+
+function torus_matrix_from_bloch(lat, bloch_matrix)
+    operator = zeros(ComplexF64, lat.Ns, lat.Ns)
+    a1_uc = collect(lat.a1)
+    a2_uc = 2 .* collect(lat.a2)
+    Nk = length(lat.kpoints)
+    for (source, (ix, iy)) in enumerate(lat.sites)
+        source_orb = mod(iy, 2) + 1
+        source_cell_y = div(iy - (source_orb - 1), 2)
+        for (n1_uc, n2_uc) in lat.uc_trans
+            Rcart = n1_uc .* a1_uc .+ n2_uc .* a2_uc
+            for target_orb in 1:2
+                delta = SUBLAT_POS[target_orb] .- SUBLAT_POS[source_orb]
+                amplitude = 0.0 + 0.0im
+                for k in lat.kpoints
+                    phase = exp(-1im * dot(k, Rcart .+ delta))
+                    amplitude +=
+                        phase * bloch_matrix(k)[target_orb, source_orb]
+                end
+                amplitude /= Nk
+                tix = ix + n1_uc
+                tiy = 2(source_cell_y + n2_uc) + target_orb - 1
+                target_site = lat.site_idx[canon_prim(lat, tix, tiy)]
+                operator[target_site, source] += amplitude
+            end
+        end
+    end
+    return operator
+end
+
+@testset "physical finite-torus Ax operators" begin
     lat = RectLat4x6()
     t1, t3 = 1.0, 0.2
     hops0, jx_hops, kxx_hops = build_hops_x_derivatives(lat, t1, t3)
+    H0 = single_particle_matrix(lat, hops0)
+    Jx = single_particle_matrix(lat, jx_hops)
+    Kxx = single_particle_matrix(lat, kxx_hops)
 
-    asdict(hops) = Dict((tgt, src) => amp for (tgt, src, amp) in hops)
-    @test asdict(hops0) == asdict(build_hops(lat, t1, t3, 0.0))
+    data(k) = get_Hk_x_derivatives(k, t1, t3)
+    H0_ref = torus_matrix_from_bloch(lat, k -> data(k).Hk)
+    Jx_ref = torus_matrix_from_bloch(lat, k -> data(k).dHdkx)
+    Kxx_ref = torus_matrix_from_bloch(lat, k -> data(k).d2Hdkx2)
+    relerr(actual, reference) =
+        norm(actual - reference) / max(norm(reference), 1.0)
 
-    delta = 1e-5
-    hp = asdict(build_hops_Ax(lat, t1, t3, delta))
-    hm = asdict(build_hops_Ax(lat, t1, t3, -delta))
-    h0 = asdict(hops0)
-    jx = asdict(jx_hops)
-    kxx = asdict(kxx_hops)
+    @test relerr(H0, H0_ref) < 1e-12
+    @test relerr(Jx, Jx_ref) < 1e-12
+    @test relerr(Kxx, Kxx_ref) < 1e-12
 
-    for key in keys(h0)
-        @test (hp[key] - hm[key]) / (2delta) ≈ jx[key] atol=1e-9 rtol=1e-9
-        @test (hp[key] - 2h0[key] + hm[key]) / delta^2 ≈ kxx[key] atol=2e-6 rtol=2e-6
+    Ax = 0.071
+    HAx = single_particle_matrix(lat, build_hops_Ax(lat, t1, t3, Ax))
+    HAx_ref = torus_matrix_from_bloch(
+        lat, k -> get_Hk(k .+ [Ax, 0.0], t1, t3))
+    @test relerr(HAx, HAx_ref) < 1e-12
+
+    delta1 = 1e-6
+    delta2 = 1e-4
+    Hp1 = single_particle_matrix(
+        lat, build_hops_Ax(lat, t1, t3, delta1))
+    Hm1 = single_particle_matrix(
+        lat, build_hops_Ax(lat, t1, t3, -delta1))
+    Hp2 = single_particle_matrix(
+        lat, build_hops_Ax(lat, t1, t3, delta2))
+    Hm2 = single_particle_matrix(
+        lat, build_hops_Ax(lat, t1, t3, -delta2))
+    @test relerr((Hp1 - Hm1) / (2delta1), Jx) < 1e-8
+    @test relerr((Hp2 - 2H0 + Hm2) / delta2^2, Kxx) < 1e-5
+
+    Hlegacy = single_particle_matrix(lat, build_hops(lat, t1, t3, 0.0))
+    @test relerr(H0, Hlegacy) < 1e-12
+    for operator in (H0, Jx, Kxx, HAx)
+        @test norm(operator - operator') / max(norm(operator), 1.0) < 1e-12
     end
-
-    basis = gen_basis(lat.Ns, 1)
-    sec = build_ksector(basis, lat, 2)
-    function materialize(hops)
-        n = length(sec.reps)
-        operator = zeros(ComplexF64, n, n)
-        input = zeros(ComplexF64, n)
-        diagonal = zeros(Float64, n)
-        for column in 1:n
-            input[column] = 1
-            Hv!(view(operator, :, column), input, sec, lat, hops,
-                0.0, 0.0, 0.0, diagonal)
-            input[column] = 0
-        end
-        return operator
-    end
-    H = materialize(hops0)
-    Jx = materialize(jx_hops)
-    Kxx = materialize(kxx_hops)
-    @test norm(H - H') / max(norm(H), 1.0) < 1e-12
-    @test norm(Jx - Jx') / max(norm(Jx), 1.0) < 1e-12
-    @test norm(Kxx - Kxx') / max(norm(Kxx), 1.0) < 1e-12
 end

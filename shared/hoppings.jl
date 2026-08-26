@@ -39,21 +39,18 @@ const SUBLAT_POS = [[0.0, 0.0], [-0.5, sqrt(3)/2]]
 
 # Fourier 变换得到实空间 hopping 矩阵 t(R)
 # 使用 lat.kpoints（对不同超胞自动正确）
-function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
-    kpoints_list = lat.kpoints
-    Nk = length(kpoints_list)
-
+function fourier_to_real_from_bloch(lat::GenLat, bloch_matrix)
+    Nk = length(lat.kpoints)
     a1_uc = collect(lat.a1)          # = (1,0)
     a2_uc = 2 .* collect(lat.a2)    # = (-1, sqrt(3))
-
     tR = Dict{NTuple{2,Int}, Matrix{ComplexF64}}()
 
     for (n1_uc, n2_uc) in lat.uc_trans
         R_cart = n1_uc .* a1_uc .+ n2_uc .* a2_uc
         tmat = zeros(ComplexF64, 2, 2)
 
-        for k in kpoints_list
-            Hk = get_Hk(k, t1, t3)
+        for k in lat.kpoints
+            Hk = bloch_matrix(k)
             for α in 1:2, β in 1:2
                 δ = SUBLAT_POS[α] .- SUBLAT_POS[β]
                 phase = exp(-1im * dot(k, R_cart .+ δ))
@@ -61,15 +58,55 @@ function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
             end
         end
         tmat ./= Nk
-
-        thresh = 1e-10
-        for i in 1:2, j in 1:2
-            abs(real(tmat[i,j])) < thresh && (tmat[i,j] -= real(tmat[i,j]))
-            abs(imag(tmat[i,j])) < thresh && (tmat[i,j] -= 1im*imag(tmat[i,j]))
-        end
         tR[(n1_uc, n2_uc)] = tmat
     end
     return tR
+end
+
+function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
+    return fourier_to_real_from_bloch(lat, k -> get_Hk(k, t1, t3))
+end
+
+function fourier_to_real_Ax(lat::GenLat, t1::Float64,
+                            t3::Float64, Ax::Float64)
+    return fourier_to_real_from_bloch(
+        lat, k -> get_Hk(k .+ [Ax, 0.0], t1, t3))
+end
+
+function fourier_to_real_x_derivatives(lat::GenLat,
+                                       t1::Float64, t3::Float64)
+    h = fourier_to_real_from_bloch(
+        lat, k -> get_Hk_x_derivatives(k, t1, t3).Hk)
+    jx = fourier_to_real_from_bloch(
+        lat, k -> get_Hk_x_derivatives(k, t1, t3).dHdkx)
+    kxx = fourier_to_real_from_bloch(
+        lat, k -> get_Hk_x_derivatives(k, t1, t3).d2Hdkx2)
+    return h, jx, kxx
+end
+
+function hopping_list_from_tR(lat::GenLat, tR;
+                              threshold::Float64=1e-12)
+    amplitudes = Dict{Tuple{Int,Int},ComplexF64}()
+    for (source, (ix, iy)) in enumerate(lat.sites)
+        source_orb = mod(iy, 2) + 1
+        source_cell_y = div(iy - (source_orb - 1), 2)
+
+        for ((n1_uc, n2_uc), tmat) in tR
+            for target_orb in 1:2
+                tix = ix + n1_uc
+                tiy = 2 * (source_cell_y + n2_uc) + target_orb - 1
+                target = lat.site_idx[canon_prim(lat, tix, tiy)]
+                key = (target, source)
+                amplitudes[key] = get(amplitudes, key, 0.0 + 0.0im) +
+                                  tmat[target_orb, source_orb]
+            end
+        end
+    end
+
+    keys_sorted = sort!(collect(keys(amplitudes)))
+    return [(target, source, amplitudes[(target, source)])
+            for (target, source) in keys_sorted
+            if abs(amplitudes[(target, source)]) >= threshold]
 end
 
 struct RealSpaceBond
@@ -132,15 +169,14 @@ end
 
 function build_hops_Ax(lat::GenLat, t1::Float64, t3::Float64,
                        Ax::Float64=0.0)
-    return [(b.tgt, b.src, b.amp * cis(Ax * b.displacement[1]))
-            for b in build_real_space_bonds(lat, t1, t3)]
+    tR = fourier_to_real_Ax(lat, t1, t3, Ax)
+    return hopping_list_from_tR(lat, tR)
 end
 
 
 function build_hops_x_derivatives(lat::GenLat, t1::Float64, t3::Float64)
-    bonds = build_real_space_bonds(lat, t1, t3)
-    hops = [(b.tgt, b.src, b.amp) for b in bonds]
-    jx = [(b.tgt, b.src, im * b.displacement[1] * b.amp) for b in bonds]
-    kxx = [(b.tgt, b.src, -b.displacement[1]^2 * b.amp) for b in bonds]
-    return hops, jx, kxx
+    h, jx, kxx = fourier_to_real_x_derivatives(lat, t1, t3)
+    return (hopping_list_from_tR(lat, h),
+            hopping_list_from_tR(lat, jx),
+            hopping_list_from_tR(lat, kxx))
 end
