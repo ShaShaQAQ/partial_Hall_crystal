@@ -114,5 +114,152 @@ end
 
 
 function write_benchmark_outputs(result, output_dir; make_plots=true)
-    error("output writer is implemented in Task 5")
+    @eval using JLD2
+    mkpath(output_dir)
+    final_index = length(result.m_values)
+    final_curve = result.curves[final_index]
+    final_kernel = result.kernels[final_index]
+
+    Base.invokelatest(
+        JLD2.jldsave,
+        joinpath(output_dir, "optical_response_benchmark.jld2");
+        sector=result.sector,
+        Eg=result.Eg,
+        ground_residual=result.ground_residual,
+        hermiticity=result.hermiticity,
+        source_overlap=result.source_overlap,
+        source_norm2=result.source_norm2,
+        Kexp=result.Kexp,
+        area=result.area,
+        eta=result.eta,
+        omegas=result.omegas,
+        m_values=result.m_values,
+        errors=result.errors,
+        alpha=final_kernel.alpha,
+        beta=final_kernel.beta,
+        exact_deltas=result.exact_data.deltas,
+        exact_weights=result.exact_data.weights,
+        exact_total=result.exact_curve.total,
+        exact_regular=result.exact_curve.regular,
+        lanczos_total=final_curve.total,
+        lanczos_regular=final_curve.regular,
+        exact_drude_weight=result.exact_curve.drude_weight,
+        lanczos_drude_weight=final_curve.drude_weight,
+    )
+
+    open(joinpath(output_dir, "optical_response_curves.dat"), "w") do io
+        println(io, "# omega Re_sigma_exact Im_sigma_exact " *
+                    "Re_sigma_L Im_sigma_L Re_reg_exact Im_reg_exact " *
+                    "Re_reg_L Im_reg_L")
+        for i in eachindex(result.omegas)
+            values = (result.omegas[i],
+                      real(result.exact_curve.total[i]),
+                      imag(result.exact_curve.total[i]),
+                      real(final_curve.total[i]),
+                      imag(final_curve.total[i]),
+                      real(result.exact_curve.regular[i]),
+                      imag(result.exact_curve.regular[i]),
+                      real(final_curve.regular[i]),
+                      imag(final_curve.regular[i]))
+            println(io, join(values, ' '))
+        end
+    end
+
+    open(joinpath(output_dir, "lanczos_convergence.dat"), "w") do io
+        println(io, "# M scaled_max_error_regular")
+        for (m, err) in zip(result.m_values, result.errors)
+            println(io, "$m $err")
+        end
+    end
+
+    if make_plots
+        @eval using Plots
+        p1 = Base.invokelatest(
+            Plots.plot,
+            result.omegas,
+            real.(result.exact_curve.regular);
+            label="exact",
+            xlabel="omega",
+            ylabel="Re sigma_xx^reg",
+        )
+        for (m, curve) in zip(result.m_values, result.curves)
+            Base.invokelatest(
+                Plots.plot!,
+                p1,
+                result.omegas,
+                real.(curve.regular);
+                label="M=$m",
+            )
+        end
+        Base.invokelatest(
+            Plots.savefig,
+            p1,
+            joinpath(output_dir, "optical_conductivity_regular.pdf"),
+        )
+
+        p2 = Base.invokelatest(
+            Plots.plot,
+            result.omegas,
+            imag.(result.exact_curve.total);
+            label="exact",
+            xlabel="omega",
+            ylabel="Im sigma_xx total",
+        )
+        Base.invokelatest(
+            Plots.plot!,
+            p2,
+            result.omegas,
+            imag.(final_curve.total);
+            label="Lanczos M=$(result.m_values[end])",
+        )
+        Base.invokelatest(
+            Plots.savefig,
+            p2,
+            joinpath(output_dir, "optical_conductivity_total.pdf"),
+        )
+
+        p3 = Base.invokelatest(
+            Plots.plot,
+            result.m_values,
+            result.errors;
+            marker=:circle,
+            xscale=:log10,
+            yscale=:log10,
+            legend=false,
+            xlabel="Lanczos M",
+            ylabel="scaled max error",
+        )
+        Base.invokelatest(
+            Plots.savefig,
+            p3,
+            joinpath(output_dir, "lanczos_convergence.pdf"),
+        )
+    end
+
+    @printf("sector=%d  E0=%.12f  residual=%.3e\n",
+            result.sector, result.Eg, result.ground_residual)
+    @printf("<Kxx>=%.12g  ||QJxg||^2=%.12g  area=%.12g\n",
+            result.Kexp, result.source_norm2, result.area)
+    @printf("Dxx exact=%.12g  Lanczos=%.12g\n",
+            result.exact_curve.drude_weight, final_curve.drude_weight)
+    for (m, err) in zip(result.m_values, result.errors)
+        @printf("M=%4d  scaled max error=%.3e\n", m, err)
+    end
+end
+
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    quick = "--quick" in ARGS
+    no_plot = "--no-plot" in ARGS
+    result = run_optical_benchmark(
+        omegas=quick ? collect(0.0:0.05:10.0) :
+                       collect(0.0:0.001:10.0),
+        requested_m=quick ? [50, 100, 200, 400, 600] :
+                            [50, 100, 200, 400, 800, 10_000],
+        make_plots=!no_plot,
+    )
+    target_error = quick ? 1e-6 : 1e-8
+    result.errors[end] < target_error ||
+        error("final Lanczos curve did not reach target accuracy " *
+              "$target_error")
 end

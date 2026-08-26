@@ -38,6 +38,7 @@ Every `julia ...` test command in the tasks below means the following W003 wrapp
 
 ```bash
 ssh W003 'cd /home/public/shajy/codex_runs/optical_response_lanczos && \
+  JULIA_DEPOT_PATH=/home/public/shajy/codex_depots/optical_response_lanczos \
   julia --project=/home/public/shajy/codex_envs/optical_response_lanczos <arguments>'
 ```
 
@@ -719,11 +720,14 @@ git commit -m "test: benchmark optical Lanczos against full ED"
 Run:
 
 ```bash
-ssh W003 'mkdir -p /home/public/shajy/codex_envs/optical_response_lanczos && \
+ssh W003 'mkdir -p /home/public/shajy/codex_envs/optical_response_lanczos \
+    /home/public/shajy/codex_depots/optical_response_lanczos && \
+  JULIA_DEPOT_PATH=/home/public/shajy/codex_depots/optical_response_lanczos \
   julia -e '\''using Pkg; \
     Pkg.activate("/home/public/shajy/codex_envs/optical_response_lanczos"); \
     Pkg.add(["KrylovKit", "JLD2", "Plots"])'\'''
-ssh W003 'julia --project=/home/public/shajy/codex_envs/optical_response_lanczos \
+ssh W003 'JULIA_DEPOT_PATH=/home/public/shajy/codex_depots/optical_response_lanczos \
+  julia --project=/home/public/shajy/codex_envs/optical_response_lanczos \
   -e '\''using KrylovKit, JLD2, Plots; println("output dependencies available")'\'''
 ```
 
@@ -853,7 +857,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     no_plot = "--no-plot" in ARGS
     result = run_optical_benchmark(
         omegas=quick ? collect(0.0:0.05:10.0) : collect(0.0:0.001:10.0),
-        requested_m=quick ? [50, 100, 200] : [50, 100, 200, 400, 800, 10_000],
+        requested_m=quick ? [50, 100, 200, 400, 600] : [50, 100, 200, 400, 800, 10_000],
         make_plots=!no_plot,
     )
     target_error = quick ? 1e-6 : 1e-8
