@@ -53,44 +53,75 @@ function fourier_to_real(lat::GenLat, t1::Float64, t3::Float64)
     return tR
 end
 
-# 构造完整实空间 hopping 列表（含 Hermitian 共轭）
-# phi_y: 沿 T2 方向插入的磁通量（弧度）
-function build_hops(lat::GenLat, t1::Float64, t3::Float64,
-                    phi_y::Float64=0.0)
+struct RealSpaceBond
+    tgt::Int
+    src::Int
+    amp::ComplexF64
+    winding_T2::Int
+    displacement::NTuple{2,Float64}
+end
+
+function build_real_space_bonds(lat::GenLat, t1::Float64, t3::Float64)
     tR = fourier_to_real(lat, t1, t3)
-    hop_dict = Dict{Tuple{Int,Int}, Tuple{ComplexF64,Int}}()
+    a1_uc = collect(lat.a1)
+    a2_uc = 2 .* collect(lat.a2)
+    bond_dict = Dict{Tuple{Int,Int},RealSpaceBond}()
 
     for (si, (ix, iy)) in enumerate(lat.sites)
-        sorb = (iy % 2 + 2) % 2
+        source_orb = mod(iy, 2) + 1
+        source_cell_y = div(iy - (source_orb - 1), 2)
 
         for ((n1_uc, n2_uc), tmat) in tR
+            Rcart = n1_uc .* a1_uc .+ n2_uc .* a2_uc
             for target_orb in 1:2
-                amp = tmat[target_orb, sorb+1]
+                amp = tmat[target_orb, source_orb]
                 abs(amp) < 1e-12 && continue
 
-                target_orb_offset = target_orb - 1
-                src_cell_y = div(iy - sorb, 2)
-                dst_cell_x = ix + n1_uc
-                dst_cell_y = src_cell_y + n2_uc
-                tix = dst_cell_x
-                tiy = 2*dst_cell_y + target_orb_offset
+                tix = ix + n1_uc
+                tiy = 2 * (source_cell_y + n2_uc) + target_orb - 1
 
-                r = canon_prim(lat, tix, tiy)   # 通用 canon
-                haskey(lat.site_idx, r) || continue
-                ti = lat.site_idx[r]
+                target = canon_prim(lat, tix, tiy)
+                haskey(lat.site_idx, target) || continue
+                ti = lat.site_idx[target]
 
-                haskey(hop_dict, (ti, si)) && continue
+                haskey(bond_dict, (ti, si)) && continue
 
-                w2 = winding_T2(lat, tix, tiy)  # 通用 winding
-                hop_dict[(ti, si)] = (amp, w2)
-                hop_dict[(si, ti)] = (conj(amp), -w2)
+                delta = SUBLAT_POS[target_orb] .- SUBLAT_POS[source_orb]
+                dcart = Rcart .+ delta
+                d = (Float64(dcart[1]), Float64(dcart[2]))
+                w2 = winding_T2(lat, tix, tiy)
+
+                bond_dict[(ti, si)] = RealSpaceBond(ti, si, amp, w2, d)
+                bond_dict[(si, ti)] = RealSpaceBond(
+                    si, ti, conj(amp), -w2, (-d[1], -d[2]))
             end
         end
     end
 
-    hops = Tuple{Int,Int,ComplexF64}[]
-    for ((tgt, src), (amp, w2)) in hop_dict
-        push!(hops, (tgt, src, amp * exp(1im * w2 * phi_y)))
-    end
-    return hops
+    keys_sorted = sort!(collect(keys(bond_dict)))
+    return [bond_dict[key] for key in keys_sorted]
+end
+
+# 构造完整实空间 hopping 列表（含 Hermitian 共轭）
+# phi_y: 沿 T2 方向插入的磁通量（弧度）
+function build_hops(lat::GenLat, t1::Float64, t3::Float64,
+                    phi_y::Float64=0.0)
+    return [(b.tgt, b.src, b.amp * cis(b.winding_T2 * phi_y))
+            for b in build_real_space_bonds(lat, t1, t3)]
+end
+
+
+function build_hops_Ax(lat::GenLat, t1::Float64, t3::Float64,
+                       Ax::Float64=0.0)
+    return [(b.tgt, b.src, b.amp * cis(Ax * b.displacement[1]))
+            for b in build_real_space_bonds(lat, t1, t3)]
+end
+
+
+function build_hops_x_derivatives(lat::GenLat, t1::Float64, t3::Float64)
+    bonds = build_real_space_bonds(lat, t1, t3)
+    hops = [(b.tgt, b.src, b.amp) for b in bonds]
+    jx = [(b.tgt, b.src, im * b.displacement[1] * b.amp) for b in bonds]
+    kxx = [(b.tgt, b.src, -b.displacement[1]^2 * b.amp) for b in bonds]
+    return hops, jx, kxx
 end
