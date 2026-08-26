@@ -1,0 +1,124 @@
+#!/bin/bash
+#PBS -N phc_tpl_stage
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/prl2014_tpl_lx15_stage.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+if [ -z "${CONFIG:-}" ]; then
+  echo "CONFIG must point to a stage env file"
+  exit 2
+fi
+
+test -s "$CONFIG"
+source "$CONFIG"
+
+: "${CAMPAIGN:?CAMPAIGN is required}"
+: "${STAGE_NAME:?STAGE_NAME is required}"
+: "${OUTROOT:?OUTROOT is required}"
+: "${MAXDIM:?MAXDIM is required}"
+: "${TARGET_MAXDIM:?TARGET_MAXDIM is required}"
+: "${MAX_SWEEPS:?MAX_SWEEPS is required}"
+
+THREADS=${THREADS:-${PBS_NP:-24}}
+MIN_SWEEPS=${MIN_SWEEPS:-10}
+STABLE_SWEEPS=${STABLE_SWEEPS:-3}
+ENERGY_TOL=${ENERGY_TOL:-1e-6}
+DENSITY_TOL=${DENSITY_TOL:-2e-5}
+TRUNCERR_TOL=${TRUNCERR_TOL:-5e-8}
+CUTOFF=${CUTOFF:-1e-9}
+SEED=${SEED:-20260819}
+INIT_LINKDIM=${INIT_LINKDIM:-8}
+CHECKPOINT_IN=${CHECKPOINT_IN:-}
+CHECKPOINT_OUT=${CHECKPOINT_OUT:-$OUTROOT/checkpoint_final.jls}
+PREV_SUMMARY=${PREV_SUMMARY:-}
+
+if [ "$THREADS" -gt 24 ]; then
+  echo "THREADS=$THREADS exceeds node ppn=24"
+  exit 2
+fi
+
+mkdir -p dmrg/logs "$CAMPAIGN" "$OUTROOT"
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS="$THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Stage job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "CONFIG=$CONFIG"
+echo "CAMPAIGN=$CAMPAIGN"
+echo "STAGE_NAME=$STAGE_NAME"
+echo "OUTROOT=$OUTROOT"
+echo "CHECKPOINT_IN=${CHECKPOINT_IN:-none}"
+echo "CHECKPOINT_OUT=$CHECKPOINT_OUT"
+echo "MAXDIM=$MAXDIM"
+echo "MAX_SWEEPS=$MAX_SWEEPS"
+echo "JULIA_NUM_THREADS=$JULIA_NUM_THREADS"
+echo "PRL2014 TPL point: Lx=15 Ly=6 Ns=90 Nuc=45 Np=36"
+echo "Parameters: t1=1.0 t3=0.2 V1=10.0 V2=2.0 V3=2.0"
+
+if [ -n "$PREV_SUMMARY" ] && grep -q '^converged true$' "$PREV_SUMMARY"; then
+  echo "Previous stage already converged: $PREV_SUMMARY"
+  echo "$STAGE_NAME skipped because $PREV_SUMMARY is converged" > "$OUTROOT/SKIPPED_ALREADY_CONVERGED.txt"
+  echo "Stage job finished at $(date)"
+  exit 0
+fi
+
+args=(
+  --Lx=15 --Ly=6 --Np=36
+  --t1=1.0 --t3=0.2
+  --V1=10.0 --V2=2.0 --V3=2.0
+  --threaded_blocksparse=true
+  --blas_threads=1
+  --disable_strided_threads=true
+  --adaptive=true
+  --nsweeps="$MAX_SWEEPS"
+  --max_sweeps="$MAX_SWEEPS"
+  --min_sweeps="$MIN_SWEEPS"
+  --target_maxdim="$TARGET_MAXDIM"
+  --stable_sweeps="$STABLE_SWEEPS"
+  --maxdim="$MAXDIM"
+  --cutoff="$CUTOFF"
+  --energy_tol="$ENERGY_TOL"
+  --density_tol="$DENSITY_TOL"
+  --truncerr_tol="$TRUNCERR_TOL"
+  --seed="$SEED"
+  --init_linkdim="$INIT_LINKDIM"
+  --checkpoint_out="$CHECKPOINT_OUT"
+  --output="$OUTROOT"
+)
+
+if [ -n "$CHECKPOINT_IN" ]; then
+  test -s "$CHECKPOINT_IN"
+  args+=(--checkpoint_in="$CHECKPOINT_IN")
+else
+  echo "Unbiased cold start: no checkpoint_in and no init_density."
+fi
+
+LOGFILE="dmrg/logs/prl2014_tpl_lx15_${STAGE_NAME}.live.${PBS_JOBID:-manual}.log"
+julia -t "$THREADS" --project=. dmrg/run_dmrg.jl "${args[@]}" 2>&1 | tee "$LOGFILE"
+
+test -s "$OUTROOT/summary.dat"
+test -s "$OUTROOT/density.dat"
+test -s "$OUTROOT/density_x.dat"
+test -s "$OUTROOT/connected_density.dat"
+test -s "$CHECKPOINT_OUT"
+
+cp "$OUTROOT/summary.dat" "$CAMPAIGN/latest_summary.dat"
+printf "%s\n" "$OUTROOT" > "$CAMPAIGN/latest_output.txt"
+printf "%s\n" "$CHECKPOINT_OUT" > "$CAMPAIGN/latest_checkpoint.txt"
+
+echo "Stage job finished at $(date)"
+echo "Output: $OUTROOT"
+echo "Checkpoint: $CHECKPOINT_OUT"

@@ -10,6 +10,22 @@ This directory contains ITensor/ITensorMPS DMRG workflows for the partial Hall c
 - `run_flux_pump_segment.jl`: checkpointed flux insertion segments for PBS jobs.
 - `run_flux_point.jl` and `merge_flux_pump.jl`: independent flux-point workflow and post-merge utilities.
 - `plot_charge_pump.py`: dependency-free SVG/CSV plotting for charge pump data.
+- `analyze_ground_state.jl`: one-file finite-cylinder ground-state diagnostics
+  from `summary.dat`, `density.dat`, `connected_density.dat`, `green.dat`,
+  `convergence.dat`, and optionally a saved MPS checkpoint.
+
+Example ground-state diagnostic pass:
+
+```bash
+julia --project=. dmrg/analyze_ground_state.jl \
+  --input=dmrg/output_prl2014_tpl_Lx15_Np36_V10_2_2_unbiased_20260819/stage3_continue_chi3000 \
+  --outdir=dmrg/output_prl2014_tpl_Lx15_Np36_V10_2_2_unbiased_20260819/stage3_continue_chi3000/diagnostics \
+  --top_peaks=12
+```
+
+Add `--checkpoint=auto --entanglement_bonds=center` for a central-cut
+entanglement entropy/spectrum check, or `--entanglement_bonds=all` when a full
+profile is worth the extra checkpoint SVD cost.
 
 ## Cluster jobs
 
@@ -45,5 +61,6 @@ From the repository root:
 julia --project=. dmrg/test_convergence_logic.jl
 julia --project=. dmrg/test_flux_merge.jl
 julia --project=. dmrg/test_flux_segment_checkpoint.jl
+julia --project=. dmrg/test_ground_state_diagnostics.jl
 python3 -m py_compile dmrg/plot_charge_pump.py
 ```
