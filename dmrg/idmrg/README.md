@@ -255,7 +255,7 @@ example shows the sparse pilot schedule; it must be launched by a W003 PBS job,
 not on the Mac or a W003 login shell:
 
 ```bash
-/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia --threads=12 \
+/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia --threads=4 \
   --startup-file=no --project=dmrg/idmrg \
   dmrg/idmrg/bin/run_fig2_benchmark.jl \
   --manifest=dmrg/idmrg/benchmarks/fqahc_fig2.toml \
@@ -263,7 +263,7 @@ not on the Mac or a W003 login shell:
   --output=/home/public/shajy/codex/results/fqahc-fig2/pilot \
   --dimensions=32,64,128 \
   --flux_units_2pi=0,0.5,1,1.5,2,2.5,3 \
-  --threads=12
+  --threads=4
 ```
 
 The checked-in PBS wrapper is the preferred production entry point. From the
@@ -308,11 +308,32 @@ with `FIG2_WALLTIME=HH:MM:SS`; the submitter and compute-node runner both reject
 values above the dimension-specific cap, and the runner also checks the actual
 PBS allocation against the immutable job configuration. A later stage can be
 chained only after a verified predecessor with `FIG2_DEPENDENCY=<job-id>`.
-`FIG2_THREADS` defaults to the measured 12-thread production setting; 4 and 24
-remain available only for the declared utilization comparison. PBS still
-reserves one complete 24-core node so jobs cannot share the allocation. BLAS,
-OMP, MKL, and ITensor Strided threading remain at one while ITensor block-sparse
-threading is enabled by the Julia driver.
+`FIG2_THREADS` defaults to the measured 4-thread setting for the `D<=128`
+pilot; 12 and 24 remain available as explicit overrides. PBS still reserves one
+complete 24-core node so jobs cannot share the allocation. BLAS, OMP, MKL, and
+ITensor Strided threading remain at one while ITensor block-sparse threading is
+enabled by the Julia driver.
+
+The default is based on a strict same-checkpoint `D=32` comparison. Jobs
+`1887841.w003`, `1887842.w003`, and `1887843.w003` each loaded event 101 state
+SHA-256
+`dce07442ca6a3e0707952c234aeda14c013755a73d4d23d0c8b97c28f26e936f`
+and performed one identical sequential VUMPS iteration:
+
+| Julia threads | Iteration time (s) | Job wall time | CPU use | Peak RSS (KiB) |
+|---:|---:|---:|---:|---:|
+| 4 | 1924.838 | 33:41 | 383% | 1561056 |
+| 12 | 2885.606 | 49:44 | 1047% | 1429656 |
+| 24 | 6013.450 | 1:41:55 | 1936% | 1557952 |
+
+All three runs returned exactly equal left/right energies, all VUMPS residuals,
+precision error, and output energy. The independent checkpoint audit
+`1888379.w003` additionally found identical site indices, density, Schmidt
+charges and probabilities, entropy, and polarization; mixed-state fidelities
+were `1.0` for 4 versus 12 threads and `0.9999999999999998` for 4 versus 24.
+The result is specific to the small block structure at `D=32`; repeat the same
+checkpoint comparison at `D=256` before choosing the thread count for high-D
+stages.
 
 At zero flux, every deterministic product-state candidate is retained and the
 lowest converged valid energy per site is selected. At later flux points, the

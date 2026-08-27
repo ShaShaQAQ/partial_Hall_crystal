@@ -576,14 +576,14 @@ end
             end
         end
 
-        @testset "submitter defaults to the measured 12-thread setting" begin
+        @testset "submitter defaults to the measured 4-thread D=32 setting" begin
             result = run_fig2_submitter_dry_run(
                 submitter,
                 repository,
                 nothing,
             )
             @test result.exitcode == 0
-            @test occursin("FIG2_THREADS=12\n", result.stdout)
+            @test occursin("FIG2_THREADS=4\n", result.stdout)
             @test isempty(result.stderr)
         end
 
