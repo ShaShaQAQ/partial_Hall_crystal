@@ -4,6 +4,7 @@
 \usepackage{amsmath}
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{subcaption}
 \usepackage[hidelinks]{hyperref}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
@@ -251,6 +252,337 @@ near-degenerate ground-state manifold, this raw discontinuity should be treated
 as a branch switch candidate, not as an already-unwrapped smooth pump curve.
 Supporting a sector assignment requires additional diagnostics such as MPS
 overlaps, entanglement-spectrum flow, or an explicit state-tracking protocol.
+
+\clearpage
+\section{Optical Conductivity: Kubo Sum and Response Lanczos}
+\label{sec:optical-conductivity}
+
+This section records the linear optical-response conventions used by the older
+explicit sum-over-states code and by the corrected response-Lanczos benchmark.
+Only linear conductivity is discussed.  The two numerical methods evaluate the
+same many-body resolvent when supplied with the same Hamiltonian and current
+operators; their distinction is computational rather than physical.
+
+\subsection{Electromagnetic convention and operators}
+
+For a uniform Cartesian vector potential along \(x\), define
+\begin{equation}
+  H(A_x)=H(0)+A_xJ_x+\frac{A_x^2}{2}K_{xx}+O(A_x^3),
+  \qquad
+  J_x=\left.\frac{\partial H}{\partial A_x}\right|_{0},
+  \qquad
+  K_{xx}=\left.\frac{\partial^2H}{\partial A_x^2}\right|_{0}.
+  \label{eq:optical-operators}
+\end{equation}
+The corrected finite-torus implementation uses
+\begin{equation}
+  H_A(k)=H(k+A_x\hat{x})
+  \label{eq:bloch-ax}
+\end{equation}
+as the common source of \(H(A_x)\), \(J_x\), and \(K_{xx}\).  Here \(A_x\) is a
+uniform vector potential per unit Cartesian length, not the total twist.  For
+the \(4\times6\) torus, \(\Phi_x=4A_x\).  We use \(e=\hbar=1\) and the operator
+sign convention \(J_x=\partial H/\partial A_x\).
+
+For the ground state \(\lvert g\rangle\), introduce
+\begin{equation}
+  Q=1-\lvert g\rangle\langle g\rvert,
+  \qquad
+  \lvert f\rangle=QJ_x\lvert g\rangle,
+  \qquad
+  z=\omega+i\eta,
+  \label{eq:response-source}
+\end{equation}
+and, for every excited state that couples to the source,
+\begin{equation}
+  \Delta_n=E_n-E_g,
+  \qquad
+  w_n=\left|\langle n\rvert J_x\lvert g\rangle\right|^2.
+\end{equation}
+
+\subsection{Explicit sum-over-states Kubo formula}
+
+Full diagonalization gives the finite-system resolvent
+\begin{align}
+  G(z)
+  &=\langle f\rvert\left[z-(H-E_g)\right]^{-1}\lvert f\rangle
+    =\sum_{n\ne g}\frac{w_n}{z-\Delta_n}, \\
+  \chi(z)
+  &=G(z)+G(-z)
+    =\sum_{n\ne g}w_n
+      \left(\frac{1}{z-\Delta_n}-\frac{1}{z+\Delta_n}\right), \\
+  \chi_0
+  &\equiv\chi(0)=2\operatorname{Re}G(0)
+    =-2\sum_{n\ne g}\frac{w_n}{\Delta_n}.
+  \label{eq:exact-resolvent}
+\end{align}
+The active longitudinal expression in the older ED script can be rearranged
+state by state as
+\begin{align}
+ &\frac{w_n}{iz}
+  \left(\frac{1}{z+\Delta_n}-\frac{1}{z-\Delta_n}\right)
+  +\frac{2iw_n}{z\Delta_n} \\
+ &\hspace{1.4cm}=\frac{iw_n}{z}
+  \left[
+    \frac{1}{z-\Delta_n}-\frac{1}{z+\Delta_n}
+    +\frac{2}{\Delta_n}
+  \right].
+\end{align}
+After summing over \(n\), its response therefore has the structure
+\begin{equation}
+  \sigma_{xx}^{\mathrm{old}}(z)
+  =\frac{2\pi i}{A_{\mathrm{old}}}
+   \frac{\chi(z)-\chi_0}{z},
+  \label{eq:old-kubo}
+\end{equation}
+which is the regular, finite-frequency conductivity in the definitions below.
+It is not the total response including an independently evaluated diamagnetic
+term.
+
+\subsection{Regular, Drude, and total conductivity}
+
+With the physical finite-torus area \(A\), define
+\begin{align}
+  D_{xx}&=\langle g\rvert K_{xx}\lvert g\rangle+\chi_0, \\
+  \sigma_{xx}^{\mathrm{Drude}}(z)
+    &=\frac{2\pi i}{A}\frac{D_{xx}}{z}, \\
+  \sigma_{xx}^{\mathrm{reg}}(z)
+    &=\frac{2\pi i}{A}\frac{\chi(z)-\chi_0}{z}, \\
+  \sigma_{xx}^{\mathrm{total}}(z)
+    &=\sigma_{xx}^{\mathrm{Drude}}(z)
+      +\sigma_{xx}^{\mathrm{reg}}(z)
+      =\frac{2\pi i}{A}
+       \frac{\langle K_{xx}\rangle+\chi(z)}{z}.
+  \label{eq:conductivity-parts}
+\end{align}
+These are complex conductivities.  To make the origin of every plotted real or
+imaginary part explicit, write \(X=X'+iX''\) and
+\begin{equation}
+  \sigma_X(z)=\frac{2\pi i}{A}\frac{X}{\omega+i\eta}.
+\end{equation}
+Then
+\begin{align}
+  \operatorname{Re}\sigma_X
+   &=\frac{2\pi}{A}
+     \frac{\eta X'-\omega X''}{\omega^2+\eta^2}, \\
+  \operatorname{Im}\sigma_X
+   &=\frac{2\pi}{A}
+     \frac{\omega X'+\eta X''}{\omega^2+\eta^2}.
+  \label{eq:real-imag-source}
+\end{align}
+For the three conductivities, the corresponding numerators are
+\begin{equation}
+  X_{\mathrm{Drude}}=D_{xx},\qquad
+  X_{\mathrm{reg}}=\chi(z)-\chi_0,\qquad
+  X_{\mathrm{total}}=\langle K_{xx}\rangle+\chi(z).
+\end{equation}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Meaning and source of the complex longitudinal conductivities.}
+\begin{tabular}{p{0.20\linewidth}p{0.34\linewidth}p{0.34\linewidth}}
+\toprule
+Quantity & Real part & Imaginary part \\
+\midrule
+\(\sigma^{\mathrm{reg}}\) & Finite-frequency absorption spectrum, broadened by
+\(\eta\) & Reactive/dispersive regular response; the Kramers--Kronig partner of
+the absorption spectrum \\
+\(\sigma^{\mathrm{Drude}}\) & Broadened zero-frequency Drude contribution; it
+approaches a delta contribution as \(\eta\to0^+\) & Reactive Drude pole,
+approaching \(1/\omega\) away from zero frequency \\
+\(\sigma^{\mathrm{total}}\) & Sum of the regular and Drude real parts & Sum of
+the regular and Drude imaginary parts \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The finite-torus value of \(D_{xx}\) is the curvature combination for the
+selected finite-size twist and momentum branch.  A negative value at one fixed
+twist must not be read directly as a negative thermodynamic dissipative Drude
+weight; that interpretation requires following the global ground state versus
+twist and performing a size extrapolation.
+
+The benchmark data file stores all four complex curves, even though the current
+PDFs plot only selected components:
+\begin{table}[h]
+\centering
+\small
+\caption{Columns of \texttt{optical\_response\_curves.dat}.}
+\begin{tabular}{cl}
+\toprule
+Columns & Stored response \\
+\midrule
+2--3 & Exact \(\operatorname{Re/Im}\sigma^{\mathrm{total}}\) \\
+4--5 & Lanczos \(\operatorname{Re/Im}\sigma^{\mathrm{total}}\) \\
+6--7 & Exact \(\operatorname{Re/Im}\sigma^{\mathrm{reg}}\) \\
+8--9 & Lanczos \(\operatorname{Re/Im}\sigma^{\mathrm{reg}}\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Exact diagonalization versus response Lanczos}
+
+The exact reference materializes and fully diagonalizes the Hamiltonian in the
+finite \(m=2\) sector, then evaluates Eq.~\eqref{eq:exact-resolvent} using every
+stored \(\Delta_n\) and \(w_n\).  It is exact for that finite sector and chosen
+broadening, not for the thermodynamic limit.
+
+Response Lanczos starts from
+\(q_1=\lvert f\rangle/\lVert f\rVert\) and generates
+\begin{equation}
+  (H-E_g)q_j
+  =\beta_{j-1}q_{j-1}+\alpha_jq_j+\beta_jq_{j+1}.
+  \label{eq:response-lanczos-recurrence}
+\end{equation}
+If \(T_M\) is the resulting tridiagonal matrix, the same resolvent is
+approximated by
+\begin{align}
+  G_M(z)
+  &=\lVert f\rVert^2 e_1^{\mathsf T}(zI-T_M)^{-1}e_1 \\
+  &=\frac{\lVert f\rVert^2}
+  {z-\alpha_1-\dfrac{\beta_1^2}
+  {z-\alpha_2-\dfrac{\beta_2^2}{\ddots}}}.
+  \label{eq:lanczos-continued-fraction}
+\end{align}
+Thus exact diagonalization and response Lanczos are two evaluations of the same
+Kubo resolvent.  Lanczos avoids storing all excited eigenstates and is the route
+intended for larger ED sectors.
+
+\subsection{Historical linear-response plots}
+
+\paragraph{Historical-status warning.}
+The following plots are preserved as records of the earlier linear-response
+calculation, not as validation data for the corrected operators.  In the old
+script the active \(x\) velocity was \(v_1\), while the Cartesian combination
+was commented out; the velocity construction reused a Hamiltonian apply path
+that could add interactions; and the normalization used \(L_1L_2\) rather than
+the physical torus area.  In addition, folding the \(d_x=\pm L_x/2\) hopping
+paths before differentiating produced the wrong \(J_x\) and \(K_{xx}\), even
+though \(H(0)\) and its spectrum were unchanged.
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_optical_conductivity.pdf}
+  \caption{Historical transverse plot with no broadening recorded in its file name.}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_optical_conductivity_eta_0p001_tag_m0p359.pdf}
+  \caption{Historical transverse plot; the original file records \(\eta=0.001\)
+  and the unresolved tag \(-0.359\).}
+\end{subfigure}
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_optical_conductivity_eta_0p065.pdf}
+  \caption{Historical transverse plot with recorded \(\eta=0.065\).}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_optical_conductivity_eta_0p065_tag_m0p373.pdf}
+  \caption{Historical general plot; the original file records \(\eta=0.065\)
+  and the unresolved tag \(-0.373\).}
+\end{subfigure}
+\caption{Earlier linear optical-conductivity outputs.  Labels and broadening
+values are transcribed from the plots and file names; unresolved numeric tags
+are intentionally not assigned a physical interpretation.}
+\label{fig:legacy-optical-general}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_longitudinal_x.pdf}
+  \caption{Historical longitudinal \(x\)-direction result.}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/legacy_longitudinal_y.pdf}
+  \caption{Historical longitudinal \(y\)-direction result.}
+\end{subfigure}
+\caption{Earlier longitudinal Kubo plots.  Their real and imaginary curves are
+the two components of the old regular-response expression,
+Eq.~\eqref{eq:old-kubo}, under the old operator and area conventions.}
+\label{fig:legacy-optical-longitudinal}
+\end{figure}
+
+\clearpage
+\subsection{Corrected \(4\times6\) FCI benchmark}
+
+The corrected benchmark uses the \(4\times6\) torus with \(N_p=4\), momentum
+sector \(m=2\), \(t_1=1\), \(t_3=0.2\), \(V_1=1\), and \(V_2=V_3=0\).  The
+frequency grid is \(0:0.001:10\) and \(\eta=0.065\).
+
+\begin{table}[h]
+\centering
+\caption{Corrected finite-torus optical benchmark.}
+\begin{tabular}{lr}
+\toprule
+Quantity & Value \\
+\midrule
+\(E_g\) & \(-9.313575887962\) \\
+\(\langle K_{xx}\rangle\) & \(4.47923524291\) \\
+\(\lVert QJ_x\lvert g\rangle\rVert^2\) & \(10.8443081433\) \\
+\(D_{xx}\) & \(-0.885036768331\) \\
+Regular peak \((\omega,\operatorname{Re}\sigma_{xx}^{\mathrm{reg}})\) &
+\((4.107,9.34982602717)\) \\
+Final response dimension & \(892\) \\
+Exact--Lanczos scaled maximum error & \(5.5927404437300286\times10^{-14}\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_optical_conductivity_regular.pdf}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\): exact sum and
+  successive response-Lanczos dimensions.}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_optical_conductivity_total.pdf}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\): exact and final
+  response-Lanczos curves.}
+\end{subfigure}
+\par\medskip
+\begin{subfigure}{0.58\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_lanczos_convergence.pdf}
+  \caption{Scaled maximum error of the regular curve versus response dimension.}
+\end{subfigure}
+\caption{Corrected exact/response-Lanczos benchmark.  The exact curve is drawn
+first; at the largest response dimensions it is hidden by the later Lanczos
+curve because the two agree to floating-point accuracy.}
+\label{fig:corrected-optical-benchmark}
+\end{figure}
+
+\clearpage
+\subsection{What can and cannot be compared}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Status of the historical and corrected optical calculations.}
+\begin{tabular}{p{0.23\linewidth}p{0.33\linewidth}p{0.33\linewidth}}
+\toprule
+Item & Historical ED plots & Corrected benchmark \\
+\midrule
+Electromagnetic operator & Derivative of the old folded-bond construction;
+active \(x\) component was \(v_1\) & Analytic derivatives of
+\(H(k+A_x\hat{x})\) before finite-torus folding \\
+Area & \(A_{\mathrm{old}}=L_1L_2\) & Physical supercell area
+\(A=12\sqrt{3}\) \\
+Response shown & Explicit regular Kubo expression; plot-dependent tensor
+component & Regular, Drude, and total complex conductivity \\
+Numerical method & Stored excited states and explicit state sum & Both complete
+ED sum and response Lanczos \\
+Validation status & Historical only; peak positions and heights are not a
+corrected reference & Operator finite differences, exact sum, and Lanczos
+continued fraction are mutually checked \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The qualitative location of spectral structures may be inspected across the
+historical and corrected figures, but absolute peak heights, low-frequency
+behavior, and tensor labels are not directly comparable until the historical
+calculation is rerun with the corrected operators and physical area.
 
 \section{Open Checks}
 
