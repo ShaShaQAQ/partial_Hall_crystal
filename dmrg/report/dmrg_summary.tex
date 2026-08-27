@@ -3,6 +3,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{graphicx}
 \usepackage{subcaption}
 \usepackage[hidelinks]{hyperref}
@@ -405,7 +406,7 @@ twist and performing a size extrapolation.
 
 The benchmark data file stores all four complex curves, even though the current
 PDFs plot only selected components:
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \caption{Columns of \texttt{optical\_response\_curves.dat}.}
@@ -504,7 +505,7 @@ Eq.~\eqref{eq:old-kubo}, under the old operator and area conventions.}
 \end{figure}
 
 \clearpage
-\subsection{Corrected \(4\times6\) FCI benchmark}
+\subsection{Corrected \texorpdfstring{\(4\times6\)}{4x6} FCI benchmark}
 
 The corrected benchmark uses the \(4\times6\) torus with \(N_p=4\), momentum
 sector \(m=2\), \(t_1=1\), \(t_3=0.2\), \(V_1=1\), and \(V_2=V_3=0\).  The
