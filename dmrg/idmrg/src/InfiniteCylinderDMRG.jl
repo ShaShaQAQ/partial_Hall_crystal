@@ -39,6 +39,7 @@ include("CLI.jl")
 include("Fig2Benchmark.jl")
 include("MPSKitBackend.jl")
 include("MPSKitHamiltonian.jl")
+include("MPSKitSolver.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -185,6 +186,10 @@ export BLOCKTENSORKIT_COMMIT,
     canonical_term_fingerprint,
     mpskit_term_fingerprint,
     mpskit_terms_are_approx,
-    mpskit_mpo_virtual_dimensions
+    mpskit_mpo_virtual_dimensions,
+    MPSKitSolverStageRecord,
+    MPSKitSolverResult,
+    mpskit_solver_converged,
+    run_mpskit_idmrg
 
 end

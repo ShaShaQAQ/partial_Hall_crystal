@@ -93,6 +93,47 @@ end
     @test all(isfinite, getproperty.(result.records, :elapsed_seconds))
     @test length(callbacks) == 2
     @test length(last(callbacks).records) == 2
+
+    refinement_environments = MPSKit.environments(
+        result.state,
+        hamiltonian,
+        result.state,
+    )
+    refined_state, _, refinement_residual = MPSKit.find_groundstate(
+        result.state,
+        hamiltonian,
+        MPSKit.VUMPS(;
+            tol=1e-7,
+            maxiter=5,
+            verbosity=0,
+            alg_eigsolve=MPSKit.Defaults.alg_eigsolve(;
+                dynamic_tols=false,
+                tol=1e-10,
+            ),
+        ),
+        refinement_environments,
+    )
+    refined_environments = MPSKit.environments(
+        refined_state,
+        hamiltonian,
+        refined_state,
+    )
+    refined_residual = MPSKit.calc_galerkin(
+        refined_state,
+        hamiltonian,
+        refined_state,
+        refined_environments,
+    )
+    refined_energy = real(
+        MPSKit.expectation_value(
+            refined_state,
+            hamiltonian,
+            refined_environments,
+        ) / length(refined_state),
+    )
+    @test refinement_residual <= 1e-7
+    @test refined_residual <= 1e-7
+    @test isapprox(refined_energy, result.energy_per_site; atol=1e-10, rtol=0)
 end
 
 @testset "independent dimer product states reach the same energy" begin
