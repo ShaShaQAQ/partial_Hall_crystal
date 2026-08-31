@@ -19,6 +19,7 @@ using SparseArrays
 using LinearAlgebra
 
 import JLD2
+import BlockTensorKit
 import MatrixAlgebraKit
 import MPSKit
 import TensorKit
@@ -166,7 +167,8 @@ export CylinderModelParams,
     run_fig2_benchmark,
     write_fig2_acceptance_report!
 
-export MPSKIT_BACKEND_COMMIT,
+export BLOCKTENSORKIT_COMMIT,
+    MPSKIT_BACKEND_COMMIT,
     TENSORKITTENSORS_COMMIT,
     mpskit_backend_provenance
 

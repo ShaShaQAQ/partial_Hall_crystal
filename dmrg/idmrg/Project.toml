@@ -3,6 +3,7 @@ uuid = "bb119d70-e6e4-4ad4-a0fd-2dc1be8dca26"
 version = "0.1.0"
 
 [deps]
+BlockTensorKit = "5f87ffc2-9cf1-4a46-8172-465d160bd8cd"
 HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
 ITensorInfiniteMPS = "1dc1fb26-a137-4954-ae60-1bd4106e95ad"
 ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
@@ -22,6 +23,7 @@ TensorKitTensors = "41b62e7d-e9d1-4e23-942c-79a97adf954b"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
+BlockTensorKit = "=0.3.16"
 HDF5 = "0.17"
 ITensorMPS = "=0.3.45"
 ITensors = "=0.9.30"
@@ -34,6 +36,7 @@ TensorKitTensors = "=0.3.1"
 julia = "1.10, 1.11, 1.12"
 
 [sources]
+BlockTensorKit = {url = "https://github.com/QuantumKitHub/BlockTensorKit.jl.git", rev = "230cec77c9c7527817d2216b9c6de87f6d8bdda8"}
 ITensorInfiniteMPS = {url = "https://github.com/ITensor/ITensorInfiniteMPS.jl.git", rev = "765f2777703bc1138b009adbed1b97bde1973402"}
 MPSKit = {url = "https://github.com/QuantumKitHub/MPSKit.jl.git", rev = "4b579944066e9b4bf814205a99f9c24014f76885"}
 TensorKitTensors = {url = "https://github.com/QuantumKitHub/TensorKitTensors.jl.git", rev = "3755705a1c44a3d5e32086e7d89b2c561b268cb1"}
