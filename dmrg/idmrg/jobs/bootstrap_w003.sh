@@ -19,6 +19,7 @@ if [[ ${1:-} == --check ]]; then
       using Pkg
       Pkg.instantiate()
       using ITensors, ITensorMPS, ITensorInfiniteMPS
+      import JLD2, MatrixAlgebraKit, MPSKit, TensorKit, TensorKitTensors
       VERSION == v"1.12.5" || error("wrong Julia version")
     '
   exit 0

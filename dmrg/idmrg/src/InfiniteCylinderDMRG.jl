@@ -18,6 +18,12 @@ using SHA
 using SparseArrays
 using LinearAlgebra
 
+import JLD2
+import MatrixAlgebraKit
+import MPSKit
+import TensorKit
+import TensorKitTensors
+
 include("Configuration.jl")
 include("PaperGeometry.jl")
 include("InitialCandidates.jl")
@@ -30,6 +36,7 @@ include("BranchTracking.jl")
 include("Output.jl")
 include("CLI.jl")
 include("Fig2Benchmark.jl")
+include("MPSKitBackend.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -158,5 +165,9 @@ export CylinderModelParams,
     load_fig2_benchmark,
     run_fig2_benchmark,
     write_fig2_acceptance_report!
+
+export MPSKIT_BACKEND_COMMIT,
+    TENSORKITTENSORS_COMMIT,
+    mpskit_backend_provenance
 
 end
