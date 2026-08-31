@@ -179,6 +179,12 @@ export BLOCKTENSORKIT_COMMIT,
     mpskit_product_state,
     mpskit_product_occupations,
     mpskit_finite_hamiltonian,
-    mpskit_dense_matrix
+    mpskit_dense_matrix,
+    mpskit_infinite_hamiltonian,
+    mpskit_local_operators_are_hermitian,
+    canonical_term_fingerprint,
+    mpskit_term_fingerprint,
+    mpskit_terms_are_approx,
+    mpskit_mpo_virtual_dimensions
 
 end

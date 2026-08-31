@@ -51,9 +51,19 @@ function _mpskit_fermion_operators(physical_space; centered::Bool)
     )
 end
 
-function _mpskit_validate_site(site::Int, nsites::Int, label::AbstractString)
-    1 <= site <= nsites || throw(
-        ArgumentError("$label site $site must lie in 1:$nsites")
+function _mpskit_validate_site(
+    site::Int,
+    nsites::Int,
+    label::AbstractString;
+    periodic::Bool,
+)
+    valid = periodic ? site >= 1 : 1 <= site <= nsites
+    valid || throw(
+        ArgumentError(
+            periodic ?
+            "$label site $site must be positive" :
+            "$label site $site must lie in 1:$nsites",
+        ),
     )
     return site
 end
@@ -64,12 +74,23 @@ function _mpskit_local_terms(
     interactions::AbstractVector{<:InfiniteInteractionTerm},
     operators;
     atol::Real,
+    periodic::Bool=false,
 )
     onsite = Dict{Int,ComplexF64}()
     directed = Dict{Tuple{Int,Int},ComplexF64}()
     for hopping in hoppings
-        target = _mpskit_validate_site(hopping.target, nsites, "hopping target")
-        source = _mpskit_validate_site(hopping.source, nsites, "hopping source")
+        target = _mpskit_validate_site(
+            hopping.target,
+            nsites,
+            "hopping target";
+            periodic,
+        )
+        source = _mpskit_validate_site(
+            hopping.source,
+            nsites,
+            "hopping source";
+            periodic,
+        )
         isfinite(real(hopping.amp)) && isfinite(imag(hopping.amp)) || throw(
             ArgumentError("hopping amplitudes must be finite")
         )
@@ -95,6 +116,9 @@ function _mpskit_local_terms(
         unique(minmax(target, source) for (target, source) in keys(directed)),
     )
     for (first_site, second_site) in unordered_pairs
+        periodic && first_site > nsites && throw(
+            ArgumentError("periodic hopping pair has no site in the unit cell")
+        )
         forward_key = (first_site, second_site)
         reverse_key = (second_site, first_site)
         haskey(directed, forward_key) && haskey(directed, reverse_key) || throw(
@@ -120,12 +144,14 @@ function _mpskit_local_terms(
         first_site = _mpskit_validate_site(
             interaction.i,
             nsites,
-            "interaction first",
+            "interaction first";
+            periodic,
         )
         second_site = _mpskit_validate_site(
             interaction.j,
             nsites,
-            "interaction second",
+            "interaction second";
+            periodic,
         )
         first_site != second_site || throw(
             ArgumentError("density interactions require two distinct sites")
@@ -134,6 +160,9 @@ function _mpskit_local_terms(
             ArgumentError("interaction strengths must be finite")
         )
         key = minmax(first_site, second_site)
+        periodic && first(key) > nsites && throw(
+            ArgumentError("periodic interaction pair has no site in the unit cell")
+        )
         interaction_strengths[key] = get(interaction_strengths, key, 0.0) +
             interaction.V
     end
@@ -225,4 +254,131 @@ function mpskit_dense_matrix(hamiltonian)
     rows = TensorKit.dim(TensorKit.codomain(dense_tensor))
     columns = TensorKit.dim(TensorKit.domain(dense_tensor))
     return reshape(dense_array, rows, columns)
+end
+
+function _mpskit_infinite_local_terms(
+    c::InfiniteCylinderConfig,
+    hoppings::AbstractVector{<:InfiniteHoppingTerm},
+    interactions::AbstractVector{<:InfiniteInteractionTerm};
+    atol::Real,
+)
+    physical_space = _mpskit_physical_space(c)
+    operators = _mpskit_fermion_operators(physical_space; centered=true)
+    return _mpskit_local_terms(
+        sites_per_cell(c),
+        hoppings,
+        interactions,
+        operators;
+        atol,
+        periodic=true,
+    )
+end
+
+function mpskit_infinite_hamiltonian(
+    c::InfiniteCylinderConfig,
+    parameters::CylinderModelParams;
+    atol::Real=1e-12,
+)
+    hoppings, interactions = build_infinite_model_terms(c, parameters)
+    local_terms = _mpskit_infinite_local_terms(
+        c,
+        hoppings,
+        interactions;
+        atol,
+    )
+    return MPSKit.InfiniteMPOHamiltonian(
+        mpskit_physical_spaces(c),
+        local_terms,
+    )
+end
+
+function mpskit_local_operators_are_hermitian(
+    c::InfiniteCylinderConfig,
+    parameters::CylinderModelParams;
+    atol::Real=1e-12,
+)
+    hoppings, interactions = build_infinite_model_terms(c, parameters)
+    local_terms = try
+        _mpskit_infinite_local_terms(c, hoppings, interactions; atol)
+    catch error
+        error isa ArgumentError || rethrow()
+        return false
+    end
+    return all(local_terms) do term
+        operator = last(term)
+        return isapprox(operator, adjoint(operator); atol, rtol=0)
+    end
+end
+
+function _mpskit_float_fingerprint(value::Real)
+    bits = reinterpret(UInt64, Float64(value))
+    return string(bits; base=16, pad=16)
+end
+
+function canonical_term_fingerprint(
+    hoppings::AbstractVector{<:InfiniteHoppingTerm},
+    interactions::AbstractVector{<:InfiniteInteractionTerm},
+)
+    records = String[]
+    for hopping in hoppings
+        push!(
+            records,
+            join(
+                (
+                    "hopping",
+                    string(hopping.target),
+                    string(hopping.source),
+                    _mpskit_float_fingerprint(real(hopping.amp)),
+                    _mpskit_float_fingerprint(imag(hopping.amp)),
+                ),
+                '|',
+            ),
+        )
+    end
+    for interaction in interactions
+        push!(
+            records,
+            join(
+                (
+                    "interaction",
+                    string(interaction.i),
+                    string(interaction.j),
+                    string(interaction.shell),
+                    _mpskit_float_fingerprint(interaction.V),
+                ),
+                '|',
+            ),
+        )
+    end
+    sort!(records)
+    return bytes2hex(SHA.sha256(join(records, '\n')))
+end
+
+function mpskit_term_fingerprint(
+    c::InfiniteCylinderConfig,
+    parameters::CylinderModelParams,
+)
+    return canonical_term_fingerprint(build_infinite_model_terms(c, parameters)...)
+end
+
+function mpskit_terms_are_approx(
+    first_config::InfiniteCylinderConfig,
+    second_config::InfiniteCylinderConfig,
+    parameters::CylinderModelParams;
+    atol::Real=1e-12,
+)
+    first_terms = canonical_term_dict(
+        build_infinite_model_terms(first_config, parameters)...,
+    )
+    second_terms = canonical_term_dict(
+        build_infinite_model_terms(second_config, parameters)...,
+    )
+    return isapprox(first_terms, second_terms; atol, rtol=0)
+end
+
+function mpskit_mpo_virtual_dimensions(hamiltonian)
+    return [
+        TensorKit.dim(MPSKit.right_virtualspace(hamiltonian, site)) for
+        site in 1:length(hamiltonian)
+    ]
 end
