@@ -11,7 +11,15 @@ export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
 : "${JULIA_BIN:=/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia}"
 : "${JULIA_DEPOT_PATH:=/home/public/shajy/codex/depots/idmrg-julia-1.12.5}"
 : "${TEST_TARGET:=test/runtests.jl}"
-export W003_REPO JULIA_BIN JULIA_DEPOT_PATH TEST_TARGET
+: "${IDMRG_TEST_THREADS:=4}"
+case "$IDMRG_TEST_THREADS" in
+  4|12|24) ;;
+  *)
+    echo "IDMRG_TEST_THREADS must be one of 4, 12, or 24" >&2
+    exit 2
+    ;;
+esac
+export W003_REPO JULIA_BIN JULIA_DEPOT_PATH TEST_TARGET IDMRG_TEST_THREADS
 
 result_root=/home/public/shajy/codex/results/fqahc-fig2/pbs/${PBS_JOBID}
 mkdir -p "$result_root"
@@ -25,7 +33,7 @@ trap record_exit EXIT
 cd "$W003_REPO/dmrg/idmrg"
 
 export LC_ALL=C
-export JULIA_NUM_THREADS=${NCPUS:-24}
+export JULIA_NUM_THREADS="$IDMRG_TEST_THREADS"
 export JULIA_PKG_USE_CLI_GIT=true
 export GIT_CONFIG_GLOBAL="$JULIA_DEPOT_PATH/gitconfig"
 export OMP_NUM_THREADS=1
