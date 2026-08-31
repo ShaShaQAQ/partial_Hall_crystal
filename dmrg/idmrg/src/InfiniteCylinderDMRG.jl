@@ -38,6 +38,7 @@ include("Output.jl")
 include("CLI.jl")
 include("Fig2Benchmark.jl")
 include("MPSKitBackend.jl")
+include("MPSKitHamiltonian.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -176,6 +177,8 @@ export BLOCKTENSORKIT_COMMIT,
     mpskit_physical_spaces,
     mpskit_physical_raw_charges,
     mpskit_product_state,
-    mpskit_product_occupations
+    mpskit_product_occupations,
+    mpskit_finite_hamiltonian,
+    mpskit_dense_matrix
 
 end
