@@ -1,6 +1,24 @@
 using DelimitedFiles
 using Plots
 
+const FIXED_PDF_CREATION_DATE = "20000101000000"
+
+
+function normalize_pdf_metadata!(path)
+    bytes = read(path)
+    marker = collect(codeunits("/CreationDate (D:"))
+    marker_range = findfirst(marker, bytes)
+    marker_range === nothing &&
+        error("generated PDF has no CreationDate metadata: $path")
+    date_start = last(marker_range) + 1
+    date_end = date_start + length(FIXED_PDF_CREATION_DATE) - 1
+    bytes[date_start:date_end] .= codeunits(FIXED_PDF_CREATION_DATE)
+    open(path, "w") do io
+        write(io, bytes)
+    end
+    return path
+end
+
 
 function load_optical_curves(path)::Matrix{Float64}
     isfile(path) || throw(ArgumentError("optical curve data not found: $path"))
@@ -116,6 +134,7 @@ function generate_optical_component_plots(
             output_dir, "corrected_sigma_xx_$(spec.key).pdf"
         )
         savefig(panel, output_path)
+        normalize_pdf_metadata!(output_path)
         push!(outputs, output_path)
     end
     return outputs

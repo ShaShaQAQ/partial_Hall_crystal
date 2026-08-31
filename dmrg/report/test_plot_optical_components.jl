@@ -1,4 +1,5 @@
 using Test
+using SHA
 
 include(joinpath(@__DIR__, "plot_optical_components.jl"))
 
@@ -45,5 +46,13 @@ end
         @test length(outputs) == 4
         @test all(isfile, outputs)
         @test all(path -> filesize(path) > 1000, outputs)
+
+        first_hashes = bytes2hex.(sha256.(read.(outputs)))
+        sleep(1.1)
+        regenerated = generate_optical_component_plots(
+            data_path, output_dir; lanczos_m=892
+        )
+        second_hashes = bytes2hex.(sha256.(read.(regenerated)))
+        @test second_hashes == first_hashes
     end
 end
