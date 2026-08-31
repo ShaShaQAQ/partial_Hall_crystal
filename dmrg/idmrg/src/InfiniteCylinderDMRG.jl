@@ -170,6 +170,12 @@ export CylinderModelParams,
 export BLOCKTENSORKIT_COMMIT,
     MPSKIT_BACKEND_COMMIT,
     TENSORKITTENSORS_COMMIT,
-    mpskit_backend_provenance
+    mpskit_backend_provenance,
+    mpskit_centered_charges,
+    mpskit_total_raw_charge,
+    mpskit_physical_spaces,
+    mpskit_physical_raw_charges,
+    mpskit_product_state,
+    mpskit_product_occupations
 
 end
