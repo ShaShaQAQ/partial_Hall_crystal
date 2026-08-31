@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "7e896a189083b52d4b9d768876ba953a13d0e408"
+project_hash = "ecd0ac64d3f3ff1c80d8f1d22dafc8b2a4e4175a"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -113,6 +113,22 @@ version = "1.10.0"
     Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
     BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
 
+[[deps.BlockTensorKit]]
+deps = ["BlockArrays", "Compat", "LinearAlgebra", "MatrixAlgebraKit", "Random", "Strided", "TensorKit", "TensorOperations", "TupleTools", "VectorInterface"]
+git-tree-sha1 = "50961ee0319a9a3459e9390f0af4fb0f51938111"
+repo-rev = "230cec77c9c7527817d2216b9c6de87f6d8bdda8"
+repo-url = "https://github.com/QuantumKitHub/BlockTensorKit.jl.git"
+uuid = "5f87ffc2-9cf1-4a46-8172-465d160bd8cd"
+version = "0.3.16"
+
+    [deps.BlockTensorKit.extensions]
+    BlockTensorKitAdaptExt = "Adapt"
+    BlockTensorKitGPUArraysExt = "GPUArrays"
+
+    [deps.BlockTensorKit.weakdeps]
+    Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+    GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra"]
 git-tree-sha1 = "12177ad6b3cad7fd50c8b3825ce24a99ad61c18f"
@@ -122,6 +138,28 @@ weakdeps = ["SparseArrays"]
 
     [deps.ChainRulesCore.extensions]
     ChainRulesCoreSparseArraysExt = "SparseArrays"
+
+[[deps.ChunkCodecCore]]
+git-tree-sha1 = "3496e2b359c27793d12bec54ec94be7983a6ceb2"
+uuid = "0b6fb165-00bc-4d37-ab8b-79f91016dbe1"
+version = "1.0.2"
+
+[[deps.ChunkCodecLibZlib]]
+deps = ["ChunkCodecCore", "Zlib_jll"]
+git-tree-sha1 = "d4101e848e8d3f585d61d244c2fe0c80a70e6b3b"
+uuid = "4c0bbee4-addc-4d73-81a0-b6caacae83c8"
+version = "1.1.0"
+
+[[deps.ChunkCodecLibZstd]]
+deps = ["ChunkCodecCore", "Zstd_jll"]
+git-tree-sha1 = "34d9873079e4cb3d0c62926a225136824677073f"
+uuid = "55437552-ac27-4d47-9aa3-63184e8fd398"
+version = "1.0.0"
+
+[[deps.ChunkSplitters]]
+git-tree-sha1 = "1c52c8e2673edc030191177ff1aee42d25149acb"
+uuid = "ae650224-84b6-46f8-82ea-d812ca08434e"
+version = "3.2.0"
 
 [[deps.Compat]]
 deps = ["TOML", "UUIDs"]
@@ -211,9 +249,9 @@ version = "1.7.0"
 
 [[deps.EllipsisNotation]]
 deps = ["PrecompileTools"]
-git-tree-sha1 = "4337603d8124cf76db5e9a8077c2bf150040b2ed"
+git-tree-sha1 = "17ce831831d0cf59f1493165e1a8d3002e37e3e8"
 uuid = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
-version = "1.11.0"
+version = "1.12.0"
 
     [deps.EllipsisNotation.extensions]
     EllipsisNotationStaticArrayInterfaceExt = ["ArrayInterface", "Static", "StaticArrayInterface"]
@@ -232,6 +270,18 @@ version = "0.1.11"
 git-tree-sha1 = "1224740fc4d07c989949e1c1b508ebd49a65a5f6"
 uuid = "e189563c-0753-4f5e-ad5c-be4293c83fb4"
 version = "0.1.1"
+
+[[deps.FileIO]]
+deps = ["Pkg", "Requires", "UUIDs"]
+git-tree-sha1 = "6621fef488e496356c9c9625d0562c12a6070819"
+uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
+version = "1.20.0"
+
+    [deps.FileIO.extensions]
+    HTTPExt = "HTTP"
+
+    [deps.FileIO.weakdeps]
+    HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -301,6 +351,11 @@ git-tree-sha1 = "9c3149243abb5bc0bad0431d6c4fcac0f4443c7c"
 uuid = "f0d1745a-41c9-11e9-1dd9-e5d34d218721"
 version = "1.6.0"
 
+[[deps.HashArrayMappedTries]]
+git-tree-sha1 = "2eaa69a7cab70a52b9687c8bf950a5a93ec895ae"
+uuid = "076d061b-32b6-4027-95e0-9a2c6f6d7e74"
+version = "0.2.0"
+
 [[deps.Hwloc_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "XML2_jll", "Xorg_libpciaccess_jll"]
 git-tree-sha1 = "c35847ca5b4997fc8418836354a56c459bcf48d8"
@@ -359,7 +414,7 @@ uuid = "313cdc1a-70c2-5d6a-ae34-0150d3930a38"
 version = "1.1.1"
 
 [[deps.InfiniteCylinderDMRG]]
-deps = ["HDF5", "ITensorInfiniteMPS", "ITensorMPS", "ITensors", "KrylovKit", "LinearAlgebra", "Printf", "Random", "SparseArrays", "Statistics", "TOML"]
+deps = ["BlockTensorKit", "HDF5", "ITensorInfiniteMPS", "ITensorMPS", "ITensors", "JLD2", "KrylovKit", "LinearAlgebra", "MPSKit", "MatrixAlgebraKit", "Printf", "Random", "SHA", "SparseArrays", "Statistics", "TOML", "TensorKit", "TensorKitTensors"]
 path = "."
 uuid = "bb119d70-e6e4-4ad4-a0fd-2dc1be8dca26"
 version = "0.1.0"
@@ -386,6 +441,11 @@ version = "1.4.5"
     [deps.InlineStrings.weakdeps]
     ArrowTypes = "31f734f8-188a-4ce0-8406-c8a06bd891cd"
     Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+
+[[deps.IntegerMathUtils]]
+git-tree-sha1 = "c72458f1962faeb003bf23cbdb75164fe6280906"
+uuid = "18e54dd8-cb9d-406c-a71d-865a43cbb235"
+version = "0.1.4"
 
 [[deps.InteractiveUtils]]
 deps = ["Markdown"]
@@ -418,6 +478,18 @@ git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
+[[deps.JLD2]]
+deps = ["ChunkCodecLibZlib", "ChunkCodecLibZstd", "FileIO", "MacroTools", "Mmap", "OrderedCollections", "PrecompileTools", "ScopedValues"]
+git-tree-sha1 = "877edc1d2f51adcef0bfacd19464a19e7cfddddb"
+uuid = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+version = "0.6.6"
+
+    [deps.JLD2.extensions]
+    UnPackExt = "UnPack"
+
+    [deps.JLD2.weakdeps]
+    UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
+
 [[deps.JLLWrappers]]
 deps = ["Artifacts", "Preferences"]
 git-tree-sha1 = "7204148362dafe5fe6a273f855b8ccbe4df8173e"
@@ -438,6 +510,15 @@ weakdeps = ["ChainRulesCore"]
 
     [deps.KrylovKit.extensions]
     KrylovKitChainRulesCoreExt = "ChainRulesCore"
+
+[[deps.LRUCache]]
+git-tree-sha1 = "5519b95a490ff5fe629c4a7aa3b3dfc9160498b3"
+uuid = "8ac3fa9e-de4c-5943-b1dc-09c6b5f20637"
+version = "1.6.2"
+weakdeps = ["Serialization"]
+
+    [deps.LRUCache.extensions]
+    SerializationExt = ["Serialization"]
 
 [[deps.LazyArtifacts]]
 deps = ["Artifacts", "Pkg"]
@@ -488,6 +569,12 @@ version = "1.12.0"
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 version = "1.11.0"
 
+[[deps.LoggingExtras]]
+deps = ["Dates", "Logging"]
+git-tree-sha1 = "c1dd6d7978c12545b4179fb6153b9250c96b0075"
+uuid = "e6f89c97-d47a-5376-807f-9c37f3926c36"
+version = "1.0.3"
+
 [[deps.MPIABI_jll]]
 deps = ["Artifacts", "Hwloc_jll", "JLLWrappers", "LazyArtifacts", "Libdl", "MPIPreferences", "TOML"]
 git-tree-sha1 = "9be143b6045719e8fb019d2b3bc2aebad1184fef"
@@ -512,6 +599,18 @@ git-tree-sha1 = "675df097f8eeb28998b2cfe3b25655af73d5f7df"
 uuid = "f1f71cc9-e9ae-5b93-9b94-4fe0e1ad3748"
 version = "5.5.6+0"
 
+[[deps.MPSKit]]
+deps = ["Accessors", "BlockTensorKit", "Compat", "DocStringExtensions", "HalfIntegers", "KrylovKit", "LinearAlgebra", "LoggingExtras", "MatrixAlgebraKit", "OhMyThreads", "OptimKit", "Preferences", "Printf", "Random", "RecipesBase", "TensorKit", "TensorKitManifolds", "TensorOperations", "TimerOutputs", "VectorInterface"]
+git-tree-sha1 = "944d8f45e80c9655214838062bbe684819b013c1"
+repo-rev = "811ecf6c06c1f7c1bc656da61abcd679effcd428"
+repo-url = "https://github.com/QuantumKitHub/MPSKit.jl.git"
+uuid = "bb1c41ca-d63c-52ed-829e-0820dda26502"
+version = "0.13.13"
+weakdeps = ["Adapt"]
+
+    [deps.MPSKit.extensions]
+    MPSKitAdaptExt = "Adapt"
+
 [[deps.MacroTools]]
 git-tree-sha1 = "1e0228a030642014fe5cfe68c2c0a818f9e3f522"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
@@ -521,6 +620,30 @@ version = "0.5.16"
 deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
 uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 version = "1.11.0"
+
+[[deps.MatrixAlgebraKit]]
+deps = ["LinearAlgebra", "PrecompileTools"]
+git-tree-sha1 = "0f958855fc2efdc59f1b6a5a066ee3026e87edb3"
+uuid = "6c742aac-3347-4629-af66-fc926824e5e4"
+version = "0.6.9"
+
+    [deps.MatrixAlgebraKit.extensions]
+    MatrixAlgebraKitAMDGPUExt = "AMDGPU"
+    MatrixAlgebraKitCUDAExt = "CUDA"
+    MatrixAlgebraKitChainRulesCoreExt = "ChainRulesCore"
+    MatrixAlgebraKitEnzymeExt = "Enzyme"
+    MatrixAlgebraKitGenericLinearAlgebraExt = "GenericLinearAlgebra"
+    MatrixAlgebraKitGenericSchurExt = "GenericSchur"
+    MatrixAlgebraKitMooncakeExt = "Mooncake"
+
+    [deps.MatrixAlgebraKit.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    GenericLinearAlgebra = "14197337-ba66-59df-a3e3-ca00e7dcff7a"
+    GenericSchur = "c145ed77-6b09-5dd9-b285-bf645a82121e"
+    Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 
 [[deps.MicroCollections]]
 deps = ["Accessors", "BangBang", "InitialValues"]
@@ -585,6 +708,20 @@ weakdeps = ["Adapt"]
     [deps.OffsetArrays.extensions]
     OffsetArraysAdaptExt = "Adapt"
 
+[[deps.OhMyThreads]]
+deps = ["BangBang", "ChunkSplitters", "ScopedValues", "StableTasks", "TaskLocalValues"]
+git-tree-sha1 = "9a07c25c438110500d871fd5309649ec6791ef57"
+uuid = "67456a42-1dca-4109-a031-0a68de7e3ad5"
+version = "0.8.6"
+
+    [deps.OhMyThreads.extensions]
+    MarkdownExt = "Markdown"
+    ProgressMeterExt = "ProgressMeter"
+
+    [deps.OhMyThreads.weakdeps]
+    Markdown = "d6f4376e-aef5-505a-96c1-9c027394607a"
+    ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
@@ -600,6 +737,12 @@ version = "5.0.11+0"
 deps = ["Artifacts", "Libdl"]
 uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
 version = "3.5.4+0"
+
+[[deps.OptimKit]]
+deps = ["LinearAlgebra", "Printf", "ScopedValues", "VectorInterface"]
+git-tree-sha1 = "5fc35b6488431a3ffcfbdc8947b0b805aead1432"
+uuid = "77e91f04-9b3b-57a6-a776-40b61faaebe0"
+version = "0.5.0"
 
 [[deps.OrderedCollections]]
 git-tree-sha1 = "05f45c2e0de6259db764adbfd2f1dc6d3f8de13c"
@@ -635,10 +778,21 @@ git-tree-sha1 = "8b770b60760d4451834fe79dd483e318eee709c4"
 uuid = "21216c6a-2e73-6563-6e65-726566657250"
 version = "1.5.2"
 
+[[deps.Primes]]
+deps = ["IntegerMathUtils"]
+git-tree-sha1 = "25cdd1d20cd005b52fc12cb6be3f75faaf59bb9b"
+uuid = "27ebfcd6-29c5-5fa9-bf4b-fb8fc14df3ae"
+version = "0.5.7"
+
 [[deps.Printf]]
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
+
+[[deps.PtrArrays]]
+git-tree-sha1 = "4fbbafbc6251b883f4d2705356f3641f3652a7fe"
+uuid = "43287f4e-b6f4-7ad1-bb20-aadabca52c3d"
+version = "1.4.0"
 
 [[deps.QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
@@ -657,6 +811,17 @@ deps = ["SHA"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 version = "1.11.0"
 
+[[deps.RationalRoots]]
+git-tree-sha1 = "e5f5db699187a4810fda9181b34250deeedafd81"
+uuid = "308eb6b3-cc68-5ff3-9e97-c3c4da4fa681"
+version = "0.2.1"
+
+[[deps.RecipesBase]]
+deps = ["PrecompileTools"]
+git-tree-sha1 = "5c3d09cc4f31f5fc6af001c250bf1278733100ff"
+uuid = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
+version = "1.3.4"
+
 [[deps.Referenceables]]
 deps = ["Adapt"]
 git-tree-sha1 = "02d31ad62838181c1a3a5fd23a1ce5914a643601"
@@ -672,6 +837,12 @@ version = "1.3.1"
 [[deps.SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 version = "0.7.0"
+
+[[deps.ScopedValues]]
+deps = ["HashArrayMappedTries", "Logging"]
+git-tree-sha1 = "67a144433c4ce877ee6d1ada69a124d6b1ecf7be"
+uuid = "7e506255-f358-4e82-b7e4-beb19740aa63"
+version = "1.6.2"
 
 [[deps.Serialization]]
 uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
@@ -716,11 +887,16 @@ git-tree-sha1 = "e08a62abc517eb79667d0a29dc08a3b589516bb5"
 uuid = "171d559e-b47b-412a-8079-5efa626c420e"
 version = "0.1.15"
 
+[[deps.StableTasks]]
+git-tree-sha1 = "c4f6610f85cb965bee5bfafa64cbeeda55a4e0b2"
+uuid = "91464d47-22a1-43fe-8b7f-2d57ee82463f"
+version = "0.1.7"
+
 [[deps.StaticArrays]]
 deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
-git-tree-sha1 = "246a8bb2e6667f832eea063c3a56aef96429a3db"
+git-tree-sha1 = "fac51faf3bb96e8bc0bf6f9f39ca4955652776bb"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.9.18"
+version = "1.9.19"
 weakdeps = ["ChainRulesCore", "Statistics"]
 
     [deps.StaticArrays.extensions]
@@ -734,9 +910,9 @@ version = "1.4.4"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra"]
-git-tree-sha1 = "ae3bb1eb3bba077cd276bc5cfc337cc65c3075c0"
+git-tree-sha1 = "389592b8592e5fb48f498ff60dc6acb4a0e62953"
 uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
-version = "1.11.1"
+version = "1.11.4"
 weakdeps = ["SparseArrays"]
 
     [deps.Statistics.extensions]
@@ -801,14 +977,95 @@ version = "1.0.1"
 
 [[deps.Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "OrderedCollections", "TableTraits"]
-git-tree-sha1 = "0f38a06c83f0007bbab3cf911262841c9a0f07e0"
+git-tree-sha1 = "a94d9bdda1b7bed0046cea645639ab3f62196fac"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.13.0"
+version = "1.14.0"
 
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
 uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 version = "1.10.0"
+
+[[deps.TaskLocalValues]]
+git-tree-sha1 = "67e469338d9ce74fc578f7db1736a74d93a49eb8"
+uuid = "ed4db957-447d-4319-bfb6-7fa9ae7ecf34"
+version = "0.1.3"
+
+[[deps.TensorKit]]
+deps = ["Adapt", "Dictionaries", "LRUCache", "LinearAlgebra", "MatrixAlgebraKit", "OhMyThreads", "Printf", "Random", "ScopedValues", "Strided", "TensorKitSectors", "TensorOperations", "TupleTools", "VectorInterface"]
+git-tree-sha1 = "cd7e7b7d1137c08ba8b17e393b79fb9c858d610f"
+uuid = "07d1fe3e-3e46-537d-9eac-e9e13d0d4cec"
+version = "0.17.1"
+
+    [deps.TensorKit.extensions]
+    TensorKitAMDGPUExt = "AMDGPU"
+    TensorKitCUDAExt = "CUDA"
+    TensorKitChainRulesCoreExt = "ChainRulesCore"
+    TensorKitEnzymeExt = "Enzyme"
+    TensorKitEnzymeTestUtilsExt = "EnzymeTestUtils"
+    TensorKitFiniteDifferencesExt = "FiniteDifferences"
+    TensorKitGPUArraysExt = "GPUArrays"
+    TensorKitMooncakeExt = "Mooncake"
+
+    [deps.TensorKit.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    EnzymeTestUtils = "12d8515a-0907-448a-8884-5fe00fdf1c5a"
+    FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
+    GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+    Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+
+[[deps.TensorKitManifolds]]
+deps = ["LinearAlgebra", "MatrixAlgebraKit", "TensorKit", "VectorInterface"]
+git-tree-sha1 = "9896a50acf7ebe0af235d13b39c575b14bd4b9c3"
+uuid = "11fa318c-39cb-4a83-b1ed-cdc7ba1e3684"
+version = "0.8.1"
+
+[[deps.TensorKitSectors]]
+deps = ["HalfIntegers", "LinearAlgebra", "TensorOperations", "WignerSymbols"]
+git-tree-sha1 = "9f536263310aae90df175337d586a1655104aae3"
+uuid = "13a9c161-d5da-41f0-bcbd-e1a08ae0647f"
+version = "0.3.9"
+
+[[deps.TensorKitTensors]]
+deps = ["LinearAlgebra", "Logging", "RationalRoots", "TensorKit"]
+git-tree-sha1 = "25cf54e9b7422c3a29befc7df4e62b3e61b5ea5d"
+repo-rev = "3755705a1c44a3d5e32086e7d89b2c561b268cb1"
+repo-url = "https://github.com/QuantumKitHub/TensorKitTensors.jl.git"
+uuid = "41b62e7d-e9d1-4e23-942c-79a97adf954b"
+version = "0.3.1"
+
+[[deps.TensorOperations]]
+deps = ["LRUCache", "LinearAlgebra", "PackageExtensionCompat", "PrecompileTools", "Preferences", "PtrArrays", "Strided", "StridedViews", "TupleTools", "VectorInterface"]
+git-tree-sha1 = "6cae1bb6d94db05972ccb3b8d83e422df3224d7a"
+uuid = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
+version = "5.8.0"
+
+    [deps.TensorOperations.extensions]
+    TensorOperationsAMDGPUExt = "AMDGPU"
+    TensorOperationsBumperExt = "Bumper"
+    TensorOperationsCUDACoreExt = "CUDACore"
+    TensorOperationsChainRulesCoreExt = "ChainRulesCore"
+    TensorOperationsEnzymeExt = "Enzyme"
+    TensorOperationsGPUArraysExt = "GPUArrays"
+    TensorOperationsJLArraysExt = "JLArrays"
+    TensorOperationsMooncakeExt = "Mooncake"
+    TensorOperationsTBLISExt = "TBLIS"
+    TensorOperationscuTENSORExt = "cuTENSOR"
+
+    [deps.TensorOperations.weakdeps]
+    AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+    Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"
+    CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+    JLArrays = "27aeb0d3-9eb9-45fb-866b-73c2ecf80fcb"
+    Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+    TBLIS = "48530278-0828-4a49-9772-0f3830dfa1e9"
+    cuTENSOR = "011b41b2-24ef-40a8-b3eb-fa098493e9e1"
 
 [[deps.Test]]
 deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
@@ -911,6 +1168,12 @@ version = "0.6.0"
     Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
     StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
+[[deps.WignerSymbols]]
+deps = ["HalfIntegers", "LRUCache", "Primes", "RationalRoots"]
+git-tree-sha1 = "960e5f708871c1d9a28a7f1dbcaf4e0ee34ee960"
+uuid = "9f57e263-0b3d-5e2e-b1be-24f2bb48858b"
+version = "2.0.0"
+
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Zlib_jll"]
 git-tree-sha1 = "80d3930c6347cfce7ccf96bd3bafdf079d9c0390"
@@ -941,6 +1204,12 @@ deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
 version = "1.3.1+2"
 
+[[deps.Zstd_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "446b23e73536f84e8037f5dce465e92275f6a308"
+uuid = "3161d3a3-bdf6-5164-811a-617609db77b4"
+version = "1.5.7+1"
+
 [[deps.aws_c_auth_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "aws_c_cal_jll", "aws_c_http_jll", "aws_c_sdkutils_jll"]
 git-tree-sha1 = "8cab83c96af80a1be968251ce1a0548a7545484d"
@@ -967,9 +1236,9 @@ version = "0.3.2+0"
 
 [[deps.aws_c_http_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "aws_c_compression_jll", "aws_c_io_jll"]
-git-tree-sha1 = "e358d5a001ef7afbd4f8c5225322512819cda2f2"
+git-tree-sha1 = "3fb8685778068de502c72fec5dd8075e037cee15"
 uuid = "3254fc65-9028-534d-aa9d-d76d128babc6"
-version = "0.10.13+0"
+version = "0.10.15+0"
 
 [[deps.aws_c_io_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "aws_c_cal_jll", "aws_c_common_jll", "s2n_tls_jll"]
@@ -1030,6 +1299,6 @@ version = "17.7.0+0"
 
 [[deps.s2n_tls_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]
-git-tree-sha1 = "64ae051c6f03044eb7d98027d1b552b4e21e650c"
+git-tree-sha1 = "f3a7831c8a44767ff9e36d41bb1f7b576bbce81c"
 uuid = "cddc5d3d-934d-5d3a-9747-62fc12ea3f48"
-version = "1.7.3+0"
+version = "1.7.8+0"

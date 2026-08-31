@@ -40,12 +40,23 @@ This is an architectural failure gate: energy monotonicity is not convergence,
 and no further scalar damping, origin, or tolerance variants are eligible for
 production evidence.
 
-MPSKit commit `4b579944066e9b4bf814205a99f9c24014f76885` provides maintained
+MPSKit commit `811ecf6c06c1f7c1bc656da61abcd679effcd428` provides maintained
 `IDMRG2` and VUMPS implementations, recomputed environments, a VUMPS Galerkin
 residual, U(1)-symmetric graded fermionic spaces, and long-range Jordan MPOs.
 TensorKitTensors commit `3755705a1c44a3d5e32086e7d89b2c561b268cb1`
 provides the spinless-fermion number and two-site hopping tensors used by the
 adapter. Both commits are pinned because their relevant APIs are still moving.
+
+The immediate MPSKit successor `4b579944066e9b4bf814205a99f9c24014f76885` changes
+TimerOutputs support from 0.5 to 1 and rewrites timer plumbing, but does not
+change the IDMRG2 or VUMPS numerical updates. ITensors 0.9.30 requires
+TimerOutputs 0.5, so that successor cannot resolve in the legacy regression
+environment. A source diff over IDMRG, VUMPS, environments, and gauge code
+confirms that `811ecf6c06c1f7c1bc656da61abcd679effcd428` is the latest commit containing all
+required numerical fixes while retaining TimerOutputs 0.5 compatibility.
+BlockTensorKit 0.3.16 is pinned at
+`230cec77c9c7527817d2216b9c6de87f6d8bdda8` because the W003 registry does not
+yet contain that release.
 
 ## Scope and Isolation
 

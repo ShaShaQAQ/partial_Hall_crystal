@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the existing ITensor backend as a diagnostic reference and add qualified MPSKit/TensorKit adapters under `dmrg/idmrg`. The adapter consumes `build_infinite_model_terms`, uses one uniform centered U(1)-and-fermion-parity physical space, grows with IDMRG2, gates with an independently recomputed VUMPS Galerkin residual, and plugs into the backend-neutral Fig. 2 ledger through operation callbacks.
 
-**Tech Stack:** Julia 1.12.5 on W003 only; MPSKit commit `4b579944066e9b4bf814205a99f9c24014f76885`; TensorKitTensors commit `3755705a1c44a3d5e32086e7d89b2c561b268cb1`; TensorKit 0.17; MatrixAlgebraKit; JLD2; existing pinned ITensors stack; PBS/Torque queue `cmt`, one 24-core node, four Julia threads by measured default.
+**Tech Stack:** Julia 1.12.5 on W003 only; MPSKit commit `811ecf6c06c1f7c1bc656da61abcd679effcd428` (the last numerically equivalent pre-TimerOutputs-1 commit); BlockTensorKit commit `230cec77c9c7527817d2216b9c6de87f6d8bdda8`; TensorKitTensors commit `3755705a1c44a3d5e32086e7d89b2c561b268cb1`; TensorKit 0.17; MatrixAlgebraKit; JLD2; existing pinned ITensors stack; PBS/Torque queue `cmt`, one 24-core node, four Julia threads by measured default.
 
 ---
 
@@ -52,7 +52,7 @@ import TensorKitTensors
 import JLD2
 
 @testset "pinned MPSKit backend" begin
-    @test MPSKIT_BACKEND_COMMIT == "4b579944066e9b4bf814205a99f9c24014f76885"
+    @test MPSKIT_BACKEND_COMMIT == "811ecf6c06c1f7c1bc656da61abcd679effcd428"
     @test TENSORKITTENSORS_COMMIT == "3755705a1c44a3d5e32086e7d89b2c561b268cb1"
     p = mpskit_backend_provenance()
     @test p.backend == "mpskit_idmrg_v1"
@@ -84,7 +84,7 @@ Add direct dependencies for `MPSKit`, `TensorKit`, `TensorKitTensors`, `MatrixAl
 
 ```toml
 [sources]
-MPSKit = {url = "https://github.com/QuantumKitHub/MPSKit.jl.git", rev = "4b579944066e9b4bf814205a99f9c24014f76885"}
+MPSKit = {url = "https://github.com/QuantumKitHub/MPSKit.jl.git", rev = "811ecf6c06c1f7c1bc656da61abcd679effcd428"}
 TensorKitTensors = {url = "https://github.com/QuantumKitHub/TensorKitTensors.jl.git", rev = "3755705a1c44a3d5e32086e7d89b2c561b268cb1"}
 ```
 
@@ -401,7 +401,7 @@ Bump the manifest format to `fqahc_fig2_benchmark_v5` and require:
 ```toml
 [backend]
 id = "mpskit_idmrg_v1"
-mpskit_commit = "4b579944066e9b4bf814205a99f9c24014f76885"
+mpskit_commit = "811ecf6c06c1f7c1bc656da61abcd679effcd428"
 tensorkittensors_commit = "3755705a1c44a3d5e32086e7d89b2c561b268cb1"
 legacy_backend_role = "diagnostic_only"
 ```
