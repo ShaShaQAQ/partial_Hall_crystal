@@ -167,3 +167,81 @@ end
     @test mpskit_dense_matrix(centered) ≈ expected atol=1e-12 rtol=0
     @test mpskit_dense_matrix(uncentered) ≈ expected atol=1e-12 rtol=0
 end
+
+@testset "paper term lists map directly to MPSKit" begin
+    parameters = CylinderModelParams(;
+        t1=1.0,
+        t3=0.2,
+        V1=1.0,
+        V2=0.0,
+        V3=0.0,
+    )
+    for x_period in (1, 3)
+        config = InfiniteCylinderConfig(;
+            geometry=:paper_straight,
+            Ny=2,
+            x_period,
+            filling_num=1,
+            filling_den=1,
+            phi_y=0.37π,
+        )
+        hoppings, interactions = build_infinite_model_terms(config, parameters)
+        finite_hoppings, finite_interactions = tile_to_finite_window(
+            config,
+            hoppings,
+            interactions;
+            Lx=x_period,
+        )
+        expected = exact_fock_hamiltonian(
+            sites_per_cell(config),
+            finite_hoppings,
+            finite_interactions,
+        )
+        hamiltonian = mpskit_finite_hamiltonian(
+            config,
+            finite_hoppings,
+            finite_interactions;
+            charge_mode=:centered,
+        )
+        @test mpskit_dense_matrix(hamiltonian) ≈ expected atol=1e-12 rtol=0
+    end
+end
+
+@testset "paper infinite MPSKit Hamiltonian provenance" begin
+    parameters = CylinderModelParams(;
+        t1=1.0,
+        t3=0.2,
+        V1=1.0,
+        V2=0.0,
+        V3=0.0,
+    )
+    config = InfiniteCylinderConfig(;
+        geometry=:paper_straight,
+        Ny=6,
+        x_period=3,
+        filling_num=7,
+        filling_den=9,
+        phi_y=0.413,
+    )
+    hoppings, interactions = build_infinite_model_terms(config, parameters)
+    hamiltonian = mpskit_infinite_hamiltonian(config, parameters)
+
+    @test length(hamiltonian) == sites_per_cell(config) == 36
+    @test mpskit_local_operators_are_hermitian(
+        config,
+        parameters;
+        atol=1e-12,
+    )
+    @test mpskit_term_fingerprint(config, parameters) ==
+        canonical_term_fingerprint(hoppings, interactions)
+    @test occursin(r"^[0-9a-f]{64}$", mpskit_term_fingerprint(config, parameters))
+    @test mpskit_terms_are_approx(
+        with_flux(config, config.phi_y + 2π),
+        config,
+        parameters;
+        atol=1e-12,
+    )
+    virtual_dimensions = mpskit_mpo_virtual_dimensions(hamiltonian)
+    @test length(virtual_dimensions) == 36
+    @test all(>(1), virtual_dimensions)
+end
