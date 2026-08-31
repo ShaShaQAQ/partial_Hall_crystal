@@ -404,8 +404,8 @@ twist must not be read directly as a negative thermodynamic dissipative Drude
 weight; that interpretation requires following the global ground state versus
 twist and performing a size extrapolation.
 
-The benchmark data file stores all four complex curves, even though the current
-PDFs plot only selected components:
+The benchmark data file stores the exact and final Lanczos values used for all
+four corrected component plots:
 \begin{table}[H]
 \centering
 \small
@@ -530,27 +530,45 @@ Exact--Lanczos scaled maximum error & \(5.5927404437300286\times10^{-14}\) \\
 \end{tabular}
 \end{table}
 
+The blue exact curves below are obtained from the complete finite-sector
+eigenstate sum in Eq.~\eqref{eq:exact-resolvent}; they are not Lanczos data
+drawn under a different label.  The final response-Lanczos result is drawn as a
+thinner red dashed line, so gaps in the dashes expose the blue exact curve even
+when the two agree at plotting resolution.  Each inset shows the pointwise
+absolute exact--Lanczos difference on a logarithmic scale.
+
 \begin{figure}[p]
 \centering
 \begin{subfigure}{0.48\linewidth}
-  \includegraphics[width=\linewidth]{figures/optical_response/corrected_optical_conductivity_regular.pdf}
-  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\): exact sum and
-  successive response-Lanczos dimensions.}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_sigma_xx_regular_real.pdf}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\).}
 \end{subfigure}\hfill
 \begin{subfigure}{0.48\linewidth}
-  \includegraphics[width=\linewidth]{figures/optical_response/corrected_optical_conductivity_total.pdf}
-  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\): exact and final
-  response-Lanczos curves.}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_sigma_xx_regular_imag.pdf}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{reg}}\).}
 \end{subfigure}
 \par\medskip
-\begin{subfigure}{0.58\linewidth}
-  \includegraphics[width=\linewidth]{figures/optical_response/corrected_lanczos_convergence.pdf}
-  \caption{Scaled maximum error of the regular curve versus response dimension.}
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_sigma_xx_total_real.pdf}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{total}}\).}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/corrected_sigma_xx_total_imag.pdf}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\).}
 \end{subfigure}
-\caption{Corrected exact/response-Lanczos benchmark.  The exact curve is drawn
-first; at the largest response dimensions it is hidden by the later Lanczos
-curve because the two agree to floating-point accuracy.}
+\caption{All four corrected longitudinal optical-conductivity components.  In
+every panel, the thick blue solid curve is the complete exact sum and the thin
+red dashed curve is response Lanczos with \(M=892\); the inset is their
+pointwise absolute difference.}
 \label{fig:corrected-optical-benchmark}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/optical_response/corrected_lanczos_convergence.pdf}
+\caption{Scaled maximum error of the regular conductivity versus response
+dimension.}
+\label{fig:corrected-optical-convergence}
 \end{figure}
 
 \clearpage
