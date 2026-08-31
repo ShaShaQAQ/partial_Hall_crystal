@@ -390,6 +390,12 @@ end
         @test success(`bash -n $test_runner`)
         @test occursin(production_repository, source)
         @test !occursin(retired_benchmark_repository, source)
+        @test occursin(": \"\${IDMRG_TEST_THREADS:=4}\"", source)
+        @test occursin(
+            "export JULIA_NUM_THREADS=\"\$IDMRG_TEST_THREADS\"",
+            source,
+        )
+        @test !occursin("JULIA_NUM_THREADS=\${NCPUS:-24}", source)
     end
 
     if isfile(auditor)
