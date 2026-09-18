@@ -180,8 +180,8 @@ function run_np(Np::Int, full_ed_dir::String)
 end
 # ============================================================
 
-full_dir12 = "../../case3_30sites_Np12/output_Np12"
-full_dir13 = "../../case3_30sites_Np12/output_Np13"
+full_dir12 = "../../cases/case3_30sites_Np12/output_Np12"
+full_dir13 = "../../cases/case3_30sites_Np12/output_Np13"
 
 evp12, vecs12, sq12 = run_np(12, full_dir12)
 evp13, vecs13, sq13 = run_np(13, full_dir13)

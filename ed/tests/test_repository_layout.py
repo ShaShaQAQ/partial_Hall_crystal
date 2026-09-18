@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import subprocess
 import unittest
 
@@ -23,11 +24,38 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertFalse(any(ROOT.glob("case[0-9]*")))
         self.assertFalse((ROOT / "dmrg" / "report").exists())
 
-    def test_ed_sources_do_not_reference_legacy_root_shared_directory(self):
+    def test_shared_includes_resolve_inside_ed_shared(self):
+        shared_root = (ROOT / "ed" / "shared").resolve()
         offenders = []
-        for path in (ROOT / "ed").rglob("*.jl"):
-            if 'include("../shared/' in path.read_text():
-                offenders.append(path.relative_to(ROOT).as_posix())
+        for owner in (ROOT / "ed", ROOT / "dmrg"):
+            for path in owner.rglob("*.jl"):
+                for include_path in re.findall(
+                    r'include\("([^"]*shared/[^"]+)"\)', path.read_text()
+                ):
+                    resolved = (path.parent / include_path).resolve()
+                    if shared_root not in resolved.parents or not resolved.is_file():
+                        offenders.append(
+                            "{} -> {}".format(
+                                path.relative_to(ROOT).as_posix(), include_path
+                            )
+                        )
+
+        self.assertEqual(offenders, [])
+
+    def test_literal_julia_includes_resolve(self):
+        offenders = []
+        for owner in (ROOT / "ed", ROOT / "dmrg", ROOT / "reports"):
+            for path in owner.rglob("*.jl"):
+                for include_path in re.findall(
+                    r'include\("([^"]+)"\)', path.read_text()
+                ):
+                    resolved = (path.parent / include_path).resolve()
+                    if not resolved.is_file():
+                        offenders.append(
+                            "{} -> {}".format(
+                                path.relative_to(ROOT).as_posix(), include_path
+                            )
+                        )
 
         self.assertEqual(offenders, [])
 

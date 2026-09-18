@@ -137,11 +137,11 @@ function run_and_compare(V1::Float64, full_ed_path::String, label::String)
 end
 
 evp4, evf4, vecs4, sq4 = run_and_compare(1.0,
-    "../../case4_4x6_Np4/spectrum_Np4.dat",
+    "../../cases/case4_4x6_Np4/spectrum_Np4.dat",
     "Case 4 (V1=1)")
 
 evp5, evf5, vecs5, sq5 = run_and_compare(0.0,
-    "../../case5_4x6_Np4_V0/spectrum_Np4.dat",
+    "../../cases/case5_4x6_Np4_V0/spectrum_Np4.dat",
     "Case 5 (V1=0)")
 
 println("\n" * "="^60)

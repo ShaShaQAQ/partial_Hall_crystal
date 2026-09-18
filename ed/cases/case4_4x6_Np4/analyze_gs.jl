@@ -8,14 +8,14 @@
 #   rspace_Np4.pdf   — 实空间密度图
 #   sq_bz_Np4.pdf    — BZ 中 N(q) 热图
 # ============================================================
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
-include("../shared/structure_factor.jl")
-include("../shared/wavefunction.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
+include("../../shared/structure_factor.jl")
+include("../../shared/wavefunction.jl")
 
 using Plots, Printf
 

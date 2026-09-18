@@ -1,28 +1,26 @@
 # ============================================================
-# Case 4：4×6 sites（4×3 原胞），24 格点，Np=4
+# Case 5：4×6 sites（4×3 原胞），24 格点，Np=4，V1=0（无相互作用）
 # 填充：n̄ = 4/24 = 1/6；ν = 4/12 = 1/3（下 Chern 带）
-# 参数：t=1, t'=0.2, V1=1, V2=V3=0
+# 参数：t=1, t'=0.2, V1=0, V2=V3=0
 # ============================================================
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
-include("../shared/structure_factor.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
+include("../../shared/structure_factor.jl")
 
 using Printf
 
 # ── 参数 ──
 t1      = 1.0
 t3      = 0.2
-V1      = 1.0
+V1      = 0.0
 V2      = 0.0
 V3      = 0.0
 Np      = 4
 nev     = 4
-n_phi   = 60
-phi_max = 6π      # 0→3 个通量量子
 
 println("="^60)
 println("ED — 4×6 sites（4×3 原胞），Ns=24，Np=$Np")

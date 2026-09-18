@@ -13,7 +13,7 @@ import ITensorMPS: checkdone!, measure!, truncerror
 include("CylinderModelCore.jl")
 using .CylinderModelCore: CylinderModelParams, NB_DISPS, reciprocal_vectors, hopping_matrices_from_get_Hk
 using .CylinderModelCore: GenLat, canon_prim
-include("../shared/basis.jl")
+include("../ed/shared/basis.jl")
 
 export CylinderLat,
     CylinderModelParams,

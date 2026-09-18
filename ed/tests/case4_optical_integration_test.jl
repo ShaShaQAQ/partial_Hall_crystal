@@ -1,4 +1,4 @@
-include("../case4_4x6_Np4/benchmark_optical_response.jl")
+include("../cases/case4_4x6_Np4/benchmark_optical_response.jl")
 
 @testset "4x6 interacting Ax derivatives" begin
     lat = RectLat4x6()

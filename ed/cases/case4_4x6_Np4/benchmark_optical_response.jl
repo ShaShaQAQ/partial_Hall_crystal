@@ -1,12 +1,12 @@
 if !isdefined(Main, :GenLat)
-    include("../shared/lattice.jl")
-    include("../shared/hoppings.jl")
-    include("../shared/basis.jl")
-    include("../shared/ksector.jl")
-    include("../shared/hamiltonian.jl")
+    include("../../shared/lattice.jl")
+    include("../../shared/hoppings.jl")
+    include("../../shared/basis.jl")
+    include("../../shared/ksector.jl")
+    include("../../shared/hamiltonian.jl")
 end
 if !isdefined(Main, :ResponseLanczosKernel)
-    include("../shared/optical_response.jl")
+    include("../../shared/optical_response.jl")
 end
 
 using LinearAlgebra

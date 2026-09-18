@@ -2,8 +2,8 @@ module CylinderModelCore
 
 using LinearAlgebra
 
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
+include("../ed/shared/lattice.jl")
+include("../ed/shared/hoppings.jl")
 
 export CylinderModelParams,
     NB_DISPS,

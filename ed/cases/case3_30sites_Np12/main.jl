@@ -7,13 +7,13 @@
 #   主要瓶颈：build_all_ksectors（~186B 次操作）
 #             Lanczos 求解（5.77M × krylovdim=200）
 # ============================================================
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
-include("../shared/structure_factor.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
+include("../../shared/structure_factor.jl")
 
 using Printf, LinearAlgebra, Dates, SparseArrays
 using JLD2

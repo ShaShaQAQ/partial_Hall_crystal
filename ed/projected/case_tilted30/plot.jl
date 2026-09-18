@@ -36,7 +36,7 @@ xs(ks) = ks .+ 1    # 1-indexed for Plots
 # ── Np=12 能谱对比 ──
 # ============================================================
 ks_p12, es_p12 = read_spectrum("spectrum_proj_tilted30_Np12.dat")
-ks_f12, es_f12 = read_spectrum("../../case3_30sites_Np12/output_Np12/spectrum_Np12.dat")
+ks_f12, es_f12 = read_spectrum("../../cases/case3_30sites_Np12/output_Np12/spectrum_Np12.dat")
 
 E0f12 = 0.0   # full ED 已存 E-E0
 xs_p12 = xs(ks_p12);  xs_f12 = xs(ks_f12)
@@ -86,7 +86,7 @@ println("保存：spectrum_proj_vs_full_Np12.pdf")
 # ── Np=13 能谱对比 ──
 # ============================================================
 ks_p13, es_p13 = read_spectrum("spectrum_proj_tilted30_Np13.dat")
-ks_f13, es_f13 = read_spectrum("../../case3_30sites_Np12/output_Np13/spectrum_Np13.dat")
+ks_f13, es_f13 = read_spectrum("../../cases/case3_30sites_Np12/output_Np13/spectrum_Np13.dat")
 
 xs_p13 = xs(ks_p13);  xs_f13 = xs(ks_f13)
 
@@ -164,14 +164,14 @@ end
 
 sq_compare_plot(12,
     "sq_proj_tilted30_Np12.dat",
-    "../../case3_30sites_Np12/output_Np12/sq_Np12.dat",
+    "../../cases/case3_30sites_Np12/output_Np12/sq_Np12.dat",
     "Structure Factor N(q) — TiltedLat30, Np=12 (ν=4/5)\nt=1, t'=0.2, V1=10, V2=2, V3=2\n(Full ED kpoints 为旧版本，标签对应，物理 q 略有差异)",
     "sq_proj_vs_full_Np12.pdf"
 )
 
 sq_compare_plot(13,
     "sq_proj_tilted30_Np13.dat",
-    "../../case3_30sites_Np12/output_Np13/sq_Np13.dat",
+    "../../cases/case3_30sites_Np12/output_Np13/sq_Np13.dat",
     "Structure Factor N(q) — TiltedLat30, Np=13 (ν=13/15)\nt=1, t'=0.2, V1=10, V2=2, V3=2\n(Full ED kpoints 为旧版本，标签对应，物理 q 略有差异)",
     "sq_proj_vs_full_Np13.pdf"
 )

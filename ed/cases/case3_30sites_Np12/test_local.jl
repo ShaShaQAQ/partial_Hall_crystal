@@ -1,12 +1,12 @@
 # 本地测试：同一晶格，Np=5，验证代码正确性
 # 运行：julia --threads 4 test_local.jl
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
-include("../shared/structure_factor.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
+include("../../shared/structure_factor.jl")
 
 using Printf, LinearAlgebra, Dates
 

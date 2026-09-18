@@ -1,11 +1,11 @@
 # test_csr.jl — 验证 CSR 与 matrix-free 本征值一致（在本地 Mac 运行）
 # 使用 RectLat3x6 (18 sites) + Np=4，C(18,4)=3060，秒级完成
-include("shared/lattice.jl")
-include("shared/hoppings.jl")
-include("shared/basis.jl")
-include("shared/ksector.jl")
-include("shared/hamiltonian.jl")
-include("shared/solver.jl")
+include("../shared/lattice.jl")
+include("../shared/hoppings.jl")
+include("../shared/basis.jl")
+include("../shared/ksector.jl")
+include("../shared/hamiltonian.jl")
+include("../shared/solver.jl")
 
 using SparseArrays, LinearAlgebra, KrylovKit, Printf
 

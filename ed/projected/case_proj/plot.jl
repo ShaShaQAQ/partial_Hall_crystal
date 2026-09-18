@@ -31,7 +31,7 @@ kx(k)   = new_x[(k % 4, k ÷ 4)]
 
 # ── Case 4: V1=1 ──
 ks_p4, es_p4 = read_spectrum("spectrum_proj_4x6_V1.dat")
-ks_f4, es_f4 = read_spectrum("../../case4_4x6_Np4/spectrum_Np4.dat")
+ks_f4, es_f4 = read_spectrum("../../cases/case4_4x6_Np4/spectrum_Np4.dat")
 
 xs_p4 = kx.(ks_p4);  xs_f4 = kx.(ks_f4)
 
@@ -101,7 +101,7 @@ println("保存：spectrum_proj_V1.pdf")
 
 # ── Case 5: V1=0 对比（验证单粒子极限）──
 ks_p5, es_p5 = read_spectrum("spectrum_proj_4x6_V0.dat")
-ks_f5, es_f5 = read_spectrum("../../case5_4x6_Np4_V0/spectrum_Np4.dat")
+ks_f5, es_f5 = read_spectrum("../../cases/case5_4x6_Np4_V0/spectrum_Np4.dat")
 xs_p5 = kx.(ks_p5);  xs_f5 = kx.(ks_f5)
 
 N_show = min(length(es_p5), length(es_f5), 48)
@@ -157,7 +157,7 @@ end
 
 # ── Case 4: N(q) 投影 ED vs 全 ED ──
 qs_p4, ns_p4 = read_sq("sq_proj_4x6_V1.dat")
-qs_f4, ns_f4 = read_sq("../../case4_4x6_Np4/sq_Np4.dat")
+qs_f4, ns_f4 = read_sq("../../cases/case4_4x6_Np4/sq_Np4.dat")
 
 xs_sq_p4 = kx.(qs_p4)
 xs_sq_f4 = kx.(qs_f4)
@@ -199,7 +199,7 @@ println("保存：sq_proj_vs_full_V1.pdf")
 
 # ── Case 5: N(q) V1=0 验证 ──
 qs_p5, ns_p5 = read_sq("sq_proj_4x6_V0.dat")
-qs_f5, ns_f5 = read_sq("../../case5_4x6_Np4_V0/sq_Np4.dat")
+qs_f5, ns_f5 = read_sq("../../cases/case5_4x6_Np4_V0/sq_Np4.dat")
 
 xs_sq_p5 = kx.(qs_p5)
 xs_sq_f5 = kx.(qs_f5)
@@ -229,7 +229,7 @@ println("保存：sq_proj_vs_full_V0.pdf")
 
 # ── 全扇区热图：投影 ED  vs 全 ED ──
 sks_p, qks_p, vals_p = read_sq_all("sq_all_proj_4x6_V1.dat")
-sks_f, qks_f, vals_f = read_sq_all("../../case4_4x6_Np4/sq_all_Np4.dat")
+sks_f, qks_f, vals_f = read_sq_all("../../cases/case4_4x6_Np4/sq_all_Np4.dat")
 
 Zp = fill(NaN, Nk, Nk)
 for (sk, qk, v) in zip(sks_p, qks_p, vals_p)

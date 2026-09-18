@@ -1,21 +1,21 @@
 # ============================================================
 # Case 1：3×6 矩形超胞，18 格点，Np=6（填充 6/18 = 1/3）
-# 参数：t=1, t'=0.22, V1=0.78, V2=V3=0
+# 参数：t=1, t'=0.22, V1=1.6, V2=V3=0
 # ============================================================
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
-include("../shared/structure_factor.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
+include("../../shared/structure_factor.jl")
 
 using Printf
 
 # ── 参数 ──
 t1  = 1.0
 t3  = 0.22
-V1  = 0.78
+V1  = 1.6
 V2  = 0.0
 V3  = 0.0
 Np  = 6

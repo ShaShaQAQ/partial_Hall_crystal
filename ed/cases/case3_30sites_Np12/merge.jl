@@ -5,11 +5,11 @@
 # ============================================================
 using Printf, Dates, JLD2
 
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/structure_factor.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/structure_factor.jl")
 
 println("="^60)
 println("Merge — 汇总 3 个节点的结果")

@@ -9,12 +9,12 @@
 # 服务器运行（单节点负责扇区 0-4）：
 #   SECTOR_START=0 SECTOR_END=4 julia --threads 64 spectral_flow.jl
 # ============================================================
-include("../shared/lattice.jl")
-include("../shared/hoppings.jl")
-include("../shared/basis.jl")
-include("../shared/ksector.jl")
-include("../shared/hamiltonian.jl")
-include("../shared/solver.jl")
+include("../../shared/lattice.jl")
+include("../../shared/hoppings.jl")
+include("../../shared/basis.jl")
+include("../../shared/ksector.jl")
+include("../../shared/hamiltonian.jl")
+include("../../shared/solver.jl")
 
 using Printf, LinearAlgebra, Dates, JLD2
 using KrylovKit

@@ -384,7 +384,8 @@ follows:
 
 ## Finite/infinite mapping
 
-The production finite campaign summarized in `dmrg/report/dmrg_summary.tex`
+The production finite campaign summarized in
+`reports/fqahc_results/dmrg_summary.tex`
 used the following parameters. Infinite entries describe the two `Ly=6`
 comparison cells above.
 
