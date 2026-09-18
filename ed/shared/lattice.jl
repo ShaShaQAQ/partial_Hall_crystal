@@ -122,6 +122,44 @@ function TiltedLat30()
                   T1, T2, make_nb(d1), make_nb(d2), make_nb(d3))
 end
 
+"""
+    LegacyTiltedLat30()
+
+Return the historical tilted-30 lattice used to generate the saved April 2026
+`partial_*.jld2` files. Its discrete Fourier mesh used `b2/2` in the momentum
+step even though the translation phase table used `b2`. New calculations
+should use `TiltedLat30()`; this constructor exists only for reproducibility of
+those saved states and observables derived from them.
+"""
+function LegacyTiltedLat30()
+    lattice = TiltedLat30()
+    b1 = collect(lattice.b1)
+    b2 = collect(lattice.b2)
+    momentum_step = (4 .* b1 .- b2 ./ 2) ./ 15
+    kpoints = [m .* momentum_step for m in 0:14]
+    return GenLat(
+        lattice.Ns,
+        lattice.Nuc,
+        lattice.a1,
+        lattice.a2,
+        lattice.b1,
+        lattice.b2,
+        lattice.sites,
+        lattice.site_idx,
+        lattice.uc_trans,
+        lattice.Tnx,
+        lattice.Tny,
+        lattice.ktab,
+        lattice.phase_table,
+        kpoints,
+        lattice.T1,
+        lattice.T2,
+        lattice.nb1,
+        lattice.nb2,
+        lattice.nb3,
+    )
+end
+
 # ============================================================
 # 构造函数 2：3×6 矩形超胞，18 格点，9 单元格
 # T1_tri=(3,0)，T2_tri=(0,6)，det=18，Nuc=9

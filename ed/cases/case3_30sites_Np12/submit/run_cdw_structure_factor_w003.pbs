@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N phc30_cdw_sf
+#PBS -q short
+#PBS -l select=1:ncpus=24:mem=90gb
+#PBS -l walltime=10:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitations}
+PHC_DATA_DIR=${PHC_DATA_DIR:-/home/public/shajy/codex_runs/phc30_optical_legacy/case3_30sites_Np12/output}
+PHC_RESULT_DIR=${PHC_RESULT_DIR:-${W003_REPO}/results/phc30_np12_v1_100_cdw}
+JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}
+
+export JULIA_NUM_THREADS=24
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+cd "${W003_REPO}"
+exec "${JULIA_BIN}" --threads=24 --project=. \
+    ed/cases/case3_30sites_Np12/compute_cdw_structure_factor.jl \
+    --data-dir "${PHC_DATA_DIR}" \
+    --result-dir "${PHC_RESULT_DIR}"

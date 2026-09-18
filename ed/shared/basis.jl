@@ -58,3 +58,59 @@ function translate_fock(state::Int64, lat::GenLat, nx::Int, ny::Int)
     end
     return new_state, sgn
 end
+
+# Precompute the site permutation for every unit-cell translation.
+function translation_site_maps(lat::GenLat)
+    maps = Matrix{Int}(undef, length(lat.uc_trans), lat.Ns)
+    for (ti, (nx, ny)) in enumerate(zip(lat.Tnx, lat.Tny))
+        @inbounds for s in 1:lat.Ns
+            ix, iy = lat.sites[s]
+            maps[ti, s] = lat.site_idx[canon_prim(lat, ix + nx, iy + ny)]
+        end
+    end
+    return maps
+end
+
+# Cache the translated-order inversions which determine the fermion sign.
+function translation_inversion_masks(maps::Matrix{Int}, Ns::Int)
+    masks = Matrix{UInt64}(undef, size(maps, 1), Ns)
+    @inbounds for ti in axes(maps, 1), s in 1:Ns
+        translated_s = maps[ti, s]
+        mask = UInt64(0)
+        for t in (s + 1):Ns
+            maps[ti, t] < translated_s &&
+                (mask |= UInt64(1) << (t - 1))
+        end
+        masks[ti, s] = mask
+    end
+    return masks
+end
+
+"""Allocation-free Fock translation using precomputed site maps and signs."""
+@inline function translate_fock_cached(
+        state::Int64,
+        maps::Matrix{Int},
+        inversion_masks::Matrix{UInt64},
+        translation_index::Int,
+        Ns::Int)
+    new_state = Int64(0)
+    occupied = state
+    while occupied != 0
+        s = trailing_zeros(occupied) + 1
+        new_state |= Int64(1) << (maps[translation_index, s] - 1)
+        occupied &= occupied - 1
+    end
+
+    parity = false
+    occupied = state
+    state_unsigned = UInt64(state)
+    while occupied != 0
+        s = trailing_zeros(occupied) + 1
+        parity = xor(
+            parity,
+            isodd(count_ones(
+                state_unsigned & inversion_masks[translation_index, s])))
+        occupied &= occupied - 1
+    end
+    return new_state, parity ? -1 : 1
+end

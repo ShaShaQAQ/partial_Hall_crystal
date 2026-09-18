@@ -1,15 +1,17 @@
 # ============================================================
 # 密度结构因子 N(k)（通用版本）
 #
-# 论文 Kourtis et al. PRB 86, 235118 (2012) Eq.(27)：
-#   n(k) = (1/Ns) <0| Σ_{j,l} e^{ik(Rj-Rl)} (n̂j-n̄)(n̂l-n̄) |0>
+# 采用原胞归一化：
+#   N(k) = (1/Nuc) <0| Σ_{j,l} e^{ik(Rj-Rl)} (n̂j-n̄)(n̂l-n̄) |0>
 #
-# 等价写法：n(k) = (1/Ns) <|ρ_k^-|²>
+# 等价写法：N(k) = (1/Nuc) <|ρ_k^-|²>
 #   ρ_k^-(F) = Σ_{i∈occ(F)} e^{ik·ri}  -  n̄ · Σ_i e^{ik·ri}
 #
 # 注：对团簇 k≠0，Σ_i e^{ik·ri} = 0（正交性），结果同旧公式。
 #     k=0 时 ρ_0^- = Np - n̄*Ns = 0，故 n(0) = 0。
 # ============================================================
+
+using Printf
 
 # 格点物理坐标：(ix,iy) → ix*a1 + iy*a2。
 function site_phys_pos(lat::GenLat, ix::Int, iy::Int)
@@ -84,6 +86,82 @@ function structure_factor_survey(sec::KSector, v::Vector{ComplexF64},
     results_sorted = sort(results_ordered, by=x->-x[2])
 
     return results_ordered, results_sorted, norm2, Np_check
+end
+
+"""
+    structure_factor_survey_representatives(sec, v, lat, Np)
+
+Compute the unit-cell-normalized structure factor at all allowed torus
+momenta without expanding the momentum state into the full Fock basis.
+For these momenta, `abs2(rho_q)` is invariant under every translation in a
+representative's orbit, so a diagonal translation-invariant observable can
+be accumulated once per representative with weight `abs2(v[i])`.
+"""
+function structure_factor_survey_representatives(
+        sec::KSector,
+        v::Vector{ComplexF64},
+        lat::GenLat,
+        Np::Int)
+    length(v) == length(sec.reps) ||
+        throw(DimensionMismatch("state does not match momentum sector"))
+    momentum_count = length(lat.kpoints)
+    phases = Matrix{ComplexF64}(undef, momentum_count, lat.Ns)
+    phase_sums = zeros(ComplexF64, momentum_count)
+    for (q_index, momentum) in enumerate(lat.kpoints)
+        for (site, (ix, iy)) in enumerate(lat.sites)
+            rx, ry = site_uc_pos(lat, ix, iy)
+            phase = cis(momentum[1] * rx + momentum[2] * ry)
+            phases[q_index, site] = phase
+            phase_sums[q_index] += phase
+        end
+    end
+
+    thread_totals = [zeros(Float64, momentum_count)
+                     for _ in 1:Threads.nthreads()]
+    rho_buffers = [zeros(ComplexF64, momentum_count)
+                   for _ in 1:Threads.nthreads()]
+    filling = Np / lat.Ns
+    Threads.@threads :static for representative_index in eachindex(sec.reps)
+        tid = Threads.threadid()
+        rho = rho_buffers[tid]
+        fill!(rho, 0.0 + 0.0im)
+        fock_state = sec.reps[representative_index]
+        occupied = fock_state
+        while occupied != 0
+            site = trailing_zeros(occupied) + 1
+            @inbounds for q_index in 1:momentum_count
+                rho[q_index] += phases[q_index, site]
+            end
+            occupied &= occupied - 1
+        end
+
+        weight = abs2(v[representative_index])
+        totals = thread_totals[tid]
+        @inbounds for q_index in 1:momentum_count
+            centered_density = rho[q_index] -
+                               filling * phase_sums[q_index]
+            totals[q_index] += weight * abs2(centered_density)
+        end
+    end
+
+    norm2 = sum(abs2, v)
+    norm2 > 0 || throw(ArgumentError("state has zero norm"))
+    structure_factors = zeros(Float64, momentum_count)
+    for totals in thread_totals
+        structure_factors .+= totals
+    end
+    structure_factors ./= lat.Nuc * norm2
+    particle_number = sum(
+        abs2(v[i]) * count_ones(sec.reps[i]) for i in eachindex(sec.reps)
+    ) / norm2
+
+    results_ordered = Tuple{Int,Float64,Float64,Float64}[]
+    for (index, (m, momentum)) in enumerate(zip(lat.ktab, lat.kpoints))
+        push!(results_ordered,
+              (m, structure_factors[index], momentum[1], momentum[2]))
+    end
+    results_sorted = sort(results_ordered, by=result -> -result[2])
+    return results_ordered, results_sorted, norm2, particle_number
 end
 
 # 打印报告

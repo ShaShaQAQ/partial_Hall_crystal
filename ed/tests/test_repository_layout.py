@@ -79,6 +79,26 @@ class RepositoryLayoutTests(unittest.TestCase):
         ignored = set(process.stdout.splitlines())
         self.assertEqual(ignored, set(probes))
 
+    def test_w003_optical_job_uses_available_node_shape(self):
+        optical_job = (
+            ROOT / "ed" / "cases" / "case3_30sites_Np12" /
+            "submit" / "run_optical_response_w003.pbs"
+        )
+        structure_job = (
+            ROOT / "ed" / "cases" / "case3_30sites_Np12" /
+            "submit" / "run_cdw_structure_factor_w003.pbs"
+        )
+        for job in (optical_job, structure_job):
+            self.assertTrue(job.is_file())
+            text = job.read_text()
+            self.assertIn("#PBS -q short", text)
+            self.assertIn("select=1:ncpus=24:mem=90gb", text)
+            self.assertIn("--threads=24", text)
+        self.assertIn("run_optical_response.jl", optical_job.read_text())
+        self.assertIn(
+            "compute_cdw_structure_factor.jl", structure_job.read_text()
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

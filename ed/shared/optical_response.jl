@@ -1,4 +1,74 @@
 using LinearAlgebra
+using SparseArrays
+
+"""Row-oriented sparse matrix with disjoint rows for threaded multiplication."""
+struct ThreadedCSR
+    nrows::Int
+    ncols::Int
+    rowptr::Vector{Int32}
+    colind::Vector{Int32}
+    nzval::Vector{ComplexF64}
+end
+
+Base.size(matrix::ThreadedCSR) = (matrix.nrows, matrix.ncols)
+SparseArrays.nnz(matrix::ThreadedCSR) = length(matrix.nzval)
+
+function threaded_csr(
+        matrix::SparseMatrixCSC{ComplexF64,I}) where {I<:Integer}
+    nrows, ncols = size(matrix)
+    row_counts = [zeros(Int32, nrows) for _ in 1:Threads.nthreads()]
+    Threads.@threads :static for column in 1:ncols
+        counts = row_counts[Threads.threadid()]
+        first_index = Int(matrix.colptr[column])
+        last_index = Int(matrix.colptr[column + 1]) - 1
+        @inbounds for p in first_index:last_index
+            counts[Int(matrix.rowval[p])] += 1
+        end
+    end
+
+    rowptr = Vector{Int32}(undef, nrows + 1)
+    rowptr[1] = Int32(1)
+    @inbounds for row in 1:nrows
+        count = sum(Int(counts[row]) for counts in row_counts)
+        rowptr[row + 1] = rowptr[row] + Int32(count)
+    end
+
+    colind = Vector{Int32}(undef, nnz(matrix))
+    nzval = Vector{ComplexF64}(undef, nnz(matrix))
+    cursor = copy(rowptr[1:nrows])
+    @inbounds for column in 1:ncols
+        first_index = Int(matrix.colptr[column])
+        last_index = Int(matrix.colptr[column + 1]) - 1
+        for p in first_index:last_index
+            row = Int(matrix.rowval[p])
+            destination = Int(cursor[row])
+            colind[destination] = Int32(column)
+            nzval[destination] = matrix.nzval[p]
+            cursor[row] += 1
+        end
+    end
+    return ThreadedCSR(nrows, ncols, rowptr, colind, nzval)
+end
+
+function LinearAlgebra.mul!(
+        output::Vector{ComplexF64},
+        matrix::ThreadedCSR,
+        input::Vector{ComplexF64})
+    length(input) == matrix.ncols ||
+        throw(DimensionMismatch("input has wrong length"))
+    length(output) == matrix.nrows ||
+        throw(DimensionMismatch("output has wrong length"))
+    Threads.@threads :static for row in 1:matrix.nrows
+        value = 0.0 + 0.0im
+        first_index = Int(matrix.rowptr[row])
+        last_index = Int(matrix.rowptr[row + 1]) - 1
+        @inbounds for p in first_index:last_index
+            value += matrix.nzval[p] * input[Int(matrix.colind[p])]
+        end
+        output[row] = value
+    end
+    return output
+end
 
 struct ResponseLanczosKernel
     alpha::Vector{Float64}
@@ -32,13 +102,20 @@ function response_lanczos(
         E0::Real,
         source::AbstractVector;
         mmax::Int=length(source),
-        breakdown_tol::Float64=1e-13)
+        breakdown_tol::Float64=1e-13,
+        ground_state::Union{Nothing,AbstractVector}=nothing,
+        progress::Function=(args...)->nothing)
     n = length(source)
     1 <= mmax <= n ||
         throw(ArgumentError("mmax must satisfy 1 <= mmax <= length(source)"))
     source_norm = norm(source)
     source_norm > breakdown_tol ||
         throw(ArgumentError("response source has zero norm"))
+    ground_state === nothing ||
+        (length(ground_state) == n &&
+         abs(norm(ground_state) - 1) <= 1e-8) ||
+        throw(ArgumentError(
+            "ground_state must be normalized and match source"))
 
     q_prev = zeros(ComplexF64, n)
     q = ComplexF64.(source) ./ source_norm
@@ -50,6 +127,9 @@ function response_lanczos(
 
     for step in 1:mmax
         mul!(w, H, q)
+        if ground_state !== nothing
+            w .-= ground_state .* dot(ground_state, w)
+        end
         @. w = w - E0 * q - beta_prev * q_prev
         a = real(dot(q, w))
         push!(alpha, a)
@@ -72,6 +152,7 @@ function response_lanczos(
         q_prev, q, w = q, w, q_prev
         q ./= b
         beta_prev = b
+        progress(step, alpha, beta, q_prev, q, beta_prev)
     end
 
     return ResponseLanczosKernel(alpha, beta, source_norm^2, did_breakdown)

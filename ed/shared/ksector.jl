@@ -13,9 +13,14 @@ struct KSector
     fock2rep::Dict{Int64,Tuple{Int32,ComplexF64}}
 end
 
-function build_ksector(basis::Vector{Int64}, lat::GenLat, m::Int)
+function build_ksector(basis::Vector{Int64}, lat::GenLat, m::Int;
+                       trans_maps::Union{Nothing,Matrix{Int}}=nothing)
     Ntrans = length(lat.Tnx)
     m_idx  = m + 1          # phase_table 的行索引（1-based）
+    maps = trans_maps === nothing ? translation_site_maps(lat) : trans_maps
+    size(maps) == (Ntrans, lat.Ns) ||
+        throw(ArgumentError("translation map dimensions do not match lattice"))
+    inversion_masks = translation_inversion_masks(maps, lat.Ns)
     visited = Set{Int64}()
     reps      = Int64[]
     norms     = Float64[]
@@ -27,7 +32,8 @@ function build_ksector(basis::Vector{Int64}, lat::GenLat, m::Int)
 
         orb_coeffs = Dict{Int64,ComplexF64}()
         for ti in 1:Ntrans
-            Fs, sgn = translate_fock(F, lat, lat.Tnx[ti], lat.Tny[ti])
+            Fs, sgn = translate_fock_cached(
+                F, maps, inversion_masks, ti, lat.Ns)
             ph = lat.phase_table[m_idx, ti] * sgn
             orb_coeffs[Fs] = get(orb_coeffs, Fs, 0.0+0im) + ph
         end
@@ -63,8 +69,9 @@ end
 
 function build_all_ksectors(basis::Vector{Int64}, lat::GenLat)
     secs = KSector[]
+    maps = translation_site_maps(lat)
     for m in lat.ktab
-        push!(secs, build_ksector(basis, lat, m))
+        push!(secs, build_ksector(basis, lat, m; trans_maps=maps))
     end
     return secs
 end
