@@ -31,6 +31,7 @@ function torus_matrix_from_bloch(lat, bloch_matrix)
     operator = zeros(ComplexF64, lat.Ns, lat.Ns)
     a1_uc = collect(lat.a1)
     a2_uc = 2 .* collect(lat.a2)
+    sublat = sublat_pos(lat)
     Nk = length(lat.kpoints)
     for (source, (ix, iy)) in enumerate(lat.sites)
         source_orb = mod(iy, 2) + 1
@@ -38,7 +39,7 @@ function torus_matrix_from_bloch(lat, bloch_matrix)
         for (n1_uc, n2_uc) in lat.uc_trans
             Rcart = n1_uc .* a1_uc .+ n2_uc .* a2_uc
             for target_orb in 1:2
-                delta = SUBLAT_POS[target_orb] .- SUBLAT_POS[source_orb]
+                delta = sublat[target_orb] .- sublat[source_orb]
                 amplitude = 0.0 + 0.0im
                 for k in lat.kpoints
                     phase = exp(-1im * dot(k, Rcart .+ delta))
