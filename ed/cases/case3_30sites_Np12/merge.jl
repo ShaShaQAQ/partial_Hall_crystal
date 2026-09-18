@@ -110,7 +110,7 @@ println("  全扇区结构因子保存: output/sq_all_Np$(Np).dat")
 
 # ── 4. 绘图 ──
 println("[4/4] 绘图...")
-n_gs = 15  # Np=12, ν=2/5 → 15重简并；换粒子数时在此修改
+n_gs = 3  # V1=100 数据的三周期 CDW 基态位于 k=0,5,10
 # plot.jl 读取当前目录下的 dat 文件，切换到 output/ 再 include
 cd(joinpath(@__DIR__, "output"))
 include(joinpath(@__DIR__, "plot.jl"))

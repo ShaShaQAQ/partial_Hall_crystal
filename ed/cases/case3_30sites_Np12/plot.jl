@@ -11,8 +11,8 @@ V2  = @isdefined(V2) ? V2 : 0.0
 V3  = @isdefined(V3) ? V3 : 0.0
 t1  = @isdefined(t1) ? t1 : 1.0
 t3  = @isdefined(t3) ? t3 : 0.2
-# 预期简并度：Np=12(ν=2/5)→15，其余默认标最低1个
-n_gs = @isdefined(n_gs) ? n_gs : 15
+# 当前强耦合 V1=100 数据是三周期 CDW；可由调用方覆盖。
+n_gs = @isdefined(n_gs) ? n_gs : 3
 
 # ── 1. 能谱图 ──
 dat = readlines("spectrum_Np$(Np).dat")
@@ -35,15 +35,16 @@ end
 for v in values(sector_sorted)
     sort!(v, by=i->es[i])
 end
-gs1_set = Set(v[1]       for v in values(sector_sorted) if length(v) >= 1)
-gs2_set = Set(v[2]       for v in values(sector_sorted) if length(v) >= 2)
+gs_set = Set(sortperm(es)[1:min(n_gs, length(es))])
+sector_minima_set = Set(v[1] for v in values(sector_sorted) if length(v) >= 1)
+sector_second_set = Set(v[2] for v in values(sector_sorted) if length(v) >= 2)
 
-# 颜色：基态红，第二低态橙，其余蓝
-colors = [i in gs1_set ? :red : (i in gs2_set ? :darkorange : :steelblue) for i in 1:length(es)]
-sizes  = [i in gs1_set ? 8    : (i in gs2_set ? 7            : 5)          for i in 1:length(es)]
+# 颜色：全局最低 n_gs 态红，其他 sector 最低态橙，其余蓝
+colors = [i in gs_set ? :red : (i in sector_minima_set ? :darkorange : :steelblue) for i in 1:length(es)]
+sizes  = [i in gs_set ? 8    : (i in sector_minima_set ? 7            : 5)          for i in 1:length(es)]
 
 # y 轴上限：覆盖所有扇区第二低态，再加 5% 留白
-y_top_required = maximum(es[i] for i in gs2_set)
+y_top_required = maximum(es[i] for i in sector_second_set)
 ymax = y_top_required * 1.05 + 0.02
 
 p = scatter(xs, es;
@@ -63,7 +64,7 @@ p = scatter(xs, es;
 )
 
 # 标注基态能量
-for i in gs1_set
+for i in gs_set
     annotate!(xs[i], es[i] + ymax*0.015, text(@sprintf("%.4f", es[i]), 6, :red, :center))
 end
 

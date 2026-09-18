@@ -1,0 +1,22 @@
+schema_version = 1
+result_id = "phc30_np12_v1_100_cdw"
+storage_host = "W003"
+data_directory = "/home/public/shajy/codex_runs/phc30_optical_legacy/case3_30sites_Np12/output"
+
+[[wavefunctions]]
+sector = 0
+path = "/home/public/shajy/codex_runs/phc30_optical_legacy/case3_30sites_Np12/output/partial_0.jld2"
+size_bytes = 461306821
+sha256 = "165aa26e5f7156f89b7166c2462867d2e238490a08783cb44413abba241a5601"
+
+[[wavefunctions]]
+sector = 5
+path = "/home/public/shajy/codex_runs/phc30_optical_legacy/case3_30sites_Np12/output/partial_5.jld2"
+size_bytes = 461306821
+sha256 = "fa6c38431821017c575da463c4c9a9a3726979775e5e41b9d3ba9b5e030e1709"
+
+[[wavefunctions]]
+sector = 10
+path = "/home/public/shajy/codex_runs/phc30_optical_legacy/case3_30sites_Np12/output/partial_10.jld2"
+size_bytes = 461306149
+sha256 = "d3d0e59c67da7ff88a1be8b4817c057ffdf2d63c8051371e45eb8682a5135857"

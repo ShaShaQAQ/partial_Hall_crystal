@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Plot the saved 30-site PHC low-energy spectrum used by the optical note."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
+from typing import Dict, Union
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 
 REPORT_DIR = Path(__file__).resolve().parent
-DEFAULT_DATA = REPORT_DIR / "data" / "optical_response" / "phc30_spectrum_V1_100.dat"
+DEFAULT_DATA = (
+    REPORT_DIR.parents[1] / "results" / "phc30_np12_v1_100_cdw" /
+    "data" / "spectrum.dat"
+)
 DEFAULT_OUTPUT = (
     REPORT_DIR / "figures" / "optical_response" / "phc30_manybody_spectrum.png"
 )
@@ -36,8 +37,8 @@ def load_spectrum(path: Path) -> np.ndarray:
 
 
 def summarize_low_energy(
-    rows: np.ndarray, manifold_size: int = 15
-) -> dict[str, float | int]:
+    rows: np.ndarray, manifold_size: int = 3
+) -> Dict[str, Union[float, int]]:
     """Return the width and isolation of the lowest ``manifold_size`` levels."""
     energies = np.sort(rows[:, 1])
     if len(energies) <= manifold_size:
@@ -45,25 +46,32 @@ def summarize_low_energy(
     ground = energies[0]
     manifold_top = energies[manifold_size - 1]
     next_level = energies[manifold_size]
+    order = np.argsort(rows[:, 1], kind="stable")
+    ground_sectors = tuple(sorted(
+        rows[order[:manifold_size], 0].astype(int).tolist()
+    ))
     return {
         "manifold_size": manifold_size,
+        "ground_sectors": ground_sectors,
         "manifold_width": float(manifold_top - ground),
-        "sixteenth_energy": float(next_level - ground),
+        "fourth_energy": float(next_level - ground),
         "separation": float(next_level - manifold_top),
     }
 
 
-def format_summary_text(summary: dict[str, float | int]) -> str:
+def format_summary_text(summary: Dict[str, Union[float, int]]) -> str:
     """Format the low-energy annotation with real line breaks."""
     return (
-        "15 states, one in every $k$ sector\n"
-        f"$E_{{15}}-E_1={summary['manifold_width']:.6f}$\n"
-        f"$E_{{16}}-E_{{15}}={summary['separation']:.6f}$"
+        "CDW ground-state triplet: $k=0,5,10$\n"
+        f"$E_3-E_1={summary['manifold_width']:.6f}$\n"
+        f"$E_4-E_3={summary['separation']:.6f}$"
     )
 
 
 def make_figure(rows: np.ndarray, output: Path) -> None:
     """Create the full-spectrum and low-energy-zoom panels."""
+    import matplotlib.pyplot as plt
+
     summary = summarize_low_energy(rows)
     order = np.argsort(rows[:, 1], kind="stable")
     manifold_mask = np.zeros(len(rows), dtype=bool)
@@ -97,7 +105,7 @@ def make_figure(rows: np.ndarray, output: Path) -> None:
             color="#d62728",
             edgecolors="white",
             linewidths=0.5,
-            label="lowest 15 states",
+            label="CDW ground-state triplet",
             zorder=3,
         )
         ax.set_xlim(-0.45, 14.45)
@@ -117,15 +125,15 @@ def make_figure(rows: np.ndarray, output: Path) -> None:
         color="#d62728",
         linestyle="--",
         linewidth=1.1,
-        label=r"$E_{15}-E_1$",
+        label=r"$E_3-E_1$",
         zorder=1,
     )
     axes[1].axhline(
-        summary["sixteenth_energy"],
+        summary["fourth_energy"],
         color="#1f77b4",
         linestyle=":",
         linewidth=1.4,
-        label=r"$E_{16}-E_1$",
+        label=r"$E_4-E_1$",
         zorder=1,
     )
     axes[1].text(
@@ -142,6 +150,7 @@ def make_figure(rows: np.ndarray, output: Path) -> None:
 
     fig.suptitle(
         r"Tilted 30-site ED: $N_s=30$, $N_{\rm uc}=15$, $N_p=12$; "
+        r"strong-coupling period-three CDW; "
         r"$t_1=1$, $t_3=0.2$, $V_1=100$, $V_2=V_3=0$",
         fontsize=13,
     )
@@ -163,7 +172,7 @@ def main() -> None:
     print(f"points={len(rows)} sectors={len(set(rows[:, 0].astype(int)))}")
     print(
         "manifold_size={manifold_size} manifold_width={manifold_width:.10f} "
-        "sixteenth_energy={sixteenth_energy:.10f} separation={separation:.10f}".format(
+        "fourth_energy={fourth_energy:.10f} separation={separation:.10f}".format(
             **summary
         )
     )

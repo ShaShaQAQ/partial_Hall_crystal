@@ -1,0 +1,26 @@
+title = "30-site strong-coupling period-three CDW"
+method = "full exact diagonalization in translation sectors"
+
+[lattice]
+geometry = "legacy_tilted30_april_2026"
+Ns = 30
+Nuc = 15
+Np = 12
+ground_state_sectors = [0, 5, 10]
+
+[hamiltonian]
+t1 = 1.0
+t3 = 0.2
+V1 = 100.0
+V2 = 0.0
+V3 = 0.0
+
+[spectrum]
+ground_triplet_width = 0.0001245629
+gap_triplet_to_fourth = 0.0212691488
+saved_levels_per_sector = 8
+
+[structure_factor]
+normalization = "unit_cell"
+denominator = 15
+fourier_mesh = "legacy_tilted30_april_2026"

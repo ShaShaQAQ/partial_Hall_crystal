@@ -13,7 +13,7 @@
 \renewcommand{\tablename}{表}
 \renewcommand{\figurename}{图}
 
-\title{DMRG 圆柱基准与电荷泵浦结果汇总}
+\title{FQAHC 数值结果汇总：ED、DMRG 与光学响应}
 \author{Partial Hall Crystal Project}
 \date{\number\year 年 \number\month 月 \number\day 日}
 
@@ -25,9 +25,10 @@
 
 \section{文档目的}
 
-本文档是 DMRG 分支持续更新的 LaTeX 结果汇总，用于记录基准数值、正式计算参数、
-电荷泵浦图片以及简短的结果说明。生成的 DMRG 原始输出有意保存在 git 之外；
-本文档只收录汇总数值和体积较小的图片。
+本文档汇总 ED 与 DMRG 的基准数值、正式计算参数、电荷泵浦、能谱、结构因子和
+光学响应。能谱、静态结构因子与 response-Lanczos 光电导均由 ED 计算；
+Lanczos 的作用是在 Hilbert 空间很大时不显式求出全部激发态。大型波函数和 DMRG
+原始输出有意保存在 git 之外；本文档只收录汇总数值和体积较小的数据与图片。
 
 \section{模型与几何}
 
@@ -560,9 +561,10 @@ current-active 激发，而不是三态流形的劈裂或完整 many-body gap；
 \end{figure}
 
 \clearpage
-\subsection{当前参数下的 30-site ED 能谱}
+\subsection{强耦合三周期 CDW 的 30-site ED 能谱}
 
-当前 FQAHC/PHC 光学响应使用倾斜 30-site torus。完整模型与粒子数参数为
+当前光学响应使用倾斜 30-site torus 上的强耦合三周期 CDW 参数点。完整模型与
+粒子数参数为
 \[
   N_s=30,\qquad N_{\mathrm{uc}}=15,\qquad N_p=12,
 \]
@@ -577,32 +579,69 @@ current-active 激发，而不是三态流形的劈裂或完整 many-body gap；
 \[
   E_0=594.8436843931768,
 \]
-最低的两个 sector 为 \(k=5\) 和 \(k=10\)，在保存精度内具有相同能量。
-
-对全部 sector 的能量排序后，最低流形实际包含 15 个近简并态，而不是 12 个；
-\(N_p=12\) 是粒子数。最低 15 态覆盖全部 \(k=0,\ldots,14\)，每个 sector
-恰好贡献一个。该流形的有限尺寸内部散布为
+最低的两个 sector 为 \(k=5\) 和 \(k=10\)，在保存精度内具有相同能量；
+\(k=0\) 的最低态位于 \(E-E_0=0.0001245629\)。因此基态流形是
+\(k=0,5,10\) 的三重 CDW 基态，其有限尺寸内部劈裂为
 \[
-  E_{15}-E_1=0.0287121891.
+  E_3-E_1=0.0001245629.
 \]
-第 16 个能级位于
+第 4 个能级位于 \(k=2\)（并与 \(k=13\) 对称），其能量为
 \[
-  E_{16}-E_1=0.2157939408,
+  E_4-E_1=0.0213937117,
 \]
-所以最低流形与更高能级之间的分离为
+所以三重基态到第 4 态的有限尺寸间隔为
 \[
-  E_{16}-E_{15}=0.1870817517.
+  E_4-E_3=0.0212691488.
 \]
+从第 4 态到第 15 态的其余 12 个态分布在
+\(E-E_0=0.0213937117\)--\(0.0287121891\)，它们是低能激发，不能作为
+15 重基态简并来解释。
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_manybody_spectrum.png}
-\caption{当前光学参数点的 30-site 多体 ED 能谱。左图画出每个动量 sector
-保存的最低 8 个能级；右图放大低能区。红色点是最低 15 态，它们在 15 个
-sector 中各出现一次；蓝灰色点为其余保存能级。红色虚线标记 \(E_{15}-E_1\)，
-蓝色点线标记 \(E_{16}-E_1\)。数据来自多节点 ED，而不是 response-Lanczos
-光学迭代。}
+\caption{强耦合三周期 CDW 参数点的 30-site 多体 ED 能谱。左图画出每个
+动量 sector 保存的最低 8 个能级；右图放大低能区。红色点是 \(k=0,5,10\)
+三重基态，蓝灰色点是保存的激发态。红色虚线标记三态宽度 \(E_3-E_1\)，
+蓝色点线标记第 4 态能量 \(E_4-E_1\)。数据来自多节点 ED，而不是
+response-Lanczos 光学迭代。}
 \label{fig:phc30-manybody-spectrum}
+\end{figure}
+
+三重基态的静态结构因子由同一组多节点 ED 保存波函数直接计算。定义为
+\[
+  N(\mathbf q)=\frac{1}{N_{\mathrm{uc}}}
+  \left\langle
+  \left|\sum_j e^{i\mathbf q\cdot\mathbf R_j}
+  (n_j-\bar n)\right|^2
+  \right\rangle ,
+\]
+这里采用原胞归一化 \(N_{\mathrm{uc}}=15\)，并使用生成
+\(\texttt{partial\_*.jld2}\) 时的 legacy TiltedLat30 Fourier 网格。计算仍是
+ED：程序从 \(k=0,5,10\) 三个保存的基态向量重建相应动量基，并利用
+平移轨道代表元求和；这一步不使用 DMRG。
+
+三态都在 \(q=5,10\) 出现两个等高主峰。具体数值为
+\[
+\begin{array}{c|cc}
+\text{基态 sector} & N(q=5) & N(q=10)\\
+\hline
+0  & 1.441939701645 & 1.441939701645\\
+5  & 1.441747323260 & 1.441747323260\\
+10 & 1.441752041980 & 1.441752041980
+\end{array}
+\]
+三态平均峰高为 \(1.441813022295\)。每个向量的范数为 1，粒子数检验为 12。
+三态曲线几乎完全重合，\(q=5,10\) 双峰直接确认该参数点的三周期 CDW，
+并与能谱中的 \(k=0,5,10\) 三重基态相互对应。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/optical_response/phc30_cdw_structure_factor.png}
+\caption{\(V_1=100,V_2=V_3=0\) 强耦合 CDW 三重基态的静态结构因子。
+蓝、红、绿细线分别来自 \(k=0,5,10\) 基态，黑色粗线是三态平均。纵轴采用
+原胞归一化 \(1/N_{\mathrm{uc}}\)；\(q=5,10\) 的 Bragg 双峰表明周期三密度序。}
+\label{fig:phc30-cdw-structure-factor}
 \end{figure}
 
 这张能谱也说明后面的光电导不能被理解为完整低能谱。均匀电流算符 \(J_x\)
@@ -613,11 +652,12 @@ sector 中电流矩阵元非零的激发。两个 sector 的第一个同 sector 
 current-active 激发。
 
 \clearpage
-\subsection{30-site FQAHC/PHC 正式响应计算}
+\subsection{30-site 强耦合 CDW 正式响应计算}
 
 大系统响应使用旧有的倾斜 30-site torus，保存的基态由多节点 ED 程序得到。
-计算保持该数据原有的动量和 hopping 约定不变，并分别计算两个简并基态 sector
-\(m=5\) 与 \(m=10\)。模型和响应参数为
+计算保持该数据原有的 legacy Fourier 网格和 hopping 约定不变。三重基态中，
+现有光学数据只计算了严格简并的 \(m=5\) 与 \(m=10\) 两个 sector；尚未计算
+\(m=0\) 的响应。模型和响应参数为
 \[
   N_s=30,\quad N_p=12,\quad t_1=1,\quad t_3=0.2,\quad
   V_1=100,\quad V_2=V_3=0,
@@ -633,7 +673,7 @@ current-active 激发。
 \begin{table}[H]
 \centering
 \small
-\caption{30-site FQAHC/PHC response-Lanczos 计算的诊断量。}
+\caption{30-site 强耦合 CDW response-Lanczos 计算的诊断量。}
 \begin{tabular}{lrr}
 \toprule
 物理量 & \(m=5\) & \(m=10\) \\
@@ -698,7 +738,7 @@ total 虚部还包含相应的低频反应性 Drude 极点。
   \includegraphics[width=\linewidth]{figures/optical_response/phc30_sigma_xx_total_imag.png}
   \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\).}
 \end{subfigure}
-\caption{30-site FQAHC/PHC 的纵向光电导。蓝色实线和红色虚线分别是独立计算的
+\caption{30-site 强耦合 CDW 的纵向光电导。蓝色实线和红色虚线分别是独立计算的
 \(m=5\) 与 \(m=10\) 简并 sector；两者近乎完全重合是数值一致性检验，并不是
 exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有限 twist 下的
 \(D_{xx}\)，应结合前述有限尺寸曲率限制解释。}
@@ -731,18 +771,17 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
 可以对照历史图和修正图中谱结构的大致位置，但在使用修正后算符和物理面积重新计算
 历史数据之前，绝对峰高、低频行为和 tensor 标签不能直接作定量比较。
 
-旧 \(4\times6\) FCI 与当前 30-site FQAHC/PHC 的系统尺寸、填充和相互作用参数均不相同，
+旧 \(4\times6\) FCI 与当前 30-site 强耦合 CDW 的系统尺寸、填充和相互作用参数均不相同，
 因此不能仅根据主峰由 \(4.107\) 变为 \(1.524\) 就判断某个相中的多体 gap 更小。
 两套 \(\sigma_{xx}\) 直接给出的都是各自参数点上 \(q=0\) 的 current-active 中性激发及其
 谱权重。旧 FCI 光谱还承担 exact sum-over-states 与 response-Lanczos 的数值基准作用；
 30-site 结果则展示大 Hilbert 空间中无需全部激发态的 response-Lanczos ED 计算。
 
-此外，现有 30-site 结构因子数据采用 \(V_1=10,V_2=V_3=2\)，而本节光电导采用
-\(V_1=100,V_2=V_3=0\)。二者不是同一参数点，因而本文不使用前者的 CDW 强度或
-Bragg 峰给当前光学峰作具体归属。仅凭 \(\sigma_{xx}\) 也不能单独确定拓扑基态简并、
-many-body Chern number、分数量子化 Hall 响应、任意子性质、CDW 波矢或 phason；
-这些问题需要与同一参数下的结构因子、flux insertion/charge pump、完整低能流形和
-尺寸标度联合判断。
+本节新增的结构因子与光电导使用同一个 \(V_1=100,V_2=V_3=0\) 参数点，并由
+同一组三重 ED 基态得到，因此可以用 \(q=5,10\) 的 Bragg 峰确认三周期 CDW。
+光电导峰仍只表示 \(q=0\)、同 sector 且电流矩阵元非零的中性激发；它不能单独
+确定 many-body Chern number、分数量子化 Hall 响应、任意子性质或 phason。
+这些问题还需要 flux insertion/charge pump、完整低能流形和尺寸标度联合判断。
 
 \section{待完成检查}
 
@@ -751,7 +790,7 @@ many-body Chern number、分数量子化 Hall 响应、任意子性质、CDW 波
   \item 比较相同小系统上圆柱 ED 与 DMRG 的密度分布。
   \item 补充分支跟踪诊断：MPS overlap、纠缠谱流和 sector 标签。
   \item 得到完整三 sector 周期后，将泵浦图扩展至 \(6\pi\)。
-  \item 在相同 30-site 参数下计算 \(S(\mathbf q)\)，并进一步补充
+  \item 补充三重基态中 \(m=0\) 的光学响应，并进一步计算
   \(\sigma_{yy}\) 与 \(\sigma_{xy}\)，用于检查晶体各向异性和 Hall-active 激发。
 \end{itemize}
 
