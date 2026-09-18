@@ -41,7 +41,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             ["git", "check-ignore", "--stdin"],
             cwd=ROOT,
             input="\n".join(probes) + "\n",
-            text=True,
+            universal_newlines=True,
             capture_output=True,
             check=False,
         )
