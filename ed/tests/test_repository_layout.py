@@ -42,7 +42,8 @@ class RepositoryLayoutTests(unittest.TestCase):
             cwd=ROOT,
             input="\n".join(probes) + "\n",
             universal_newlines=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             check=False,
         )
 
