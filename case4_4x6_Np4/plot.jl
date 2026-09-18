@@ -18,7 +18,7 @@ for line in dat
     push!(es, parse(Float64, parts[2]))
 end
 
-# x轴：按 (m1,m2) 排列，m1 外层，m2 内层
+# x轴：按本地 ED 的 (m1,m2) 约定排列，m1 外层，m2 内层
 order   = [(m1, m2) for m1 in 0:3 for m2 in 0:2]
 klabels = ["($m1,$m2)" for (m1, m2) in order]
 new_x   = Dict((m1, m2) => i for (i, (m1, m2)) in enumerate(order))

@@ -34,15 +34,17 @@ function get_Hk(k::Vector{Float64}, t1::Float64, t3::Float64)
     return get_Hk_x_derivatives(k, t1, t3).Hk
 end
 
-# 子格坐标：A=(0,0)，B=(-0.5, sqrt(3)/2)
-const SUBLAT_POS = [[0.0, 0.0], [-0.5, sqrt(3)/2]]
+# 子格坐标由晶格约定给出。Tilted/legacy 几何使用负号 a2，
+# RectLat4x6 使用与本地 ED 对齐的正号 a2。
+sublat_pos(lat::GenLat) = [[0.0, 0.0], collect(lat.a2)]
 
 # Fourier 变换得到实空间 hopping 矩阵 t(R)
 # 使用 lat.kpoints（对不同超胞自动正确）
 function fourier_to_real_from_bloch(lat::GenLat, bloch_matrix)
     Nk = length(lat.kpoints)
     a1_uc = collect(lat.a1)          # = (1,0)
-    a2_uc = 2 .* collect(lat.a2)    # = (-1, sqrt(3))
+    a2_uc = 2 .* collect(lat.a2)
+    sublat = sublat_pos(lat)
     tR = Dict{NTuple{2,Int}, Matrix{ComplexF64}}()
 
     for (n1_uc, n2_uc) in lat.uc_trans
@@ -52,7 +54,7 @@ function fourier_to_real_from_bloch(lat::GenLat, bloch_matrix)
         for k in lat.kpoints
             Hk = bloch_matrix(k)
             for α in 1:2, β in 1:2
-                δ = SUBLAT_POS[α] .- SUBLAT_POS[β]
+                δ = sublat[α] .- sublat[β]
                 phase = exp(-1im * dot(k, R_cart .+ δ))
                 tmat[α, β] += phase * Hk[α, β]
             end
@@ -121,6 +123,7 @@ function build_real_space_bonds(lat::GenLat, t1::Float64, t3::Float64)
     tR = fourier_to_real(lat, t1, t3)
     a1_uc = collect(lat.a1)
     a2_uc = 2 .* collect(lat.a2)
+    sublat = sublat_pos(lat)
     bond_dict = Dict{Tuple{Int,Int},RealSpaceBond}()
 
     for (si, (ix, iy)) in enumerate(lat.sites)
@@ -142,7 +145,7 @@ function build_real_space_bonds(lat::GenLat, t1::Float64, t3::Float64)
 
                 haskey(bond_dict, (ti, si)) && continue
 
-                delta = SUBLAT_POS[target_orb] .- SUBLAT_POS[source_orb]
+                delta = sublat[target_orb] .- sublat[source_orb]
                 dcart = Rcart .+ delta
                 d = (Float64(dcart[1]), Float64(dcart[2]))
                 w2 = winding_T2(lat, tix, tiy)

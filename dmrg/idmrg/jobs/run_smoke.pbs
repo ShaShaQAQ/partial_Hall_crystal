@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -N idmrg_smoke
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=24:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/idmrg/logs/smoke.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd "${PBS_O_WORKDIR:-/home/public/shajy/partial_Hall_crystal}"
+mkdir -p dmrg/idmrg/logs dmrg/idmrg/smoke_output
+
+export JULIA_NUM_THREADS="${PBS_NP:-24}"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export IDMRG_RUN_SMOKE=true
+
+julia --project=dmrg/idmrg dmrg/idmrg/bin/run_vumps.jl \
+  --Ly=2 --x_period=3 --filling_num=1 --filling_den=3 \
+  --t1=1 --t3=.2 --V1=1 --V2=0 --V3=0 \
+  --phi_y=0 --maxdim=1,4,8 --cutoff=1e-8 \
+  --vumps_tol=1e-5 --maxiter=50 --transfer_tol=1e-8 \
+  --output=dmrg/idmrg/smoke_output/Ly2_xp3 && \
+julia --project=dmrg/idmrg dmrg/idmrg/bin/run_vumps.jl \
+  --Ly=6 --x_period=1 --filling_num=1 --filling_den=3 \
+  --t1=1 --t3=.2 --V1=1 --V2=0 --V3=0 \
+  --phi_y=0 --maxdim=1,4,8 --cutoff=1e-8 \
+  --vumps_tol=1e-4 --maxiter=50 --transfer_tol=1e-8 \
+  --output=dmrg/idmrg/smoke_output/Ly6_xp1

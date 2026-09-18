@@ -1,0 +1,82 @@
+#!/bin/bash
+#PBS -N phc_flux_lx15_pt
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=120:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/flux_lx15_point.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+if [ -z "${STEP:-}" ]; then
+  case "${PBS_JOBNAME:-}" in
+    phc_phi_[0-9][0-9][0-9])
+      STEP=$((10#${PBS_JOBNAME#phc_phi_}))
+      ;;
+    *)
+      echo "STEP is unset and PBS_JOBNAME=${PBS_JOBNAME:-unset} does not look like phc_phi_000"
+      exit 2
+      ;;
+  esac
+fi
+
+STEPS=${STEPS:-12}
+THREADS=${THREADS:-24}
+OUTROOT=${OUTROOT:-dmrg/flux_Lx15_chi2000_pointnodes_steps${STEPS}}
+
+if [ -r "$OUTROOT/job_config.env" ]; then
+  # shellcheck disable=SC1090
+  . "$OUTROOT/job_config.env"
+fi
+
+if [ "$THREADS" -gt 24 ]; then
+  echo "THREADS=$THREADS exceeds node ppn=24"
+  exit 2
+fi
+
+point_dir=$(printf "%s/phi_%03d" "$OUTROOT" "$STEP")
+point_log=$(printf "%s/logs/phi_%03d.%s.log" "$OUTROOT" "$STEP" "${PBS_JOBID:-manual}")
+mkdir -p "$point_dir" "$OUTROOT/logs" dmrg/logs
+
+export LC_ALL=C
+export LANG=C
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS="$THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Flux point job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "STEP=$STEP STEPS=$STEPS THREADS=$THREADS OUTROOT=$OUTROOT"
+
+julia -t "$THREADS" --project=. dmrg/run_flux_point.jl \
+  --Lx=15 --Ly=6 --Np=15 \
+  --steps="$STEPS" --step="$STEP" \
+  --t1=1.0 --t3=0.2 \
+  --V1=1.0 --V2=0.0 --V3=0.0 \
+  --threaded_blocksparse=true \
+  --blas_threads=1 \
+  --disable_strided_threads=true \
+  --adaptive=true \
+  --nsweeps=30 \
+  --max_sweeps=30 \
+  --min_sweeps=6 \
+  --target_maxdim=2000 \
+  --stable_sweeps=3 \
+  --maxdim=200,400,800,1200,1600,2000 \
+  --cutoff=1e-9 \
+  --energy_tol=1e-6 \
+  --density_tol=2e-5 \
+  --truncerr_tol=5e-8 \
+  --output="$point_dir" \
+  > "$point_log" 2>&1
+
+test -s "$point_dir/summary.dat"
+test -s "$point_dir/density.dat"
+
+echo "Flux point job finished at $(date)"
+echo "Point log: $point_log"

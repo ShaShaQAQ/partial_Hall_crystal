@@ -1,0 +1,37 @@
+#!/bin/bash
+#PBS -N phc_dmrg_lx10_c1600
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=72:00:00
+#PBS -j oe
+#PBS -o /home/public/shajy/partial_Hall_crystal/dmrg/logs/lx10_chi1600.$PBS_JOBID.out
+
+set -euo pipefail
+
+cd /home/public/shajy/partial_Hall_crystal
+
+mkdir -p dmrg/logs dmrg/output_Lx10_chi1600
+
+export JULIA_PKG_OFFLINE=true
+export JULIA_NUM_THREADS=${PBS_NP:-24}
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+echo "Job started at $(date)"
+echo "Host: $(hostname)"
+echo "PBS_JOBID=${PBS_JOBID:-none}"
+echo "JULIA_NUM_THREADS=$JULIA_NUM_THREADS"
+echo "Working directory: $(pwd)"
+
+julia --project=. dmrg/run_dmrg.jl \
+  --Lx=10 --Ly=6 --Np=10 \
+  --t1=1.0 --t3=0.2 \
+  --V1=1.0 --V2=0.0 --V3=0.0 \
+  --nsweeps=20 \
+  --maxdim=100,200,400,800,1200,1600 \
+  --cutoff=1e-9 \
+  --output=dmrg/output_Lx10_chi1600 \
+  2>&1 | tee "dmrg/logs/lx10_chi1600.live.${PBS_JOBID:-manual}.log"
+
+echo "Job finished at $(date)"
