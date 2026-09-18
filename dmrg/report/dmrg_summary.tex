@@ -560,6 +560,59 @@ current-active 激发，而不是三态流形的劈裂或完整 many-body gap；
 \end{figure}
 
 \clearpage
+\subsection{当前参数下的 30-site ED 能谱}
+
+当前 FQAHC/PHC 光学响应使用倾斜 30-site torus。完整模型与粒子数参数为
+\[
+  N_s=30,\qquad N_{\mathrm{uc}}=15,\qquad N_p=12,
+\]
+\[
+  t_1=1,\qquad t_3=0.2,\qquad V_1=100,\qquad V_2=V_3=0.
+\]
+这里 \(N_p/N_s=2/5\)，若以两 site unit cell 的数目计，则
+\(N_p/N_{\mathrm{uc}}=4/5\)。多节点 ED 将 Hilbert 空间分解为
+\(k=0,\ldots,14\) 共 15 个动量 sector，并在每个 sector 中使用 Lanczos
+保存最低 8 个本征值。因此图~\ref{fig:phc30-manybody-spectrum} 共包含
+\(15\times8=120\) 个能级，纵轴均为相对全局基态的 \(E-E_0\)。全局基态能量为
+\[
+  E_0=594.8436843931768,
+\]
+最低的两个 sector 为 \(k=5\) 和 \(k=10\)，在保存精度内具有相同能量。
+
+对全部 sector 的能量排序后，最低流形实际包含 15 个近简并态，而不是 12 个；
+\(N_p=12\) 是粒子数。最低 15 态覆盖全部 \(k=0,\ldots,14\)，每个 sector
+恰好贡献一个。该流形的有限尺寸内部散布为
+\[
+  E_{15}-E_1=0.0287121891.
+\]
+第 16 个能级位于
+\[
+  E_{16}-E_1=0.2157939408,
+\]
+所以最低流形与更高能级之间的分离为
+\[
+  E_{16}-E_{15}=0.1870817517.
+\]
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_manybody_spectrum.png}
+\caption{当前光学参数点的 30-site 多体 ED 能谱。左图画出每个动量 sector
+保存的最低 8 个能级；右图放大低能区。红色点是最低 15 态，它们在 15 个
+sector 中各出现一次；蓝灰色点为其余保存能级。红色虚线标记 \(E_{15}-E_1\)，
+蓝色点线标记 \(E_{16}-E_1\)。数据来自多节点 ED，而不是 response-Lanczos
+光学迭代。}
+\label{fig:phc30-manybody-spectrum}
+\end{figure}
+
+这张能谱也说明后面的光电导不能被理解为完整低能谱。均匀电流算符 \(J_x\)
+保持晶格总动量，因此从 \(m=5\) 或 \(m=10\) 基态出发时，只会直接耦合到同一
+sector 中电流矩阵元非零的激发。两个 sector 的第一个同 sector 激发位于
+\(\Delta E=0.2157939408\)，但它在 \(\sigma_{xx}\) 中没有形成可见强峰；
+后文的主要光学峰则对应 \(\Delta E=1.5245875\) 和 \(2.2476085\) 的
+current-active 激发。
+
+\clearpage
 \subsection{30-site FQAHC/PHC 正式响应计算}
 
 大系统响应使用旧有的倾斜 30-site torus，保存的基态由多节点 ED 程序得到。
