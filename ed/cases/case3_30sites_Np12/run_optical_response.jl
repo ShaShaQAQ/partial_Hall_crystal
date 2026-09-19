@@ -142,14 +142,31 @@ function save_response_curve(
         frequencies,
         curve,
         kernel,
-        lattice_convention)
+        lattice_convention;
+        model_parameters,
+        requested_mmax)
     operator_convention =
         "$lattice_convention TiltedLat30 Fourier mesh; " *
         "H_A(k)=H(k+A_x*xhat); " *
         "Jx=dH/dA_x; Kxx=d2H/dA_x2"
+    Np = model_parameters.Np
+    t1 = model_parameters.t1
+    t3 = model_parameters.t3
+    V1 = model_parameters.V1
+    V2 = model_parameters.V2
+    V3 = model_parameters.V3
+    lanczos_steps = length(kernel.alpha)
     jldsave(
         path;
         sector,
+        Np,
+        t1,
+        t3,
+        V1,
+        V2,
+        V3,
+        requested_mmax,
+        lanczos_steps,
         ground_energy,
         residual,
         diamagnetic_expectation,
@@ -172,7 +189,9 @@ function save_response_curve(
         println(output,
                 "# sector=$sector Eg=$ground_energy eta=$eta area=$area " *
                 "Kexp=$diamagnetic_expectation source_norm2=$source_norm2 " *
-                "lattice=$lattice_convention")
+                "lattice=$lattice_convention Np=$Np t1=$t1 t3=$t3 " *
+                "V1=$V1 V2=$V2 V3=$V3 requested_mmax=$requested_mmax " *
+                "lanczos_steps=$lanczos_steps residual=$residual")
         println(output,
                 "# omega Re_total Im_total Re_regular Im_regular " *
                 "Re_drude Im_drude")
@@ -307,7 +326,16 @@ function run_large_optical_response()
     save_response_curve(
         output_path, RESPONSE_SECTOR, ground_energy, residual,
         diamagnetic_expectation, source_norm2, area, RESPONSE_ETA,
-        frequencies, curve, kernel, RESPONSE_LATTICE)
+        frequencies, curve, kernel, RESPONSE_LATTICE;
+        model_parameters=(
+            Np=12,
+            t1=RESPONSE_T1,
+            t3=RESPONSE_T3,
+            V1=RESPONSE_V1,
+            V2=RESPONSE_V2,
+            V3=RESPONSE_V3,
+        ),
+        requested_mmax=RESPONSE_MMAX)
     println("[8] saved: $output_path")
     println("done: ", now())
     return output_path

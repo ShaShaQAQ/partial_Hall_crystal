@@ -19,3 +19,33 @@ ENV["PHC_PREFLIGHT"] = "1"
     @test endswith(
         response_partial_path(7, "corrected"), "partial_7.jld2")
 end
+
+@testset "large optical-response output records model parameters" begin
+    mktempdir() do directory
+        output_path = joinpath(directory, "response.jld2")
+        frequencies = [0.0, 0.1]
+        curve = (
+            drude_weight=0.25,
+            total=ComplexF64[1 + 2im, 3 + 4im],
+            regular=ComplexF64[0.5 + 0.2im, 0.4 + 0.1im],
+            drude=ComplexF64[0.5 + 1.8im, 2.6 + 3.9im],
+        )
+        kernel = (alpha=[1.0, 2.0], beta=[0.3], breakdown=false)
+        model = (Np=12, t1=1.0, t3=0.2, V1=10.0, V2=2.0, V3=2.0)
+
+        save_response_curve(
+            output_path, 5, 1.25, 1e-12, 0.75, 0.5, 12sqrt(3),
+            0.065, frequencies, curve, kernel, "corrected";
+            model_parameters=model, requested_mmax=600)
+
+        saved = load(output_path)
+        @test saved["Np"] == 12
+        @test saved["t1"] == 1.0
+        @test saved["t3"] == 0.2
+        @test saved["V1"] == 10.0
+        @test saved["V2"] == 2.0
+        @test saved["V3"] == 2.0
+        @test saved["requested_mmax"] == 600
+        @test saved["lanczos_steps"] == 2
+    end
+end
