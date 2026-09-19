@@ -14,5 +14,8 @@ ENV["PHC_PREFLIGHT"] = "1"
     @test response_lattice("legacy").kpoints !=
           response_lattice("corrected").kpoints
     @test_throws ArgumentError response_lattice("unknown")
-    @test endswith(response_partial_path(5), "partial_5.jld2")
+    @test endswith(
+        response_partial_path(7, "legacy"), "partial_5.jld2")
+    @test endswith(
+        response_partial_path(7, "corrected"), "partial_7.jld2")
 end

@@ -11,11 +11,11 @@ W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitati
 PHC_RUN_DIR=${PHC_RUN_DIR:-/home/public/shajy/codex_runs/phc30_np12_v1_10_v2_2_v3_2_fqahc}
 PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_DIR}/spectrum}
 if [[ -n "${PBS_ARRAY_INDEX:-}" ]]; then
-    PHC_SECTOR_START=$((5 * PBS_ARRAY_INDEX))
-    PHC_SECTOR_END=$((PHC_SECTOR_START + 4))
+    PHC_SECTOR_START=${PBS_ARRAY_INDEX}
+    PHC_SECTOR_END=${PHC_SECTOR_START}
 else
     PHC_SECTOR_START=${PHC_SECTOR_START:-0}
-    PHC_SECTOR_END=${PHC_SECTOR_END:-4}
+    PHC_SECTOR_END=${PHC_SECTOR_END:-${PHC_SECTOR_START}}
 fi
 PHC_NEV=${PHC_NEV:-8}
 PHC_KRYLOVDIM=${PHC_KRYLOVDIM:-60}

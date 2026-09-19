@@ -35,7 +35,7 @@ MANIFOLD_LATTICE == "corrected" ||
 
 function manifold_partial_paths()
     return [joinpath(MANIFOLD_DATA_DIR, "partial_$first.jld2")
-            for first in (0, 5, 10)]
+            for first in 0:14]
 end
 
 function classify_candidate_manifold(

@@ -65,8 +65,9 @@ function response_lattice(convention::AbstractString=RESPONSE_LATTICE)
     throw(ArgumentError("unknown lattice convention: $convention"))
 end
 
-function response_partial_path(sector::Int)
-    first_sector = 5 * div(sector, 5)
+function response_partial_path(
+        sector::Int, convention::AbstractString=RESPONSE_LATTICE)
+    first_sector = convention == "corrected" ? sector : 5 * div(sector, 5)
     return joinpath(RESPONSE_DATA_DIR, "partial_$(first_sector).jld2")
 end
 

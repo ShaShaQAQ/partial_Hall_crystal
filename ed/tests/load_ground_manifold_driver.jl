@@ -13,9 +13,8 @@ using Test
         @test basename(MANIFOLD_RESULT_DIR) ==
               "phc30_np12_v1_10_v2_2_v3_2_fqahc"
         @test manifold_partial_paths() == [
-            joinpath(MANIFOLD_DATA_DIR, "partial_0.jld2"),
-            joinpath(MANIFOLD_DATA_DIR, "partial_5.jld2"),
-            joinpath(MANIFOLD_DATA_DIR, "partial_10.jld2"),
+            joinpath(MANIFOLD_DATA_DIR, "partial_$sector.jld2")
+            for sector in 0:14
         ]
     end
 end
