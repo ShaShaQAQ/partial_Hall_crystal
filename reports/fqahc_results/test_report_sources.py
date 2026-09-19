@@ -28,6 +28,34 @@ class ReportSourceTests(unittest.TestCase):
             self.assertGreater(path.stat().st_size, 10_000)
             self.assertIn(name, text)
 
+    def test_moderate_fqahc_results_are_explained_in_chinese(self):
+        text = SOURCE.read_text()
+        for phrase in (
+            "温和参数的 30-site FQAHC 候选态",
+            "E_{15}-E_1=0.034430068375",
+            "E_{16}-E_{15}=0.560257695317",
+            "15 态等权平均",
+            "不是 DMRG 动力学计算",
+            "response-Lanczos",
+        ):
+            self.assertIn(phrase, text)
+
+    def test_moderate_fqahc_figures_exist_and_are_referenced(self):
+        text = SOURCE.read_text()
+        figures = (
+            "phc30_moderate_manybody_spectrum.png",
+            "phc30_moderate_structure_factor.png",
+            "phc30_moderate_sigma_xx_regular_real.png",
+            "phc30_moderate_sigma_xx_regular_imag.png",
+            "phc30_moderate_sigma_xx_total_real.png",
+            "phc30_moderate_sigma_xx_total_imag.png",
+        )
+        for name in figures:
+            path = REPORT_DIR / "figures" / "optical_response" / name
+            self.assertTrue(path.is_file(), str(path))
+            self.assertGreater(path.stat().st_size, 10_000)
+            self.assertIn(name, text)
+
     def test_latex_environments_are_balanced(self):
         text = SOURCE.read_text()
         tokens = re.findall(r"\\(begin|end)\{([^}]+)\}", text)

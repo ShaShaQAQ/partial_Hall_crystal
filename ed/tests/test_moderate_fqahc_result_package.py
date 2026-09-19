@@ -70,9 +70,9 @@ class ModerateFqahcResultPackageTests(unittest.TestCase):
         for entry in ("Np = 12", "V1 = 10.0", "V2 = 2.0", "V3 = 2.0"):
             self.assertIn(entry, parameters)
 
-    def test_representative_optical_curves_are_traceable(self):
+    def test_full_optical_manifold_is_traceable(self):
         optical_dir = RESULT / "data" / "optical"
-        for sector in (0, 5, 10):
+        for sector in range(15):
             path = optical_dir / f"sector_{sector}_optical_response.dat"
             self.assertTrue(path.is_file(), str(path))
             header = path.read_text().splitlines()[0]
@@ -93,6 +93,19 @@ class ModerateFqahcResultPackageTests(unittest.TestCase):
             self.assertEqual(curve.shape, (5001, 7))
             self.assertTrue(np.all(np.isfinite(curve)))
             np.testing.assert_allclose(curve[:, 0], np.arange(5001) * 0.002)
+
+        average_path = optical_dir / "optical_manifold_average.dat"
+        self.assertTrue(average_path.is_file(), str(average_path))
+        average = np.loadtxt(average_path, comments="#")
+        self.assertEqual(average.shape, (5001, 25))
+        manifest_path = RESULT / "optical_manifest.toml"
+        diagnostics_path = RESULT / "data" / "optical_diagnostics.txt"
+        self.assertTrue(manifest_path.is_file(), str(manifest_path))
+        self.assertTrue(diagnostics_path.is_file(), str(diagnostics_path))
+        manifest = manifest_path.read_text()
+        self.assertEqual(manifest.count("[[responses]]"), 15)
+        self.assertEqual(manifest.count("data_sha256 = "), 15)
+        self.assertEqual(manifest.count("jld2_sha256 = "), 15)
 
 
 if __name__ == "__main__":

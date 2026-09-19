@@ -747,6 +747,142 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
 \end{figure}
 
 \clearpage
+\subsection{温和参数的 30-site FQAHC 候选态}
+
+回到较温和的相互作用参数，计算采用与强耦合结果相同的倾斜 30-site torus：
+\[
+  N_s=30,\qquad N_{\mathrm{uc}}=15,\qquad N_p=12,
+\]
+\[
+  t_1=1,\qquad t_3=0.2,\qquad V_1=10,\qquad V_2=V_3=2.
+\]
+多节点 ED 在 \(k=0,\ldots,14\) 的每个动量 sector 中保存最低 8 个能级和最低态
+波函数，所以完整能谱仍包含 \(15\times8=120\) 个能级。全局基态能量为
+\[
+  E_0=121.990425977706.
+\]
+最低 15 态恰好在每个 sector 中各有一态，其流形宽度以及流形上方的间隔为
+\[
+  E_{15}-E_1=0.034430068375,\qquad
+  E_{16}-E_1=0.594687763692,
+\]
+\[
+  E_{16}-E_{15}=0.560257695317.
+\]
+因此第 15 至 16 态的间隔约为流形内部宽度的 16.3 倍；在这个有限系统上，
+最低 15 态构成清楚隔离的候选低能流形。这里的“FQAHC 候选态”是对
+这种低能流形与下述晶体序的工作命名。\(15=3\times5\) 的态数计数与周期三
+平移破缺和五重分数拓扑简并的乘积相容，但零通量能谱本身还不能证明这种分解或
+分数拓扑性质。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_moderate_manybody_spectrum.png}
+\caption{温和参数点的 30-site 多体 ED 能谱。左图给出 15 个动量 sector 中各自
+最低 8 个能级；右图放大候选低能流形。红点是最低 15 态，蓝灰点是其余保存的
+能级；两条水平线分别标出流形宽度与第 16 态的位置。}
+\label{fig:phc30-moderate-spectrum}
+\end{figure}
+
+保存态的最大本征方程残差为 \(6.55\times10^{-13}\)，15 个波函数的范数均为 1，
+粒子数检验均为 12。大型 \texttt{JLD2} 波函数保存在 W003：
+\begin{center}
+\small\path{/home/public/shajy/codex_runs/phc30_np12_v1_10_v2_2_v3_2_fqahc/spectrum}.
+\end{center}
+Git 结果包不复制这些大型文件，只保存每个远端文件的路径、大小和 SHA256，以及
+能谱、结构因子和光电导的小型文本数据，因此后续计算可以追溯到同一批波函数。
+
+对每个 sector 的最低态计算静态结构因子，再作 15 态等权平均。平均曲线在
+\(q=5,10\) 有两个等高主峰：
+\[
+  \overline{N(q=5)}=\overline{N(q=10)}=1.283963145836,
+\]
+而次高峰为
+\[
+  \overline{N(q=2)}=\overline{N(q=13)}=0.241793403702.
+\]
+不同 sector 的 \(q=5,10\) 主峰高度分布在
+\[
+  0.857196848151\ \text{至}\ 1.754306638659.
+\]
+这说明对称动量本征态之间存在明显的有限尺寸差别，但流形平均仍稳定显示周期三密度序。
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/optical_response/phc30_moderate_structure_factor.png}
+\caption{温和参数点最低 15 态的静态结构因子。彩色细线是各 sector 的最低态，
+黑色粗线是 15 态等权平均；\(q=5,10\) 的双峰给出周期三晶体序。纵轴采用
+原胞归一化 \(1/N_{\mathrm{uc}}\)。}
+\label{fig:phc30-moderate-structure-factor}
+\end{figure}
+
+这 15 个 sector 的最低态随后分别作为 response-Lanczos 的起点。响应参数为
+\[
+  \eta=0.065,\qquad \omega=0:0.002:10,\qquad M=600.
+\]
+每次计算都从 \(QJ_x|g_k\rangle\) 出发，在同一动量 sector 的 Krylov 空间中求
+Kubo resolvent；不显式求出该 sector 的全部激发态。最终对 15 条复电导曲线作
+15 态等权平均，并用灰带表示逐频率的 sector 最小值到最大值。这里的 Lanczos
+只是大 Hilbert 空间中的 ED 响应算法，\textbf{不是 DMRG 动力学计算}。
+
+\clearpage
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_moderate_sigma_xx_regular_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\).}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_moderate_sigma_xx_regular_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{reg}}\).}
+\end{subfigure}
+\par\medskip
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_moderate_sigma_xx_total_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{total}}\).}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_moderate_sigma_xx_total_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\).}
+\end{subfigure}
+\caption{温和参数 FQAHC 候选流形的纵向光电导。每条单-sector 曲线均由
+response-Lanczos ED 独立计算；黑线是 15 态等权平均，灰带给出 sector 间离散。
+四图使用相同的 \(M=600\)、\(\eta=0.065\) 和频率网格。}
+\label{fig:phc30-moderate-optical-response}
+\end{figure}
+
+平均后的 regular 实部最强吸收峰为
+\[
+  \omega=1.942,\qquad
+  \operatorname{Re}\overline{\sigma_{xx}^{\mathrm{reg}}}=7.893014375259.
+\]
+各 sector 在 \(\omega\le4\) 的主峰位置为 \(1.898\)--\(1.968\)，各自峰高为
+\(8.11425\)--\(8.99645\)。平均谱还在
+\(\omega\simeq0.736,0.926,1.370,2.420\) 保留较弱结构，其峰高依次约为
+\(0.2749,0.2909,0.3247,0.3053\)。这些峰只表示均匀电流 \(J_x\) 可耦合的
+same-sector 中性激发及其谱权重；它们不是完整 many-body gap，也不包含其他动量
+sector 中的 optical-dark 激发。
+
+有限 torus 固定 twist 下得到的 Drude 曲率统计为
+\[
+  \overline{D_{xx}}=-1.628931597494,\qquad
+  \operatorname{std}(D_{xx})=0.220228573694,
+\]
+取值范围为 \(-1.796920178225\)--\(-1.126565223663\)。这里的负值是有限尺寸、固定
+twist 处的能量曲率结果，不能直接解释成热力学极限中的负 Drude weight。四幅图中，
+regular 实部是有限频率吸收，regular 虚部是相应的色散响应；total 实部和虚部则在
+regular 部分上加入用同一 \(\eta\) 展宽的 Drude 项。黑线、灰带和三条代表线分别是
+15 态平均、15 sector 极值范围以及 \(k=0,5,10\) 的单-sector 结果。
+
+对 \(k=10\) 将 continued fraction 从 \(M=600\) 截断到 \(M=500\) 后，
+\(\omega\le5\) 区间 regular 电导的缩放最大误差为 \(5.66\times10^{-10}\)，
+所以图中低频主峰已经收敛。全 \(0\)--\(10\) 区间的对应误差为
+\(1.64\times10^{-2}\)，最大差异位于 \(\omega\simeq9.138\)；因此高频弱细峰只作为
+有限 \(M\) 的参考。若要确认该候选态的分数拓扑性质，仍需结合 flux insertion 下
+完整低能流形的谱流、many-body Chern number 或 charge pump，而不能由这些零通量
+能谱、结构因子和纵向光电导单独判定。
+
+\clearpage
 \subsection{可以比较与不能直接比较的内容}
 
 \begin{table}[h]
@@ -772,17 +908,21 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
 可以对照历史图和修正图中谱结构的大致位置，但在使用修正后算符和物理面积重新计算
 历史数据之前，绝对峰高、低频行为和 tensor 标签不能直接作定量比较。
 
-旧 \(4\times6\) FCI 与当前 30-site 强耦合 CDW 的系统尺寸、填充和相互作用参数均不相同，
-因此不能仅根据主峰由 \(4.107\) 变为 \(1.524\) 就判断某个相中的多体 gap 更小。
-两套 \(\sigma_{xx}\) 直接给出的都是各自参数点上 \(q=0\) 的 current-active 中性激发及其
+旧 \(4\times6\) FCI、30-site 强耦合 CDW 和温和参数 FQAHC 候选态的系统尺寸、填充或
+相互作用参数并不全部相同，因此不能仅根据主峰由 \(4.107\) 变为强 CDW 的 \(1.524\)，
+或变为温和参数点的 \(1.942\)，就判断某个相中的完整多体 gap 更小。三套
+\(\sigma_{xx}\) 直接给出的都是各自参数点上 \(q=0\) 的 current-active 中性激发及其
 谱权重。旧 FCI 光谱还承担 exact sum-over-states 与 response-Lanczos 的数值基准作用；
-30-site 结果则展示大 Hilbert 空间中无需全部激发态的 response-Lanczos ED 计算。
+两组 30-site 结果则展示大 Hilbert 空间中无需全部激发态的 response-Lanczos ED 计算。
 
-本节新增的结构因子与光电导使用同一个 \(V_1=100,V_2=V_3=0\) 参数点，并由
-同一组三重 ED 基态得到，因此可以用 \(q=5,10\) 的 Bragg 峰确认三周期 CDW。
-光电导峰仍只表示 \(q=0\)、同 sector 且电流矩阵元非零的中性激发；它不能单独
-确定 many-body Chern number、分数量子化 Hall 响应、任意子性质或 phason。
-这些问题还需要 flux insertion/charge pump、完整低能流形和尺寸标度联合判断。
+强耦合参数点的结构因子和光电导由同一组三重 CDW 基态得到；温和参数点则由隔离的
+15 态流形逐 sector 计算后平均。两点都在 \(q=5,10\) 显示周期三晶体序，但光谱结构
+并非简单地只相差一个峰：强 CDW 的主要峰在 \(1.524\) 和 \(2.248\)，温和参数点的
+平均主峰在 \(1.942\)，并在 \(0.736,0.926,1.370\) 一带具有较弱、sector-dependent
+权重。由于相互作用参数不同，这里只能比较 current-active 谱结构；不能仅凭峰位或
+峰数判断拓扑。光电导也不能单独确定 many-body Chern number、分数量子化 Hall 响应、
+任意子性质或 phason。这些问题还需要 flux insertion/charge pump、完整低能流形和
+尺寸标度联合判断。
 
 \section{待完成检查}
 
