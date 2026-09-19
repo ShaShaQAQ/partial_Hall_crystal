@@ -99,6 +99,39 @@ class RepositoryLayoutTests(unittest.TestCase):
             "compute_cdw_structure_factor.jl", structure_job.read_text()
         )
 
+    def test_w003_moderate_fqahc_workflow_is_isolated(self):
+        submit_dir = (
+            ROOT / "ed" / "cases" / "case3_30sites_Np12" / "submit"
+        )
+        jobs = {
+            "spectrum": submit_dir / "run_spectrum_w003.pbs",
+            "analysis": submit_dir / "analyze_moderate_fqahc_w003.pbs",
+            "optical": submit_dir / "run_moderate_optical_w003.pbs",
+        }
+        for path in jobs.values():
+            self.assertTrue(path.is_file())
+            text = path.read_text()
+            self.assertIn("#PBS -q short", text)
+            self.assertIn("select=1:ncpus=24:mem=90gb", text)
+            self.assertIn("phc30_np12_v1_10_v2_2_v3_2_fqahc", text)
+
+        spectrum = jobs["spectrum"].read_text()
+        self.assertIn("run_spectrum.jl", spectrum)
+        self.assertIn("--lattice corrected", spectrum)
+        self.assertIn("--V1 10.0", spectrum)
+        self.assertIn("--V2 2.0", spectrum)
+        self.assertIn("--V3 2.0", spectrum)
+
+        analysis = jobs["analysis"].read_text()
+        self.assertIn("analyze_ground_manifold.jl", analysis)
+
+        optical = jobs["optical"].read_text()
+        self.assertIn("run_optical_response.jl", optical)
+        self.assertIn("--lattice corrected", optical)
+        self.assertIn("--V1 10.0", optical)
+        self.assertIn("--V2 2.0", optical)
+        self.assertIn("--V3 2.0", optical)
+
 
 if __name__ == "__main__":
     unittest.main()
