@@ -11,7 +11,12 @@ W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitati
 PHC_RUN_DIR=${PHC_RUN_DIR:-/home/public/shajy/codex_runs/phc30_np12_v1_10_v2_2_v3_2_fqahc}
 PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_DIR}/spectrum}
 PHC_OUTPUT_DIR=${PHC_OUTPUT_DIR:-${PHC_RUN_DIR}/optical}
-PHC_SECTOR=${PHC_SECTOR:-5}
+if [[ -n "${PBS_ARRAY_INDEX:-}" ]]; then
+    array_sectors=(5 10 0)
+    PHC_SECTOR=${array_sectors[PBS_ARRAY_INDEX]}
+else
+    PHC_SECTOR=${PHC_SECTOR:-5}
+fi
 PHC_MMAX=${PHC_MMAX:-600}
 PHC_PREFLIGHT=${PHC_PREFLIGHT:-0}
 JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}

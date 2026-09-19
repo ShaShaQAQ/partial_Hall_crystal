@@ -117,6 +117,8 @@ class RepositoryLayoutTests(unittest.TestCase):
 
         spectrum = jobs["spectrum"].read_text()
         self.assertIn("run_spectrum.jl", spectrum)
+        self.assertIn("PBS_ARRAY_INDEX", spectrum)
+        self.assertIn("5 * PBS_ARRAY_INDEX", spectrum)
         self.assertIn("--lattice corrected", spectrum)
         self.assertIn("--V1 10.0", spectrum)
         self.assertIn("--V2 2.0", spectrum)
@@ -127,6 +129,8 @@ class RepositoryLayoutTests(unittest.TestCase):
 
         optical = jobs["optical"].read_text()
         self.assertIn("run_optical_response.jl", optical)
+        self.assertIn("PBS_ARRAY_INDEX", optical)
+        self.assertIn("array_sectors=(5 10 0)", optical)
         self.assertIn("--lattice corrected", optical)
         self.assertIn("--V1 10.0", optical)
         self.assertIn("--V2 2.0", optical)

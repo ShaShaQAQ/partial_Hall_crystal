@@ -10,8 +10,13 @@ set -euo pipefail
 W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitations}
 PHC_RUN_DIR=${PHC_RUN_DIR:-/home/public/shajy/codex_runs/phc30_np12_v1_10_v2_2_v3_2_fqahc}
 PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_DIR}/spectrum}
-PHC_SECTOR_START=${PHC_SECTOR_START:-0}
-PHC_SECTOR_END=${PHC_SECTOR_END:-4}
+if [[ -n "${PBS_ARRAY_INDEX:-}" ]]; then
+    PHC_SECTOR_START=$((5 * PBS_ARRAY_INDEX))
+    PHC_SECTOR_END=$((PHC_SECTOR_START + 4))
+else
+    PHC_SECTOR_START=${PHC_SECTOR_START:-0}
+    PHC_SECTOR_END=${PHC_SECTOR_END:-4}
+fi
 PHC_NEV=${PHC_NEV:-8}
 PHC_KRYLOVDIM=${PHC_KRYLOVDIM:-60}
 JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}
