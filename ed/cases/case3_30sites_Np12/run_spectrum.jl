@@ -5,6 +5,7 @@ include("../../shared/hoppings.jl")
 include("../../shared/basis.jl")
 include("../../shared/ksector.jl")
 include("../../shared/hamiltonian.jl")
+include("../../shared/optical_response.jl")
 include("../../shared/solver.jl")
 
 using Dates
@@ -24,7 +25,8 @@ end
 const SPECTRUM_SECTOR_START = parse(
     Int, parse_spectrum_argument("--sector-start", "0"))
 const SPECTRUM_SECTOR_END = parse(
-    Int, parse_spectrum_argument("--sector-end", "14"))
+    Int, parse_spectrum_argument(
+        "--sector-end", string(SPECTRUM_SECTOR_START)))
 const SPECTRUM_OUTPUT_DIR = parse_spectrum_argument(
     "--output-dir", joinpath(@__DIR__, "output"))
 const SPECTRUM_LATTICE = parse_spectrum_argument(
@@ -51,6 +53,8 @@ const SPECTRUM_SEED = parse(
 
 0 <= SPECTRUM_SECTOR_START <= SPECTRUM_SECTOR_END <= 14 ||
     error("sector range must satisfy 0 <= start <= end <= 14")
+SPECTRUM_SECTOR_END == SPECTRUM_SECTOR_START ||
+    error("30-site corrected spectrum jobs must contain one sector")
 SPECTRUM_LATTICE in ("corrected", "legacy") ||
     error("lattice must be corrected or legacy")
 SPECTRUM_NP == 12 || error("this 30-site workflow expects Np=12")
@@ -69,6 +73,9 @@ function spectrum_partial_path(
     return joinpath(
         SPECTRUM_OUTPUT_DIR, "partial_$(first_sector).jld2")
 end
+
+spectrum_lanczos_matrix(matrix::SparseMatrixCSC{ComplexF64,I}) where {I<:Integer} =
+    threaded_csr(matrix)
 
 function run_large_spectrum()
     n_local = SPECTRUM_SECTOR_END - SPECTRUM_SECTOR_START + 1
@@ -126,10 +133,19 @@ function run_large_spectrum()
     @printf("    pipeline=%.2f s RSS=%.2f GB\n",
             pipeline_time, mem_rss_gb())
 
-    println("[4] solving lowest eigenpairs")
+    println("[4] converting sparse Hamiltonian to threaded CSR")
+    conversion_time = @elapsed lanczos_matrices = [
+        spectrum_lanczos_matrix(matrix) for matrix in hamiltonians
+    ]
+    empty!(hamiltonians)
+    GC.gc()
+    @printf("    conversion=%.2f s RSS=%.2f GB\n",
+            conversion_time, mem_rss_gb())
+
+    println("[5] solving lowest eigenpairs")
     solve_time = @elapsed eigenvalues, ground_states =
         lanczos_sparse_sectors(
-            sectors, hamiltonians;
+            sectors, lanczos_matrices;
             nev=SPECTRUM_NEV,
             krylovdim=SPECTRUM_KRYLOVDIM,
             verbose=true)
@@ -144,7 +160,7 @@ function run_large_spectrum()
         energy = minimum(energies)
         state = ground_states[momentum]
         product = similar(state)
-        mul!(product, hamiltonians[index], state)
+        mul!(product, lanczos_matrices[index], state)
         residuals[momentum] = norm(product .- energy .* state)
         sector_ground_energies[momentum] = energy
         @printf("    k=%2d E0=%.12f residual=%.3e norm=%.12f\n",
@@ -154,7 +170,7 @@ function run_large_spectrum()
     end
     @printf("    solve=%.2f s\n", solve_time)
 
-    println("[5] saving states")
+    println("[6] saving states")
     mkpath(SPECTRUM_OUTPUT_DIR)
     output_path = spectrum_partial_path()
     jldsave(

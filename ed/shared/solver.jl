@@ -256,7 +256,7 @@ secs 只需保留 .m 和 .reps（orbit_data/fock2rep 可已清空）。
 """
 function lanczos_sparse_sectors(
         secs::Vector{KSector},
-        H_csrs::Vector{SparseMatrixCSC{ComplexF64,Int32}};
+        H_csrs::AbstractVector;
         nev::Int=4, krylovdim::Int=60, verbose::Bool=false)
 
     n  = length(secs)
