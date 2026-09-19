@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 
@@ -8,6 +9,21 @@ SOURCE = REPORT_DIR / "dmrg_summary.tex"
 
 
 class ReportSourceTests(unittest.TestCase):
+    def test_compiled_note_pdf_is_present(self):
+        pdf = REPORT_DIR / "dmrg_summary.pdf"
+        self.assertTrue(pdf.is_file())
+        self.assertGreater(pdf.stat().st_size, 1_000_000)
+
+    def test_compiled_note_pdf_is_not_ignored(self):
+        repository = REPORT_DIR.parents[1]
+        relative_pdf = (REPORT_DIR / "dmrg_summary.pdf").relative_to(repository)
+        process = subprocess.run(
+            ["git", "check-ignore", "--quiet", str(relative_pdf)],
+            cwd=str(repository),
+            check=False,
+        )
+        self.assertEqual(process.returncode, 1)
+
     def test_cdw_section_uses_three_ground_states(self):
         text = SOURCE.read_text()
         self.assertIn(r"\(k=0,5,10\) 的三重 CDW 基态", text)

@@ -58,3 +58,4 @@ reports/fqahc_results/*.run.xml
 reports/fqahc_results/*.synctex.gz
 reports/fqahc_results/*.toc
 reports/fqahc_results/*.pdf
+!reports/fqahc_results/dmrg_summary.pdf
