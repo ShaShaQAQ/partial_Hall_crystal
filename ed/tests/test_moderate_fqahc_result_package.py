@@ -70,6 +70,30 @@ class ModerateFqahcResultPackageTests(unittest.TestCase):
         for entry in ("Np = 12", "V1 = 10.0", "V2 = 2.0", "V3 = 2.0"):
             self.assertIn(entry, parameters)
 
+    def test_representative_optical_curves_are_traceable(self):
+        optical_dir = RESULT / "data" / "optical"
+        for sector in (0, 5, 10):
+            path = optical_dir / f"sector_{sector}_optical_response.dat"
+            self.assertTrue(path.is_file(), str(path))
+            header = path.read_text().splitlines()[0]
+            for field in (
+                f"sector={sector}",
+                "Np=12",
+                "t1=1.0",
+                "t3=0.2",
+                "V1=10.0",
+                "V2=2.0",
+                "V3=2.0",
+                "requested_mmax=600",
+                "lanczos_steps=600",
+                "lanczos_breakdown=false",
+            ):
+                self.assertIn(field, header)
+            curve = np.loadtxt(path, comments="#")
+            self.assertEqual(curve.shape, (5001, 7))
+            self.assertTrue(np.all(np.isfinite(curve)))
+            np.testing.assert_allclose(curve[:, 0], np.arange(5001) * 0.002)
+
 
 if __name__ == "__main__":
     unittest.main()

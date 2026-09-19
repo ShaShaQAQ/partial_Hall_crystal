@@ -107,6 +107,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "spectrum": submit_dir / "run_spectrum_w003.pbs",
             "analysis": submit_dir / "analyze_moderate_fqahc_w003.pbs",
             "optical": submit_dir / "run_moderate_optical_w003.pbs",
+            "optical_all": submit_dir / "run_moderate_optical_all_w003.pbs",
         }
         for path in jobs.values():
             self.assertTrue(path.is_file())
@@ -137,6 +138,15 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("--V1 10.0", optical)
         self.assertIn("--V2 2.0", optical)
         self.assertIn("--V3 2.0", optical)
+
+        optical_all = jobs["optical_all"].read_text()
+        self.assertIn("run_optical_response.jl", optical_all)
+        self.assertIn("PHC_SECTOR=${PBS_ARRAY_INDEX}", optical_all)
+        self.assertNotIn("PHC_SECTOR=${PHC_SECTOR:-", optical_all)
+        self.assertIn("--lattice corrected", optical_all)
+        self.assertIn("--V1 10.0", optical_all)
+        self.assertIn("--V2 2.0", optical_all)
+        self.assertIn("--V3 2.0", optical_all)
 
 
 if __name__ == "__main__":
