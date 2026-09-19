@@ -747,7 +747,7 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
 \end{figure}
 
 \clearpage
-\subsection{温和参数的 30-site FQAHC 候选态}
+\subsection{温和参数的 30-site CDW 态}
 
 回到较温和的相互作用参数，计算采用与强耦合结果相同的倾斜 30-site torus：
 \[
@@ -770,16 +770,17 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
   E_{16}-E_{15}=0.560257695317.
 \]
 因此第 15 至 16 态的间隔约为流形内部宽度的 16.3 倍；在这个有限系统上，
-最低 15 态构成清楚隔离的候选低能流形。这里的“FQAHC 候选态”是对
-这种低能流形与下述晶体序的工作命名。\(15=3\times5\) 的态数计数与周期三
-平移破缺和五重分数拓扑简并的乘积相容，但零通量能谱本身还不能证明这种分解或
-分数拓扑性质。
+最低 15 态构成清楚隔离的低能流形。最低的 \(k=10\) 与 \(k=5\) 两态在保存精度内
+简并；下一对 \(k=12,3\) 位于 \(E-E_0=0.009268092715\)，其余低能态一直分布到
+\(E-E_0=0.034430068375\)。因此这 15 态不能解释为 15 重简并基态，更不能仅由
+态数推出分数拓扑简并。结合下述 \(q=5,10\) Bragg 峰，本参数点归类为 CDW；
+这 15 态应称为隔离的 CDW 低能流形。
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_moderate_manybody_spectrum.png}
 \caption{温和参数点的 30-site 多体 ED 能谱。左图给出 15 个动量 sector 中各自
-最低 8 个能级；右图放大候选低能流形。红点是最低 15 态，蓝灰点是其余保存的
+最低 8 个能级；右图放大 CDW 低能流形。红点是最低 15 态，蓝灰点是其余保存的
 能级；两条水平线分别标出流形宽度与第 16 态的位置。}
 \label{fig:phc30-moderate-spectrum}
 \end{figure}
@@ -789,6 +790,8 @@ exact-spectrum 对照。低频处展宽后 total 贡献为负，来自表中有�
 \begin{center}
 \small\path{/home/public/shajy/codex_runs/phc30_np12_v1_10_v2_2_v3_2_fqahc/spectrum}.
 \end{center}
+其中目录名末尾的 \texttt{fqahc} 是计算开始时留下的历史存储标识，不代表本节最终的
+相分类。
 Git 结果包不复制这些大型文件，只保存每个远端文件的路径、大小和 SHA256，以及
 能谱、结构因子和光电导的小型文本数据，因此后续计算可以追溯到同一批波函数。
 
@@ -810,7 +813,7 @@ Git 结果包不复制这些大型文件，只保存每个远端文件的路径�
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.82\linewidth]{figures/optical_response/phc30_moderate_structure_factor.png}
-\caption{温和参数点最低 15 态的静态结构因子。彩色细线是各 sector 的最低态，
+\caption{温和参数 CDW 低能流形中 15 态的静态结构因子。彩色细线是各 sector 的最低态，
 黑色粗线是 15 态等权平均；\(q=5,10\) 的双峰给出周期三晶体序。纵轴采用
 原胞归一化 \(1/N_{\mathrm{uc}}\)。}
 \label{fig:phc30-moderate-structure-factor}
@@ -845,7 +848,7 @@ Kubo resolvent；不显式求出该 sector 的全部激发态。最终对 15 条
   \includegraphics[width=\linewidth]{figures/optical_response/phc30_moderate_sigma_xx_total_imag.png}
   \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\).}
 \end{subfigure}
-\caption{温和参数 FQAHC 候选流形的纵向光电导。每条单-sector 曲线均由
+\caption{温和参数 CDW 低能流形的纵向光电导。每条单-sector 曲线均由
 response-Lanczos ED 独立计算；黑线是 15 态等权平均，灰带给出 sector 间离散。
 四图使用相同的 \(M=600\)、\(\eta=0.065\) 和频率网格。}
 \label{fig:phc30-moderate-optical-response}
@@ -878,9 +881,8 @@ regular 部分上加入用同一 \(\eta\) 展宽的 Drude 项。黑线、灰带�
 \(\omega\le5\) 区间 regular 电导的缩放最大误差为 \(5.66\times10^{-10}\)，
 所以图中低频主峰已经收敛。全 \(0\)--\(10\) 区间的对应误差为
 \(1.64\times10^{-2}\)，最大差异位于 \(\omega\simeq9.138\)；因此高频弱细峰只作为
-有限 \(M\) 的参考。若要确认该候选态的分数拓扑性质，仍需结合 flux insertion 下
-完整低能流形的谱流、many-body Chern number 或 charge pump，而不能由这些零通量
-能谱、结构因子和纵向光电导单独判定。
+有限 \(M\) 的参考。本节的能谱、结构因子和光电导共同描述温和参数 CDW 及其中
+current-active 中性激发，不再将该参数点解释为 FQAHC。
 
 \clearpage
 \subsection{可以比较与不能直接比较的内容}
@@ -908,7 +910,7 @@ regular 部分上加入用同一 \(\eta\) 展宽的 Drude 项。黑线、灰带�
 可以对照历史图和修正图中谱结构的大致位置，但在使用修正后算符和物理面积重新计算
 历史数据之前，绝对峰高、低频行为和 tensor 标签不能直接作定量比较。
 
-旧 \(4\times6\) FCI、30-site 强耦合 CDW 和温和参数 FQAHC 候选态的系统尺寸、填充或
+旧 \(4\times6\) FCI、30-site 强耦合 CDW 和温和参数 CDW 的系统尺寸、填充或
 相互作用参数并不全部相同，因此不能仅根据主峰由 \(4.107\) 变为强 CDW 的 \(1.524\)，
 或变为温和参数点的 \(1.942\)，就判断某个相中的完整多体 gap 更小。三套
 \(\sigma_{xx}\) 直接给出的都是各自参数点上 \(q=0\) 的 current-active 中性激发及其

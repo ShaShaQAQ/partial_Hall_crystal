@@ -7,6 +7,7 @@ import numpy as np
 
 
 REPORT_DIR = Path(__file__).resolve().parent
+PLOT_SOURCE = REPORT_DIR / "plot_phc30_moderate_fqahc.py"
 sys.path.insert(0, str(REPORT_DIR))
 
 from plot_phc30_moderate_fqahc import (  # noqa: E402
@@ -19,6 +20,12 @@ from plot_phc30_moderate_fqahc import (  # noqa: E402
 
 
 class ModerateFqahcPlotTests(unittest.TestCase):
+    def test_plot_labels_moderate_manifold_as_cdw(self):
+        text = PLOT_SOURCE.read_text()
+        self.assertIn("CDW 低能流形放大", text)
+        self.assertNotIn("候选基态流形低能放大", text)
+        self.assertNotIn("moderate-coupling FQAHC candidate", text)
+
     def write_synthetic_result(self, directory):
         spectrum_path = directory / "spectrum.dat"
         spectrum_lines = ["# k E-E0"]
