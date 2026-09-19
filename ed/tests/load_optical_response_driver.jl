@@ -47,5 +47,9 @@ end
         @test saved["V3"] == 2.0
         @test saved["requested_mmax"] == 600
         @test saved["lanczos_steps"] == 2
+        @test !saved["lanczos_breakdown"]
+        header = first(readlines(replace(output_path, ".jld2" => ".dat")))
+        @test occursin("drude_weight=0.25", header)
+        @test occursin("lanczos_breakdown=false", header)
     end
 end

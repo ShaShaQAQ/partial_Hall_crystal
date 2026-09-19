@@ -156,6 +156,7 @@ function save_response_curve(
     V2 = model_parameters.V2
     V3 = model_parameters.V3
     lanczos_steps = length(kernel.alpha)
+    lanczos_breakdown = kernel.breakdown
     jldsave(
         path;
         sector,
@@ -167,6 +168,7 @@ function save_response_curve(
         V3,
         requested_mmax,
         lanczos_steps,
+        lanczos_breakdown,
         ground_energy,
         residual,
         diamagnetic_expectation,
@@ -191,7 +193,9 @@ function save_response_curve(
                 "Kexp=$diamagnetic_expectation source_norm2=$source_norm2 " *
                 "lattice=$lattice_convention Np=$Np t1=$t1 t3=$t3 " *
                 "V1=$V1 V2=$V2 V3=$V3 requested_mmax=$requested_mmax " *
-                "lanczos_steps=$lanczos_steps residual=$residual")
+                "lanczos_steps=$lanczos_steps " *
+                "lanczos_breakdown=$lanczos_breakdown residual=$residual " *
+                "drude_weight=$(curve.drude_weight)")
         println(output,
                 "# omega Re_total Im_total Re_regular Im_regular " *
                 "Re_drude Im_drude")
