@@ -44,6 +44,8 @@ const RESPONSE_V2 = parse(
     Float64, parse_response_argument("--V2", "0.0"))
 const RESPONSE_V3 = parse(
     Float64, parse_response_argument("--V3", "0.0"))
+const RESPONSE_LATTICE = parse_response_argument(
+    "--lattice", "legacy")
 const RESPONSE_DATA_DIR = parse_response_argument(
     "--data-dir", joinpath(@__DIR__, "output"))
 const RESPONSE_OUT_DIR = parse_response_argument(
@@ -54,6 +56,14 @@ const RESPONSE_PREFLIGHT =
 0 <= RESPONSE_SECTOR <= 14 || error("sector must be in 0:14")
 RESPONSE_MMAX > 0 || error("mmax must be positive")
 RESPONSE_OMEGA_STEP > 0 || error("omega step must be positive")
+RESPONSE_LATTICE in ("legacy", "corrected") ||
+    error("lattice must be legacy or corrected")
+
+function response_lattice(convention::AbstractString=RESPONSE_LATTICE)
+    convention == "legacy" && return LegacyTiltedLat30()
+    convention == "corrected" && return TiltedLat30()
+    throw(ArgumentError("unknown lattice convention: $convention"))
+end
 
 function response_partial_path(sector::Int)
     first_sector = 5 * div(sector, 5)
@@ -81,6 +91,11 @@ function load_response_ground_state(sector::Int)
     )
     saved_parameters == requested_parameters ||
         error("CLI parameters do not match saved data: $saved_parameters")
+    saved_lattice = haskey(data, "lattice_convention") ?
+        String(data["lattice_convention"]) : "legacy"
+    saved_lattice == RESPONSE_LATTICE || error(
+        "saved lattice $saved_lattice does not match requested " *
+        RESPONSE_LATTICE)
 
     ground_states = data["gs_vecs"]
     haskey(ground_states, sector) ||
@@ -91,7 +106,8 @@ function load_response_ground_state(sector::Int)
     isempty(sector_energies) &&
         error("no energy for sector $sector in $path")
     return (state=ComplexF64.(ground_states[sector]),
-            energy=minimum(sector_energies), path=path)
+            energy=minimum(sector_energies), path=path,
+            lattice_convention=saved_lattice)
 end
 
 function apply_response_operator(
@@ -124,9 +140,11 @@ function save_response_curve(
         eta,
         frequencies,
         curve,
-        kernel)
+        kernel,
+        lattice_convention)
     operator_convention =
-        "legacy TiltedLat30 Fourier mesh; H_A(k)=H(k+A_x*xhat); " *
+        "$lattice_convention TiltedLat30 Fourier mesh; " *
+        "H_A(k)=H(k+A_x*xhat); " *
         "Jx=dH/dA_x; Kxx=d2H/dA_x2"
     jldsave(
         path;
@@ -144,6 +162,7 @@ function save_response_curve(
         total=curve.total,
         regular=curve.regular,
         drude=curve.drude,
+        lattice_convention,
         operator_convention,
     )
 
@@ -151,7 +170,8 @@ function save_response_curve(
     open(data_path, "w") do output
         println(output,
                 "# sector=$sector Eg=$ground_energy eta=$eta area=$area " *
-                "Kexp=$diamagnetic_expectation source_norm2=$source_norm2")
+                "Kexp=$diamagnetic_expectation source_norm2=$source_norm2 " *
+                "lattice=$lattice_convention")
         println(output,
                 "# omega Re_total Im_total Re_regular Im_regular " *
                 "Re_drude Im_drude")
@@ -172,6 +192,7 @@ function run_large_optical_response()
     println("start: ", now())
     println("parameters: t1=$RESPONSE_T1 t3=$RESPONSE_T3 " *
             "V1=$RESPONSE_V1 V2=$RESPONSE_V2 V3=$RESPONSE_V3")
+    println("lattice: $RESPONSE_LATTICE")
     println("response: M=$RESPONSE_MMAX eta=$RESPONSE_ETA " *
             "omega=0:$RESPONSE_OMEGA_STEP:$RESPONSE_OMEGA_MAX")
     flush(stdout)
@@ -179,9 +200,7 @@ function run_large_optical_response()
     saved = load_response_ground_state(RESPONSE_SECTOR)
     ground_state = saved.state
     ground_energy = saved.energy
-    # The saved April 2026 states were diagonalized with this historical
-    # Fourier mesh. Mixing them with the corrected mesh gives an O(10) residual.
-    lattice = LegacyTiltedLat30()
+    lattice = response_lattice()
     println("[1] lattice: Ns=$(lattice.Ns) Nuc=$(lattice.Nuc) " *
             "source=$(saved.path)")
     println("[2] generating C($(lattice.Ns),12) basis")
@@ -287,7 +306,7 @@ function run_large_optical_response()
     save_response_curve(
         output_path, RESPONSE_SECTOR, ground_energy, residual,
         diamagnetic_expectation, source_norm2, area, RESPONSE_ETA,
-        frequencies, curve, kernel)
+        frequencies, curve, kernel, RESPONSE_LATTICE)
     println("[8] saved: $output_path")
     println("done: ", now())
     return output_path
