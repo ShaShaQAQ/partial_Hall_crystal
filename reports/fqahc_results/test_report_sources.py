@@ -28,26 +28,30 @@ class ReportSourceTests(unittest.TestCase):
             self.assertGreater(path.stat().st_size, 10_000)
             self.assertIn(name, text)
 
-    def test_moderate_cdw_results_are_explained_in_chinese(self):
+    def test_moderate_fqahc_candidate_is_explained_in_chinese(self):
         text = SOURCE.read_text()
         for phrase in (
-            "温和参数的 30-site CDW 态",
+            "温和参数的 30-site FQAHC 候选态",
             "E_{15}-E_1=0.034430068375",
             "E_{16}-E_{15}=0.560257695317",
+            r"15=3\times5",
+            "隔离的 15 态准简并低能流形",
+            "五重拓扑部分",
+            "flux insertion",
+            "many-body Chern number",
             "15 态等权平均",
-            "归类为 CDW",
             "不是 DMRG 动力学计算",
             "response-Lanczos",
         ):
             self.assertIn(phrase, text)
         for rejected in (
-            "FQAHC 候选态",
-            "五重分数拓扑简并",
-            r"15=3\times5",
+            "温和参数的 30-site CDW 态",
+            "本参数点归类为 CDW",
+            "不再将该参数点解释为 FQAHC",
         ):
             self.assertNotIn(rejected, text)
 
-    def test_moderate_cdw_figures_exist_and_are_referenced(self):
+    def test_moderate_fqahc_figures_exist_and_are_referenced(self):
         text = SOURCE.read_text()
         figures = (
             "phc30_moderate_manybody_spectrum.png",

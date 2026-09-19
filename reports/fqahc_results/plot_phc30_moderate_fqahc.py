@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot and summarize the 30-site moderate-coupling CDW manifold."""
+"""Plot and summarize the 30-site moderate-coupling FQAHC candidate."""
 
 import argparse
 import os
@@ -198,7 +198,7 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
             spectrum_file, summary["width"] + 1e-12
         ),
         "set ylabel ''; set yrange [{}:{}];".format(-0.005 * zoom_top, zoom_top),
-        "set title 'CDW 低能流形放大'; set key center right;",
+        "set title '3x5 候选低能流形放大'; set key center right;",
         "set arrow 1 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 2 lw 1.5 lc rgb '#c43b3b';".format(summary["width"]),
         "set arrow 2 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 3 lw 1.5 lc rgb '#2b6ca3';".format(summary["next_energy"]),
         "set label 1 '最低态所在扇区：{}' at graph 0.03,0.94 front;".format(selected_sectors),
