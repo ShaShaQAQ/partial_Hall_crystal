@@ -269,7 +269,7 @@ function lanczos_sparse_sectors(
     all_res  = Vector{Vector{Tuple{Int,Float64}}}(undef, n)
     all_vecs = Vector{Vector{ComplexF64}}(undef, n)
 
-    t_solve = @elapsed Threads.@threads for i in 1:n
+    function solve_one_sector(i)
         sec  = secs[i]
         H    = H_csrs[i]
         Nrep = length(sec.reps)
@@ -277,7 +277,7 @@ function lanczos_sparse_sectors(
         if Nrep == 0
             all_res[i]  = Tuple{Int,Float64}[]
             all_vecs[i] = ComplexF64[]
-            continue
+            return nothing
         end
 
         nev_actual = min(nev, Nrep)
@@ -314,6 +314,15 @@ function lanczos_sparse_sectors(
         n_vals = min(nev_actual, length(vals))
         all_res[i]  = [(sec.m, e) for e in sort(real.(vals[1:n_vals]))]
         all_vecs[i] = isempty(vecs) ? ComplexF64[] : vecs[1]
+        return nothing
+    end
+
+    t_solve = @elapsed if n == 1
+        solve_one_sector(1)
+    else
+        Threads.@threads for i in 1:n
+            solve_one_sector(i)
+        end
     end
 
     @printf("  [CSR-B] Lanczos 完成  耗时 %.1f s (%.2f min)\n",

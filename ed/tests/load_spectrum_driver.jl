@@ -29,3 +29,20 @@ using SparseArrays
         end
     end
 end
+
+@testset "single-sector threaded spectrum Lanczos" begin
+    lattice = RectLat4x6()
+    sector = build_ksector(gen_basis(lattice.Ns, 2), lattice, 0)
+    matrix = build_sparse_H(
+        sector, lattice, build_hops(lattice, 1.0, 0.2, 0.0),
+        1.0, 0.0, 0.0)
+    threaded = spectrum_lanczos_matrix(matrix)
+    levels, states = lanczos_sparse_sectors(
+        [sector], [threaded]; nev=2, krylovdim=10)
+    @test length(levels) == 2
+    @test haskey(states, 0)
+    @test norm(states[0]) ≈ 1.0 atol=1e-12
+    product = similar(states[0])
+    mul!(product, threaded, states[0])
+    @test norm(product .- levels[1][2] .* states[0]) < 1e-8
+end
