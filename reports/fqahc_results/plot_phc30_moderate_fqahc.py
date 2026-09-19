@@ -2,6 +2,7 @@
 """Plot and summarize the 30-site moderate-coupling FQAHC candidate."""
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -89,6 +90,47 @@ def load_optical_curve(path):
     return data
 
 
+def write_optical_manifold_average(optical_paths, output_path):
+    """Write mean, standard deviation, minimum, and maximum over 15 sectors."""
+    expected = set(range(15))
+    if set(optical_paths) != expected:
+        raise ValueError("optical average requires sectors 0 through 14")
+    curves = [load_optical_curve(optical_paths[sector]) for sector in range(15)]
+    frequencies = curves[0][:, 0]
+    for sector, curve in enumerate(curves[1:], start=1):
+        if not np.array_equal(curve[:, 0], frequencies):
+            raise ValueError(
+                "optical sector {} uses a different frequency mesh".format(sector)
+            )
+    components = np.stack([curve[:, 1:7] for curve in curves])
+    statistics = np.column_stack(
+        (
+            frequencies,
+            components.mean(axis=0),
+            components.std(axis=0),
+            components.min(axis=0),
+            components.max(axis=0),
+        )
+    )
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    component_names = (
+        "Re_total", "Im_total", "Re_regular", "Im_regular",
+        "Re_drude", "Im_drude",
+    )
+    columns = ["omega"]
+    for statistic in ("mean", "std", "min", "max"):
+        columns.extend("{}_{}".format(statistic, name) for name in component_names)
+    np.savetxt(
+        str(output_path), statistics, fmt="%.16g",
+        header=(
+            "15 态等权光电导统计量；"
+            "eta=0.065 M=600\n" + " ".join(columns)
+        ),
+    )
+    return statistics
+
+
 def load_spectrum(path):
     """Load the complete eight-level, fifteen-sector spectrum."""
     rows = np.loadtxt(str(path), comments="#", dtype=float)
@@ -115,14 +157,11 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     spectrum = load_spectrum(spectrum_path)
     load_structure_factor(structure_path)
-    optical_curves = {
-        sector: load_optical_curve(optical_paths[sector])
-        for sector in (0, 5, 10)
-    }
-    reference_frequencies = optical_curves[0][:, 0]
-    for sector in (5, 10):
-        if not np.array_equal(optical_curves[sector][:, 0], reference_frequencies):
-            raise ValueError("optical sectors use different frequency meshes")
+    average_path = (
+        Path(optical_paths[0]).parent / "optical_manifold_average.dat"
+    )
+    statistics = write_optical_manifold_average(optical_paths, average_path)
+    reference_frequencies = statistics[:, 0]
 
     outputs = {
         "spectrum": output_dir / "phc30_moderate_manybody_spectrum.png",
@@ -145,35 +184,35 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
 
     lines = [
         "set datafile commentschars '#';",
-        "set term pngcairo size 1800,760 enhanced font 'sans,14';",
+        "set term pngcairo size 1800,760 enhanced font 'Noto Sans SC,14';",
         "set border linewidth 1.2; set grid ytics lc rgb '#d8d8d8' lw 1;",
         "set key opaque box top left;",
         "set output {};".format(_gnuplot_quote(outputs["spectrum"])),
         "set multiplot layout 1,2 title "
-        "'Tilted 30-site ED: Np=12, t1=1, t3=0.2, V1=10, V2=V3=2';",
-        "set xlabel 'momentum sector k'; set ylabel 'E-E0';",
+        "'倾斜 30-site ED：Np=12，t1=1，t3=0.2，V1=10，V2=V3=2';",
+        "set xlabel '动量扇区 k'; set ylabel 'E-E0';",
         "set xrange [-0.5:14.5]; set xtics 0,1,14; set yrange [-0.02:{}];".format(spectrum_top),
-        "set title 'eight saved levels per sector';",
-        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title 'lowest 15 states', "
-        "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title 'higher saved levels';".format(
+        "set title '每个动量扇区保存的 8 个能级';",
+        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 15 态', "
+        "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title '保存的高能态';".format(
             spectrum_file, summary["width"] + 1e-12
         ),
         "set ylabel ''; set yrange [{}:{}];".format(-0.005 * zoom_top, zoom_top),
-        "set title 'candidate-manifold zoom'; set key center right;",
+        "set title '候选基态流形低能放大'; set key center right;",
         "set arrow 1 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 2 lw 1.5 lc rgb '#c43b3b';".format(summary["width"]),
         "set arrow 2 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 3 lw 1.5 lc rgb '#2b6ca3';".format(summary["next_energy"]),
-        "set label 1 'lowest sectors: {}' at graph 0.03,0.94 front;".format(selected_sectors),
-        "set label 2 'width = {:.8g}' at graph 0.03,0.87 front;".format(summary["width"]),
-        "set label 3 '15-to-16 separation = {:.8g}' at graph 0.03,0.80 front;".format(summary["separation"]),
-        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title 'lowest 15 states', "
-        "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title 'higher saved levels';".format(
+        "set label 1 '最低态所在扇区：{}' at graph 0.03,0.94 front;".format(selected_sectors),
+        "set label 2 '流形宽度 = {:.8g}' at graph 0.03,0.87 front;".format(summary["width"]),
+        "set label 3 '第 15 至 16 态间隔 = {:.8g}' at graph 0.03,0.80 front;".format(summary["separation"]),
+        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 15 态', "
+        "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title '保存的高能态';".format(
             spectrum_file, summary["width"] + 1e-12
         ),
         "unset multiplot; unset arrow 1; unset arrow 2; unset label 1; unset label 2; unset label 3; unset output;",
-        "set term pngcairo size 1320,800 enhanced font 'sans,15';",
+        "set term pngcairo size 1320,800 enhanced font 'Noto Sans SC,15';",
         "set output {};".format(_gnuplot_quote(outputs["structure_factor"])),
-        "set title 'Moderate-coupling 30-site static structure factor';",
-        "set xlabel 'momentum q'; set ylabel 'N(q), unit-cell normalized';",
+        "set title '温和参数 30-site 静态结构因子';",
+        "set xlabel '动量 q'; set ylabel 'N(q)（原胞归一化）';",
         "set xrange [-0.3:14.3]; set xtics 0,1,14; set yrange [0:*]; set key opaque box top right;",
     ]
     structure_plots = [
@@ -184,30 +223,36 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
     ]
     structure_plots.append(
         "{} using (strcol(1) eq 'average' ? $2 : 1/0):3 "
-        "with linespoints pt 6 ps 1.0 lw 2.7 lc rgb '#171717' title '15-state average'".format(
+        "with linespoints pt 6 ps 1.0 lw 2.7 lc rgb '#171717' title '15 态平均'".format(
             structure_file
         )
     )
     lines.append("plot " + ", ".join(structure_plots) + "; unset output;")
 
     components = (
-        ("regular_real", 4, "Re sigma_xx^{reg}", "Regular conductivity: real part"),
-        ("regular_imag", 5, "Im sigma_xx^{reg}", "Regular conductivity: imaginary part"),
-        ("total_real", 2, "Re sigma_xx^{total}", "Total conductivity: real part"),
-        ("total_imag", 3, "Im sigma_xx^{total}", "Total conductivity: imaginary part"),
+        ("regular_real", 4, "Re sigma_xx^{reg}", "正则电导实部"),
+        ("regular_imag", 5, "Im sigma_xx^{reg}", "正则电导虚部"),
+        ("total_real", 2, "Re sigma_xx^{total}", "总电导实部"),
+        ("total_imag", 3, "Im sigma_xx^{total}", "总电导虚部"),
     )
     for key, column, ylabel, title in components:
         curves = [_gnuplot_quote(Path(optical_paths[sector]).resolve()) for sector in (0, 5, 10)]
+        average_file = _gnuplot_quote(average_path.resolve())
+        minimum_column = column + 12
+        maximum_column = column + 18
         lines.extend([
             "set output {};".format(_gnuplot_quote(outputs[key])),
-            "set title '{}'; set xlabel 'frequency omega'; set ylabel '{}';".format(title, ylabel),
+            "set title '{}'; set xlabel '频率 omega'; set ylabel '{}';".format(title, ylabel),
             "set xrange [{}:{}]; set autoscale y; set key opaque box top right;".format(
                 reference_frequencies[0], reference_frequencies[-1]
             ),
-            "plot {0} using 1:{3} with lines lw 2.0 dt 1 lc rgb '#1f77b4' title 'sector k=0', "
-            "{1} using 1:{3} with lines lw 1.8 dt 2 lc rgb '#d62728' title 'sector k=5', "
-            "{2} using 1:{3} with lines lw 1.8 dt 4 lc rgb '#2f855a' title 'sector k=10'; unset output;".format(
-                curves[0], curves[1], curves[2], column
+            "plot {4} using 1:{5}:{6} with filledcurves lc rgb '#d9d9d9' title '扇区极值范围', "
+            "{0} using 1:{3} with lines lw 1.2 dt 3 lc rgb '#1f77b4' title '扇区 k=0', "
+            "{1} using 1:{3} with lines lw 1.1 dt 2 lc rgb '#d62728' title '扇区 k=5', "
+            "{2} using 1:{3} with lines lw 1.1 dt 4 lc rgb '#2f855a' title '扇区 k=10', "
+            "{4} using 1:{3} with lines lw 2.8 dt 1 lc rgb '#171717' title '15 态平均'; unset output;".format(
+                curves[0], curves[1], curves[2], column,
+                average_file, minimum_column, maximum_column,
             ),
         ])
 
@@ -215,9 +260,12 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
         script_path = Path(handle.name)
         handle.write("\n".join(lines) + "\n")
     try:
+        environment = os.environ.copy()
+        environment.update({"LC_ALL": "C.utf8", "LANG": "C.utf8"})
         subprocess.run(
             [gnuplot, str(script_path)], check=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=environment,
         )
     finally:
         script_path.unlink()
@@ -234,7 +282,7 @@ def main():
     optical_dir = arguments.optical_dir or data_dir / "optical"
     optical_paths = {
         sector: optical_dir / "sector_{}_optical_response.dat".format(sector)
-        for sector in (0, 5, 10)
+        for sector in range(15)
     }
     outputs = generate_figures(
         data_dir / "spectrum.dat",

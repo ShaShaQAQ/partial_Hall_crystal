@@ -14,6 +14,7 @@ from plot_phc30_moderate_fqahc import (  # noqa: E402
     load_optical_curve,
     load_structure_factor,
     summarize_manifold,
+    write_optical_manifold_average,
 )
 
 
@@ -43,7 +44,7 @@ class ModerateFqahcPlotTests(unittest.TestCase):
         structure_path.write_text("\n".join(structure_lines) + "\n")
 
         optical_paths = {}
-        for sector in (0, 5, 10):
+        for sector in range(15):
             path = directory / f"sector_{sector}_optical_response.dat"
             lines = ["# omega Re_total Im_total Re_regular Im_regular Re_drude Im_drude"]
             for index in range(101):
@@ -129,6 +130,22 @@ class ModerateFqahcPlotTests(unittest.TestCase):
             )
             self.assertTrue(all(path.is_file() for path in outputs.values()))
             self.assertTrue(all(path.stat().st_size > 10_000 for path in outputs.values()))
+
+    def test_writes_fifteen_state_optical_statistics(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            _, _, optical = self.write_synthetic_result(directory)
+            output_path = directory / "optical_manifold_average.dat"
+
+            statistics = write_optical_manifold_average(optical, output_path)
+
+            self.assertEqual(statistics.shape, (101, 25))
+            self.assertTrue(output_path.is_file())
+            curves = np.stack([load_optical_curve(optical[k]) for k in range(15)])
+            np.testing.assert_allclose(statistics[:, 1:7], curves[:, :, 1:7].mean(axis=0))
+            np.testing.assert_allclose(statistics[:, 7:13], curves[:, :, 1:7].std(axis=0))
+            np.testing.assert_allclose(statistics[:, 13:19], curves[:, :, 1:7].min(axis=0))
+            np.testing.assert_allclose(statistics[:, 19:25], curves[:, :, 1:7].max(axis=0))
 
 
 if __name__ == "__main__":
