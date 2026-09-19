@@ -11,8 +11,8 @@ ENV["PHC_PREFLIGHT"] = "1"
     @test RESPONSE_LATTICE == "legacy"
     @test response_lattice("legacy") isa GenLat
     @test response_lattice("corrected") isa GenLat
-    @test response_lattice("legacy").kpoints !=
-          response_lattice("corrected").kpoints
+    @test response_lattice("legacy").kpoints ≈
+          response_lattice("corrected").kpoints atol=1e-14
     @test_throws ArgumentError response_lattice("unknown")
     @test endswith(
         response_partial_path(7, "legacy"), "partial_5.jld2")

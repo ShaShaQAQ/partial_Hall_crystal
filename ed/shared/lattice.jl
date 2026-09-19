@@ -46,6 +46,21 @@ end
     return fld(-T1y*tix + T1x*tiy, lat.Ns)
 end
 
+"""Maximum mismatch between stored momentum points and translation characters."""
+function translation_character_error(lat::GenLat)
+    return maximum(
+        abs(lat.phase_table[momentum_index, translation_index] -
+            cis(-(
+                lat.kpoints[momentum_index][1] *
+                    (lat.Tnx[translation_index] * lat.a1[1] +
+                     lat.Tny[translation_index] * lat.a2[1]) +
+                lat.kpoints[momentum_index][2] *
+                    (lat.Tnx[translation_index] * lat.a1[2] +
+                     lat.Tny[translation_index] * lat.a2[2]))))
+        for momentum_index in eachindex(lat.kpoints),
+            translation_index in eachindex(lat.uc_trans))
+end
+
 # ============================================================
 # 构造函数 1：倾斜 (4×4-1) 30 格点团簇
 # T1_tri=(4,2)，T2_tri=(1,8)，det=30，Nuc=15
@@ -97,10 +112,10 @@ function TiltedLat30()
         end
     end
 
-    # k 点（用于 Fourier 变换）
-    # 由相位公式推导: k_m = m*(4b1-b2)/15（相位中 n2_uc 系数为 -1/15，非 -1/30）
+    # k 点（用于 Fourier 变换）。原胞第二个平移矢量是 2a2，
+    # 因而 -n2/15 的平移字符对应倒格分量 -b2/(2*15)。
     b1c = collect(b1);  b2c = collect(b2)
-    G1_sc = (4 .* b1c .- b2c) ./ 15
+    G1_sc = (4 .* b1c .- b2c ./ 2) ./ 15
     kpoints = [m .* G1_sc for m in 0:14]
 
     # 近邻矩阵
@@ -126,38 +141,12 @@ end
     LegacyTiltedLat30()
 
 Return the historical tilted-30 lattice used to generate the saved April 2026
-`partial_*.jld2` files. Its discrete Fourier mesh used `b2/2` in the momentum
-step even though the translation phase table used `b2`. New calculations
-should use `TiltedLat30()`; this constructor exists only for reproducibility of
-those saved states and observables derived from them.
+`partial_*.jld2` files. The historical mesh is consistent with the unit-cell
+translation characters and is now also the physical `TiltedLat30()` mesh. This
+constructor remains as a compatibility alias for saved-state workflows.
 """
 function LegacyTiltedLat30()
-    lattice = TiltedLat30()
-    b1 = collect(lattice.b1)
-    b2 = collect(lattice.b2)
-    momentum_step = (4 .* b1 .- b2 ./ 2) ./ 15
-    kpoints = [m .* momentum_step for m in 0:14]
-    return GenLat(
-        lattice.Ns,
-        lattice.Nuc,
-        lattice.a1,
-        lattice.a2,
-        lattice.b1,
-        lattice.b2,
-        lattice.sites,
-        lattice.site_idx,
-        lattice.uc_trans,
-        lattice.Tnx,
-        lattice.Tny,
-        lattice.ktab,
-        lattice.phase_table,
-        kpoints,
-        lattice.T1,
-        lattice.T2,
-        lattice.nb1,
-        lattice.nb2,
-        lattice.nb3,
-    )
+    return TiltedLat30()
 end
 
 # ============================================================

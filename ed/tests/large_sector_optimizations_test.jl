@@ -29,21 +29,23 @@
     end
 end
 
-@testset "legacy tilted-30 saved-state convention" begin
+@testset "tilted-30 translation-character convention" begin
     available = isdefined(Main, :LegacyTiltedLat30)
     @test available
     if available
-        corrected = TiltedLat30()
+        physical = TiltedLat30()
         legacy = LegacyTiltedLat30()
         expected_step = (
             4 .* collect(legacy.b1) .- collect(legacy.b2) ./ 2
         ) ./ 15
         @test legacy.kpoints[2] ≈ expected_step atol=1e-14
-        @test legacy.kpoints[2] != corrected.kpoints[2]
-        @test legacy.phase_table == corrected.phase_table
+        @test physical.kpoints ≈ legacy.kpoints atol=1e-14
+        @test translation_character_error(physical) < 1e-12
+        @test translation_character_error(legacy) < 1e-12
+        @test length(build_hops(physical, 1.0, 0.2, 0.0)) == 300
         @test length(build_hops(legacy, 1.0, 0.2, 0.0)) == 300
         _, current_hops, diamagnetic_hops =
-            build_hops_x_derivatives(legacy, 1.0, 0.2)
+            build_hops_x_derivatives(physical, 1.0, 0.2)
         @test length(current_hops) == 300
         @test length(diamagnetic_hops) == 300
     end

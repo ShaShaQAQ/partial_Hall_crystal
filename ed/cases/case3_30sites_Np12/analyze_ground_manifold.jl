@@ -87,7 +87,24 @@ function validate_manifold_partial(data, path)
     )
     observed == expected || error(
         "parameter mismatch in $path: expected $expected, got $observed")
-    return observed
+    for key in ("momentum_step", "translation_character_error", "hopping_count")
+        haskey(data, key) || error("missing lattice fingerprint $key in $path")
+    end
+    momentum_step = Float64.(data["momentum_step"])
+    expected_step = TiltedLat30().kpoints[2]
+    isapprox(momentum_step, expected_step; atol=1e-12, rtol=0) || error(
+        "momentum-step mismatch in $path")
+    character_error = Float64(data["translation_character_error"])
+    character_error < 1e-12 || error(
+        "translation-character mismatch in $path: $character_error")
+    hopping_count = Int(data["hopping_count"])
+    hopping_count == 300 || error(
+        "unexpected hopping count in $path: $hopping_count")
+    return merge(observed, (
+        momentum_step=momentum_step,
+        translation_character_error=character_error,
+        hopping_count=hopping_count,
+    ))
 end
 
 function load_manifold_partials()
@@ -166,6 +183,10 @@ function write_manifold_manifest(path, metadata)
             println(output, "sha256 = \"$(item.sha256)\"")
             println(output, "nev = $(item.nev)")
             println(output, "krylovdim = $(item.krylovdim)")
+            println(output, "momentum_step = [$(join(item.momentum_step, ", "))]")
+            println(output,
+                    "translation_character_error = $(item.translation_character_error)")
+            println(output, "hopping_count = $(item.hopping_count)")
         end
     end
 end

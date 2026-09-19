@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Recompute the corrected-lattice 30-site spectrum and saved states at `V1=10,V2=V3=2`, diagnose the 15-state FQAHC candidate manifold, and calculate representative-sector optical conductivity on W003.
+**Goal:** Recompute the translation-consistent 30-site spectrum and saved states at `V1=10,V2=V3=2`, diagnose the 15-state FQAHC candidate manifold, and calculate representative-sector optical conductivity on W003.
 
-**Architecture:** Add a parameterized spectrum driver and a separate result analyzer while reusing the shared ED kernels. Saved JLD2 states remain in a W003 run directory; the analyzer emits small traceable files. Extend the existing optical driver with an explicit lattice convention so old CDW data remain reproducible and new calculations use the corrected mesh.
+**Architecture:** Add a parameterized spectrum driver and a separate result analyzer while reusing the shared ED kernels. Saved JLD2 states remain in a W003 run directory; the analyzer emits small traceable files. Both CLI lattice labels use the translation-consistent physical mesh, while retaining distinct old grouped and new single-sector file layouts.
 
 **Tech Stack:** Julia 1.10, KrylovKit, JLD2, PBS on W003, Python `unittest`, gnuplot, Git.
 
 ---
 
-### Task 1: Parameterized corrected-lattice spectrum driver
+### Task 1: Parameterized translation-consistent spectrum driver
 
 **Files:**
 - Create: `ed/cases/case3_30sites_Np12/run_spectrum.jl`
@@ -147,7 +147,7 @@ git commit -m "ops: add W003 moderate FQAHC workflow"
 
 - [ ] **Step 1: Sync the committed source to W003**
 - [ ] **Step 2: Run a one-sector preflight and verify residual/output schema**
-- [ ] **Step 3: Submit `0:4`, `5:9`, and `10:14` spectrum jobs**
+- [ ] **Step 3: Submit single-sector array jobs for `k=0:14`**
 - [ ] **Step 4: Wait for all jobs and inspect convergence logs**
 - [ ] **Step 5: Run the manifold analyzer**
 - [ ] **Step 6: Check all saved-state residuals, 15-state width/gap, structure-factor peaks, file hashes, and large-file exclusion**

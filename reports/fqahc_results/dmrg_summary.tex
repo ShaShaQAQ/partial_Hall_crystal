@@ -617,7 +617,8 @@ response-Lanczos 光学迭代。}
   \right\rangle ,
 \]
 这里采用原胞归一化 \(N_{\mathrm{uc}}=15\)，并使用生成
-\(\texttt{partial\_*.jld2}\) 时的 legacy TiltedLat30 Fourier 网格。计算仍是
+\(\texttt{partial\_*.jld2}\) 时与 unit-cell 平移字符一致的 TiltedLat30 Fourier 网格；
+程序中的 legacy 标签只用于兼容旧分组文件布局。计算仍是
 ED：程序从 \(k=0,5,10\) 三个保存的基态向量重建相应动量基，并利用
 平移轨道代表元求和；这一步不使用 DMRG。
 
@@ -655,7 +656,7 @@ current-active 激发。
 \subsection{30-site 强耦合 CDW 正式响应计算}
 
 大系统响应使用旧有的倾斜 30-site torus，保存的基态由多节点 ED 程序得到。
-计算保持该数据原有的 legacy Fourier 网格和 hopping 约定不变。三重基态中，
+计算保持该数据原有且与平移字符一致的 Fourier 网格和 hopping 约定不变。三重基态中，
 现有光学数据只计算了严格简并的 \(m=5\) 与 \(m=10\) 两个 sector；尚未计算
 \(m=0\) 的响应。模型和响应参数为
 \[

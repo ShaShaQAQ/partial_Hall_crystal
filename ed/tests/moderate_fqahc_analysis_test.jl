@@ -25,3 +25,29 @@ end
     @test_throws ArgumentError classify_candidate_manifold(
         Tuple{Int,Float64}[(0, 0.0), (1, 1.0)], 0)
 end
+
+@testset "saved lattice fingerprint validation" begin
+    physical = TiltedLat30()
+    metadata = Dict{String,Any}(
+        "Np" => 12,
+        "t1" => 1.0,
+        "t3" => 0.2,
+        "V1" => 10.0,
+        "V2" => 2.0,
+        "V3" => 2.0,
+        "lattice_convention" => "corrected",
+    )
+    @test_throws ErrorException validate_manifold_partial(
+        metadata, "synthetic.jld2")
+
+    metadata["momentum_step"] = physical.kpoints[2]
+    metadata["translation_character_error"] = 1e-14
+    metadata["hopping_count"] = 300
+    validated = validate_manifold_partial(metadata, "synthetic.jld2")
+    @test validated.hopping_count == 300
+    @test validated.translation_character_error < 1e-12
+
+    metadata["translation_character_error"] = 1.0
+    @test_throws ErrorException validate_manifold_partial(
+        metadata, "synthetic.jld2")
+end

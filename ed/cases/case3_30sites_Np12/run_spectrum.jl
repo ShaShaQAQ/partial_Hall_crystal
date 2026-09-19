@@ -104,7 +104,13 @@ function run_large_spectrum()
     println("[2] building corrected real-space hopping")
     hopping_time = @elapsed hops = build_hops(
         lattice, SPECTRUM_T1, SPECTRUM_T3, 0.0)
-    @printf("    hoppings=%d time=%.2f s\n", length(hops), hopping_time)
+    character_error = translation_character_error(lattice)
+    @printf("    hoppings=%d character_error=%.3e time=%.2f s\n",
+            length(hops), character_error, hopping_time)
+    character_error < 1e-12 || error(
+        "momentum mesh is inconsistent with translation characters")
+    length(hops) == 300 || error(
+        "unexpected tilted-30 hopping count: $(length(hops))")
 
     translation_maps = translation_site_maps(lattice)
     sectors = KSector[]
@@ -186,6 +192,9 @@ function run_large_spectrum()
         t1=SPECTRUM_T1,
         t3=SPECTRUM_T3,
         lattice_convention=SPECTRUM_LATTICE,
+        momentum_step=copy(lattice.kpoints[2]),
+        translation_character_error=character_error,
+        hopping_count=length(hops),
         sector_start=SPECTRUM_SECTOR_START,
         sector_end=SPECTRUM_SECTOR_END,
         nev=SPECTRUM_NEV,
