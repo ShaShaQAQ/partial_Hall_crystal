@@ -41,6 +41,7 @@ include("MPSKitBackend.jl")
 include("MPSKitHamiltonian.jl")
 include("MPSKitSolver.jl")
 include("MPSKitCheckpoint.jl")
+include("MPSKitObservables.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -195,6 +196,17 @@ export BLOCKTENSORKIT_COMMIT,
     MPSKitCheckpointData,
     mpskit_state_space_fingerprints,
     save_mpskit_checkpoint,
-    load_mpskit_checkpoint
+    load_mpskit_checkpoint,
+    MPSKitEnergyData,
+    MPSKitDensityRow,
+    MPSKitDensityData,
+    MPSKitEntanglementLevel,
+    MPSKitEntanglementSector,
+    MPSKitEntanglementData,
+    MPSKitNeutralTransferData,
+    mpskit_energy_data,
+    mpskit_density_data,
+    mpskit_entanglement_data,
+    mpskit_neutral_transfer_data
 
 end
