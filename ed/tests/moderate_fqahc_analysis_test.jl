@@ -28,26 +28,42 @@ end
 
 @testset "saved lattice fingerprint validation" begin
     physical = TiltedLat30()
+    expected = (
+        Np=13,
+        t1=1.0,
+        t3=0.2,
+        V1=100.0,
+        V2=0.0,
+        V3=0.0,
+        lattice_convention="corrected",
+    )
     metadata = Dict{String,Any}(
-        "Np" => 12,
+        "Np" => 13,
         "t1" => 1.0,
         "t3" => 0.2,
-        "V1" => 10.0,
-        "V2" => 2.0,
-        "V3" => 2.0,
+        "V1" => 100.0,
+        "V2" => 0.0,
+        "V3" => 0.0,
         "lattice_convention" => "corrected",
     )
     @test_throws ErrorException validate_manifold_partial(
-        metadata, "synthetic.jld2")
+        metadata, "synthetic.jld2", expected)
 
     metadata["momentum_step"] = physical.kpoints[2]
     metadata["translation_character_error"] = 1e-14
     metadata["hopping_count"] = 300
-    validated = validate_manifold_partial(metadata, "synthetic.jld2")
+    validated = validate_manifold_partial(
+        metadata, "synthetic.jld2", expected)
+    @test validated.Np == 13
+    @test validated.V1 == 100.0
     @test validated.hopping_count == 300
     @test validated.translation_character_error < 1e-12
 
+    metadata["Np"] = 12
+    @test_throws ErrorException validate_manifold_partial(
+        metadata, "synthetic.jld2", expected)
+    metadata["Np"] = 13
     metadata["translation_character_error"] = 1.0
     @test_throws ErrorException validate_manifold_partial(
-        metadata, "synthetic.jld2")
+        metadata, "synthetic.jld2", expected)
 end

@@ -19,19 +19,48 @@ end
 
 const MANIFOLD_DATA_DIR = parse_manifold_argument(
     "--data-dir", joinpath(@__DIR__, "output"))
+const MANIFOLD_RESULT_ID = parse_manifold_argument(
+    "--result-id", "phc30_np12_v1_10_v2_2_v3_2_fqahc")
 const MANIFOLD_RESULT_DIR = parse_manifold_argument(
     "--result-dir",
     normpath(joinpath(
         @__DIR__, "..", "..", "..", "results",
-        "phc30_np12_v1_10_v2_2_v3_2_fqahc")))
+        MANIFOLD_RESULT_ID)))
+const MANIFOLD_PHASE_LABEL = parse_manifold_argument(
+    "--phase-label", "FQAHC candidate")
 const MANIFOLD_SIZE = parse(
     Int, parse_manifold_argument("--manifold-size", "15"))
 const MANIFOLD_LATTICE = parse_manifold_argument(
     "--lattice", "corrected")
+const MANIFOLD_NP = parse(
+    Int, parse_manifold_argument("--Np", "12"))
+const MANIFOLD_T1 = parse(
+    Float64, parse_manifold_argument("--t1", "1.0"))
+const MANIFOLD_T3 = parse(
+    Float64, parse_manifold_argument("--t3", "0.2"))
+const MANIFOLD_V1 = parse(
+    Float64, parse_manifold_argument("--V1", "10.0"))
+const MANIFOLD_V2 = parse(
+    Float64, parse_manifold_argument("--V2", "2.0"))
+const MANIFOLD_V3 = parse(
+    Float64, parse_manifold_argument("--V3", "2.0"))
 
 MANIFOLD_SIZE > 0 || error("manifold size must be positive")
+1 <= MANIFOLD_NP < 30 || error("Np must satisfy 1 <= Np < 30")
 MANIFOLD_LATTICE == "corrected" ||
-    error("new moderate-coupling results must use corrected lattice")
+    error("new 30-site manifold results must use corrected lattice")
+
+function manifold_expected_parameters()
+    return (
+        Np=MANIFOLD_NP,
+        t1=MANIFOLD_T1,
+        t3=MANIFOLD_T3,
+        V1=MANIFOLD_V1,
+        V2=MANIFOLD_V2,
+        V3=MANIFOLD_V3,
+        lattice_convention=MANIFOLD_LATTICE,
+    )
+end
 
 function manifold_partial_paths()
     return [joinpath(MANIFOLD_DATA_DIR, "partial_$first.jld2")
@@ -66,16 +95,8 @@ function file_sha256(path::AbstractString)
     end
 end
 
-function validate_manifold_partial(data, path)
-    expected = (
-        Np=12,
-        t1=1.0,
-        t3=0.2,
-        V1=10.0,
-        V2=2.0,
-        V3=2.0,
-        lattice_convention="corrected",
-    )
+function validate_manifold_partial(
+        data, path, expected=manifold_expected_parameters())
     observed = (
         Np=Int(data["Np"]),
         t1=Float64(data["t1"]),
@@ -152,17 +173,17 @@ end
 
 function write_manifold_parameters(path)
     open(path, "w") do output
-        println(output, "result_id = \"phc30_np12_v1_10_v2_2_v3_2_fqahc\"")
-        println(output, "phase_label = \"FQAHC candidate\"")
+        println(output, "result_id = \"$MANIFOLD_RESULT_ID\"")
+        println(output, "phase_label = \"$MANIFOLD_PHASE_LABEL\"")
         println(output, "Ns = 30")
         println(output, "Nuc = 15")
-        println(output, "Np = 12")
-        println(output, "t1 = 1.0")
-        println(output, "t3 = 0.2")
-        println(output, "V1 = 10.0")
-        println(output, "V2 = 2.0")
-        println(output, "V3 = 2.0")
-        println(output, "lattice_convention = \"corrected\"")
+        println(output, "Np = $MANIFOLD_NP")
+        println(output, "t1 = $MANIFOLD_T1")
+        println(output, "t3 = $MANIFOLD_T3")
+        println(output, "V1 = $MANIFOLD_V1")
+        println(output, "V2 = $MANIFOLD_V2")
+        println(output, "V3 = $MANIFOLD_V3")
+        println(output, "lattice_convention = \"$MANIFOLD_LATTICE\"")
         println(output, "candidate_manifold_size = $MANIFOLD_SIZE")
     end
 end
@@ -170,7 +191,7 @@ end
 function write_manifold_manifest(path, metadata)
     open(path, "w") do output
         println(output, "schema_version = 1")
-        println(output, "result_id = \"phc30_np12_v1_10_v2_2_v3_2_fqahc\"")
+        println(output, "result_id = \"$MANIFOLD_RESULT_ID\"")
         println(output, "storage_host = \"W003\"")
         println(output, "data_directory = \"$MANIFOLD_DATA_DIR\"")
         println(output, "generated_at = \"$(now())\"")
@@ -193,9 +214,12 @@ end
 
 function run_ground_manifold_analysis()
     println("="^72)
-    println("30-site moderate-coupling candidate-manifold analysis")
+    println("30-site candidate-manifold analysis")
     println("start: ", now())
     println("data: $MANIFOLD_DATA_DIR")
+    println("result: $MANIFOLD_RESULT_ID phase: $MANIFOLD_PHASE_LABEL")
+    println("Np=$MANIFOLD_NP t1=$MANIFOLD_T1 t3=$MANIFOLD_T3 " *
+            "V1=$MANIFOLD_V1 V2=$MANIFOLD_V2 V3=$MANIFOLD_V3")
     flush(stdout)
 
     levels, states, residuals, metadata = load_manifold_partials()
@@ -212,8 +236,9 @@ function run_ground_manifold_analysis()
     spectrum_path = joinpath(data_dir, "spectrum.dat")
     open(spectrum_path, "w") do output
         println(output,
-                "# k E-E0; corrected TiltedLat30, Np=12, " *
-                "V1=10, V2=V3=2")
+                "# k E-E0; $MANIFOLD_LATTICE TiltedLat30, " *
+                "Np=$MANIFOLD_NP, V1=$MANIFOLD_V1, " *
+                "V2=$MANIFOLD_V2, V3=$MANIFOLD_V3")
         for (momentum, energy) in ordered_levels
             @printf(output, "%d %.12f\n",
                     momentum, energy - summary.ground_energy)
@@ -221,10 +246,10 @@ function run_ground_manifold_analysis()
     end
 
     lattice = TiltedLat30()
-    basis = gen_basis(lattice.Ns, 12)
+    basis = gen_basis(lattice.Ns, MANIFOLD_NP)
     translation_maps = translation_site_maps(lattice)
     curves = Dict{Int,Vector{Tuple{Int,Float64,Float64,Float64}}}()
-    println("computing structure factors for 15 candidate states")
+    println("computing structure factors for $MANIFOLD_SIZE candidate states")
     for momentum in summary.sectors
         state = states[momentum]
         sector_time = @elapsed sector = build_ksector(
@@ -233,7 +258,7 @@ function run_ground_manifold_analysis()
             "state dimension does not match sector $momentum")
         survey_time = @elapsed ordered, _, norm2, particle_number =
             structure_factor_survey_representatives(
-                sector, state, lattice, 12)
+                sector, state, lattice, MANIFOLD_NP)
         curves[momentum] = ordered
         @printf("  k=%2d dim=%d residual=%.3e norm=%.12f Np=%.9f sector=%.2f s survey=%.2f s\n",
                 momentum, length(state), residuals[momentum], norm2,
@@ -258,7 +283,7 @@ function run_ground_manifold_analysis()
             q = lattice.ktab[q_index]
             qx, qy = lattice.kpoints[q_index]
             average = sum(curves[m][q_index][2]
-                          for m in summary.sectors) / MANIFOLD_SIZE
+                          for m in summary.sectors) / length(summary.sectors)
             @printf(output, "average %d %.12f %.12f %.12f\n",
                     q, average, qx, qy)
         end
@@ -266,9 +291,16 @@ function run_ground_manifold_analysis()
 
     diagnostics_path = joinpath(data_dir, "manifold_diagnostics.txt")
     open(diagnostics_path, "w") do output
-        println(output, "phase_label=FQAHC_candidate")
+        diagnostic_label = replace(MANIFOLD_PHASE_LABEL, ' ' => '_')
+        println(output, "phase_label=$diagnostic_label")
         println(output, "topology_confirmed_by_this_run=false")
-        println(output, "lattice_convention=corrected")
+        println(output, "lattice_convention=$MANIFOLD_LATTICE")
+        println(output, "Np=$MANIFOLD_NP")
+        println(output, "t1=$MANIFOLD_T1")
+        println(output, "t3=$MANIFOLD_T3")
+        println(output, "V1=$MANIFOLD_V1")
+        println(output, "V2=$MANIFOLD_V2")
+        println(output, "V3=$MANIFOLD_V3")
         println(output, "ground_energy=$(summary.ground_energy)")
         println(output, "candidate_manifold_size=$MANIFOLD_SIZE")
         println(output, "candidate_sectors=$(join(summary.sectors, ','))")
