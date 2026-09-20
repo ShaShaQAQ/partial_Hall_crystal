@@ -391,6 +391,68 @@ end
         @test provenance["backend_adapter_source_sha256"] ==
             InfiniteCylinderDMRG._fig2_file_sha256(adapter_source)
     end
+
+    audited_provenance = mpskit_fig2_fixture_provenance(
+        spec,
+        "unused",
+        1.25,
+    )
+    backend_keys = (
+        "backend_id",
+        "mpskit_commit",
+        "tensorkittensors_commit",
+        "blocktensorkit_commit",
+        "backend_adapter_source",
+        "backend_adapter_source_sha256",
+    )
+    generation = InfiniteCylinderDMRG._fig2_generation_provenance(
+        spec,
+        audited_provenance,
+    )
+    @test all(key -> generation[key] == audited_provenance[key], backend_keys)
+    @test InfiniteCylinderDMRG._fig2_validate_generation_compatibility(
+        generation,
+        generation,
+    )
+    backend_tampers = Dict{String,Any}(
+        "backend_id" => "forged_backend",
+        "mpskit_commit" => repeat("0", 40),
+        "tensorkittensors_commit" => repeat("1", 40),
+        "blocktensorkit_commit" => repeat("2", 40),
+        "backend_adapter_source" => joinpath(pwd(), "forged_adapter.jl"),
+        "backend_adapter_source_sha256" => repeat("3", 64),
+    )
+    generation_validator =
+        InfiniteCylinderDMRG._fig2_validate_generation_compatibility
+    for (key, value) in backend_tampers
+        forged_generation = deepcopy(generation)
+        forged_generation[key] = value
+        @test_throws ArgumentError generation_validator(
+            forged_generation, generation
+        )
+    end
+
+    mktempdir() do directory
+        provenance_path = joinpath(directory, "provenance.toml")
+        function write_provenance(data)
+            open(provenance_path, "w") do io
+                TOML.print(io, data; sorted=true)
+            end
+        end
+        write_provenance(audited_provenance)
+        valid = InfiniteCylinderDMRG._fig2_provenance_result(spec, directory)
+        @test valid.valid
+        for (key, value) in backend_tampers
+            forged = deepcopy(audited_provenance)
+            forged[key] = value
+            write_provenance(forged)
+            rejected = InfiniteCylinderDMRG._fig2_provenance_result(
+                spec,
+                directory,
+            )
+            @test !rejected.valid
+        end
+    end
 end
 
 @testset "MPSKit candidate resumes from the latest progress generation" begin
