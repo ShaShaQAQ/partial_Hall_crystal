@@ -169,17 +169,22 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertIn("PHC_V3", text)
             self.assertIn("--Np 13", text)
             self.assertIn("--lattice corrected", text)
+            self.assertIn("PBS_JOBNAME", text)
 
         spectrum = jobs["spectrum"].read_text()
         self.assertIn("PBS_ARRAY_INDEX", spectrum)
         self.assertIn("--nev 8", spectrum)
         self.assertIn("--krylovdim 60", spectrum)
         self.assertIn("run_spectrum.jl", spectrum)
+        self.assertIn("phc13s_spec", spectrum)
+        self.assertIn("phc13m_spec", spectrum)
 
         analysis = jobs["analysis"].read_text()
         self.assertIn("PHC_MANIFOLD_SIZE", analysis)
         self.assertIn("PHC_PHASE_LABEL", analysis)
         self.assertIn("analyze_ground_manifold.jl", analysis)
+        self.assertIn("phc13s_m", analysis)
+        self.assertIn("phc13m_m", analysis)
 
         optical = jobs["optical"].read_text()
         self.assertIn("PHC_SECTORS", optical)
@@ -187,6 +192,10 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("--mmax 600", optical)
         self.assertIn("--eta 0.065", optical)
         self.assertIn("run_optical_response.jl", optical)
+        self.assertIn("phc13s_opt", optical)
+        self.assertIn("phc13m_opt", optical)
+        self.assertIn("manifold_diagnostics.txt", optical)
+        self.assertIn("candidate_sectors", optical)
 
 
 if __name__ == "__main__":

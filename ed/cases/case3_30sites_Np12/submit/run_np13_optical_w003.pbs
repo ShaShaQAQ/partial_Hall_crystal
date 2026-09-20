@@ -7,18 +7,43 @@
 
 set -euo pipefail
 
-: "${PHC_RESULT_ID:?set PHC_RESULT_ID}"
-: "${PHC_V1:?set PHC_V1}"
-: "${PHC_V2:?set PHC_V2}"
-: "${PHC_V3:?set PHC_V3}"
-: "${PHC_SECTORS:?set PHC_SECTORS to the comma-separated manifold sectors}"
 : "${PBS_ARRAY_INDEX:?submit as an array over indices into PHC_SECTORS}"
+
+case "${PBS_JOBNAME:-}" in
+    phc13s_opt)
+        PHC_RESULT_ID=phc30_np13_v1_100_v2_0_v3_0
+        PHC_V1=100.0
+        PHC_V2=0.0
+        PHC_V3=0.0
+        ;;
+    phc13m_opt)
+        PHC_RESULT_ID=phc30_np13_v1_10_v2_2_v3_2
+        PHC_V1=10.0
+        PHC_V2=2.0
+        PHC_V3=2.0
+        ;;
+esac
+
+: "${PHC_RESULT_ID:?use PBS_JOBNAME phc13s_opt or phc13m_opt}"
+: "${PHC_V1:?missing preset V1}"
+: "${PHC_V2:?missing preset V2}"
+: "${PHC_V3:?missing preset V3}"
 
 W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitations}
 PHC_RUN_ROOT=${PHC_RUN_ROOT:-/home/public/shajy/codex_runs}
 PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_ROOT}/${PHC_RESULT_ID}/spectrum}
 PHC_OUTPUT_DIR=${PHC_OUTPUT_DIR:-${PHC_RUN_ROOT}/${PHC_RESULT_ID}/optical}
 JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}
+
+PHC_DIAGNOSTICS=${PHC_DIAGNOSTICS:-${W003_REPO}/results/${PHC_RESULT_ID}/data/manifold_diagnostics.txt}
+if [[ -z "${PHC_SECTORS:-}" ]]; then
+    [[ -f "${PHC_DIAGNOSTICS}" ]] || {
+        echo "missing manifold diagnostics: ${PHC_DIAGNOSTICS}" >&2
+        exit 2
+    }
+    PHC_SECTORS=$(sed -n 's/^candidate_sectors=//p' "${PHC_DIAGNOSTICS}")
+fi
+: "${PHC_SECTORS:?candidate_sectors is missing from manifold_diagnostics.txt}"
 
 IFS=',' read -r -a sector_list <<< "${PHC_SECTORS}"
 ((PBS_ARRAY_INDEX >= 0 && PBS_ARRAY_INDEX < ${#sector_list[@]})) || {
