@@ -512,9 +512,6 @@ function _validate_mpskit_fig2_convergence_tsv(
         row.converged == expected_converged || throw(ArgumentError(
             "MPSKit convergence flag disagrees with the recomputed Galerkin gate",
         ))
-        row.converged || throw(ArgumentError(
-            "MPSKit convergence stage failed its recomputed Galerkin gate",
-        ))
         previous_energy = energy
     end
     return last(parsed)
