@@ -1063,10 +1063,13 @@ function _fig2_persist_progress_event!(
     phi_y,
     candidate_id,
     maxdim_schedule,
-    event::VUMPSProgressEvent;
+    event;
     resume_count::Integer,
     canonicalize_state=nothing,
     save_state=save_checkpoint,
+    state_is_valid=state -> state isa InfiniteCanonicalMPS,
+    state_maxlinkdim=_default_fig2_state_maxlinkdim,
+    continuation_builder=VUMPSProgressContinuation,
 )
     resume_count >= 0 || throw(
         ArgumentError("Fig. 2 progress resume count must be nonnegative")
@@ -1115,10 +1118,14 @@ function _fig2_persist_progress_event!(
     canonical = isnothing(canonicalize_state) ?
         _canonicalize_vumps_state(event.psi; rng_seed=canonical_seed) :
         canonicalize_state(event.psi)
-    canonical isa InfiniteCanonicalMPS || throw(
+    state_is_valid(canonical) || throw(
         ArgumentError("Fig. 2 progress canonicalizer returned the wrong state type")
     )
-    maxlinkdim = maximum(link_dimensions(canonical))
+    maxlinkdim = state_maxlinkdim(canonical)
+    maxlinkdim isa Integer && !(maxlinkdim isa Bool) || throw(
+        ArgumentError("Fig. 2 progress maxlinkdim must be an integer")
+    )
+    maxlinkdim = Int(maxlinkdim)
     maxlinkdim > 0 || error("Fig. 2 progress state has no positive link dimension")
 
     generation_root = joinpath(root, ".progress", "generations")
@@ -1201,7 +1208,7 @@ function _fig2_persist_progress_event!(
         maxlinkdim,
         state_path=state_relative,
         event_path=event_relative,
-        continuation=VUMPSProgressContinuation(canonical),
+        continuation=continuation_builder(canonical),
     )
 end
 
@@ -1284,6 +1291,8 @@ function _fig2_load_progress(
     phi_y,
     candidate_id;
     load_state=load_checkpoint,
+    state_is_valid=state -> state isa InfiniteCanonicalMPS,
+    state_maxlinkdim=_default_fig2_state_maxlinkdim,
 )
     root = abspath(candidate_directory)
     identity = _fig2_progress_identity(
@@ -1326,10 +1335,14 @@ function _fig2_load_progress(
     )
     config = with_flux(spec.config, Float64(phi_y))
     state = load_state(state_path, config)
-    state isa InfiniteCanonicalMPS || throw(
+    state_is_valid(state) || throw(
         ArgumentError("Fig. 2 progress loader returned the wrong state type")
     )
-    maxlinkdim = maximum(link_dimensions(state))
+    maxlinkdim = state_maxlinkdim(state)
+    maxlinkdim isa Integer && !(maxlinkdim isa Bool) || throw(
+        ArgumentError("Fig. 2 progress loader maxlinkdim must be an integer")
+    )
+    maxlinkdim = Int(maxlinkdim)
     maxlinkdim == _fig2_progress_positive_integer(pointer, "maxlinkdim") || throw(
         ArgumentError("Fig. 2 progress state maxlinkdim disagrees with its pointer")
     )
@@ -1365,25 +1378,40 @@ function _fig2_finalize_progress!(
     point,
     phi_y,
     candidate_id,
-    final_checkpoint,
+    final_checkpoint;
+    checkpoint_filename="state.h5",
+    load_state=load_checkpoint,
+    state_is_valid=state -> state isa InfiniteCanonicalMPS,
+    state_maxlinkdim=_default_fig2_state_maxlinkdim,
 )
     root = abspath(candidate_directory)
     progress = _fig2_load_progress(
-        spec, root, dimension, point, phi_y, candidate_id
+        spec,
+        root,
+        dimension,
+        point,
+        phi_y,
+        candidate_id;
+        load_state,
+        state_is_valid,
+        state_maxlinkdim,
     )
     isnothing(progress) && throw(
         ArgumentError("Fig. 2 candidate has no restartable progress generation")
     )
     final_path = abspath(final_checkpoint)
-    relpath(final_path, root) == "state.h5" || throw(
+    relpath(final_path, root) == checkpoint_filename || throw(
         ArgumentError("Fig. 2 final checkpoint is outside the candidate contract")
     )
     isfile(final_path) && filesize(final_path) > 0 || throw(
         ArgumentError("Fig. 2 final checkpoint is missing")
     )
     config = with_flux(spec.config, Float64(phi_y))
-    final_state = load_checkpoint(final_path, config)
-    final_maxlinkdim = maximum(link_dimensions(final_state))
+    final_state = load_state(final_path, config)
+    state_is_valid(final_state) || throw(
+        ArgumentError("Fig. 2 final checkpoint contains the wrong state type")
+    )
+    final_maxlinkdim = state_maxlinkdim(final_state)
     final_maxlinkdim == progress.maxlinkdim || throw(
         ArgumentError("Fig. 2 final and progress checkpoint maxlinkdim disagree")
     )
@@ -1416,7 +1444,10 @@ function _fig2_finalize_progress!(
         point,
         phi_y,
         candidate_id,
-        final_path,
+        final_path;
+        load_state,
+        state_is_valid,
+        state_maxlinkdim,
     )
 end
 
@@ -1427,7 +1458,10 @@ function _fig2_validate_progress_artifact(
     point,
     phi_y,
     candidate_id,
-    final_checkpoint,
+    final_checkpoint;
+    load_state=load_checkpoint,
+    state_is_valid=state -> state isa InfiniteCanonicalMPS,
+    state_maxlinkdim=_default_fig2_state_maxlinkdim,
 )
     root = abspath(candidate_directory)
     path = joinpath(root, "progress.toml")
@@ -1446,7 +1480,15 @@ function _fig2_validate_progress_artifact(
     )
     _fig2_validate_progress_identity(summary, identity)
     progress = _fig2_load_progress(
-        spec, root, dimension, point, phi_y, candidate_id
+        spec,
+        root,
+        dimension,
+        point,
+        phi_y,
+        candidate_id;
+        load_state,
+        state_is_valid,
+        state_maxlinkdim,
     )
     isnothing(progress) && throw(
         ArgumentError("Fig. 2 progress summary has no latest pointer")
@@ -1469,8 +1511,11 @@ function _fig2_validate_progress_artifact(
         ArgumentError("Fig. 2 progress final-state checksum disagrees")
     )
     config = with_flux(spec.config, Float64(phi_y))
-    final_state = load_checkpoint(final_path, config)
-    final_maxlinkdim = maximum(link_dimensions(final_state))
+    final_state = load_state(final_path, config)
+    state_is_valid(final_state) || throw(
+        ArgumentError("Fig. 2 progress final checkpoint has the wrong state type")
+    )
+    final_maxlinkdim = state_maxlinkdim(final_state)
     get(summary, "final_maxlinkdim", nothing) == final_maxlinkdim ==
         progress.maxlinkdim || throw(ArgumentError(
         "Fig. 2 progress final-state maxlinkdim disagrees"
