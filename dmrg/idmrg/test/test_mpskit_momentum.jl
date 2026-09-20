@@ -60,6 +60,21 @@ end
 
     # Mutation sensitivity: a bare bit permutation without the fermion sign is wrong.
     @test norm(dense_translation - signless_ring_translation(config.Ny)) > 1
+
+    direction_config = InfiniteCylinderConfig(;
+        geometry=:paper_straight,
+        Ny=3,
+        x_period=1,
+        filling_num=1,
+        filling_den=1,
+    )
+    direction_translation = mpskit_dense_matrix(
+        InfiniteCylinderDMRG._mpskit_finite_transverse_translation_mpo(
+            direction_config,
+        ),
+    )
+    @test direction_translation ≈
+        Matrix(fermionic_ring_translation(direction_config)) atol=1e-12 rtol=0
 end
 
 @testset "MPSKit Schmidt-block transverse momentum" begin
