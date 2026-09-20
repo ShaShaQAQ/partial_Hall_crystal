@@ -26,7 +26,15 @@ struct Fig2WarmScheduleCaptured <: Exception end
 
 @testset "immutable Fig. 2 benchmark manifest" begin
     manifest = TOML.parsefile(FIG2_MANIFEST_PATH)
-    @test manifest["format"] == "fqahc_fig2_benchmark_v4"
+    @test manifest["format"] == "fqahc_fig2_benchmark_v5"
+    @test manifest["backend"] == Dict(
+        "id" => "mpskit_idmrg_v1",
+        "mpskit_commit" =>
+            "811ecf6c06c1f7c1bc656da61abcd679effcd428",
+        "tensorkittensors_commit" =>
+            "3755705a1c44a3d5e32086e7d89b2c561b268cb1",
+        "legacy_backend_role" => "diagnostic_only",
+    )
     @test manifest["geometry"] == "paper_straight"
     @test manifest["Ny"] == 6
     @test manifest["x_period"] == 3
@@ -1168,7 +1176,7 @@ if all(
 
     @testset "Fig. 2 manifest snapshot rejects post-load runtime drift" begin
         @test TOML.parsefile(FIG2_MANIFEST_PATH)["format"] ==
-            "fqahc_fig2_benchmark_v4"
+            "fqahc_fig2_benchmark_v5"
 
         function drift_error(tamper::Function, action::Function)
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)

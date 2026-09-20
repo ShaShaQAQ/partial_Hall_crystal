@@ -1,4 +1,4 @@
-format = "fqahc_fig2_benchmark_v4"
+format = "fqahc_fig2_benchmark_v5"
 paper_title = "Generic integer and fractional quantum anomalous Hall crystals from interaction-driven band folding"
 paper_doi = "10.1103/mh3v-fb9w"
 paper_zotero_key = "A7PSUI68"
@@ -20,6 +20,12 @@ pump_tolerance = 0.05
 counting = [1, 1, 2, 3, 5]
 momentum_convention = "sector_relative_canonical_cyclic_orbit"
 raw_pump_policy = "no_offset_no_unwrap_no_sign_flip_no_branch_translation"
+
+[backend]
+id = "mpskit_idmrg_v1"
+mpskit_commit = "811ecf6c06c1f7c1bc656da61abcd679effcd428"
+tensorkittensors_commit = "3755705a1c44a3d5e32086e7d89b2c561b268cb1"
+legacy_backend_role = "diagnostic_only"
 
 [momentum_counting_rule]
 format = "fqahc_fig2_momentum_counting_v1"

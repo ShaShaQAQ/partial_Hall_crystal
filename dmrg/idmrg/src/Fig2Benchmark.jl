@@ -1,4 +1,7 @@
-const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v4"
+const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v5"
+const FIG2_PRODUCTION_BACKEND_ID = "mpskit_idmrg_v1"
+const FIG2_LEGACY_BACKEND_ID = "itensor_infinite_mps_v1"
+const FIG2_LEGACY_BACKEND_ROLE = "diagnostic_only"
 const FIG2_LEDGER_FORMAT = "fqahc_fig2_ledger_v3"
 const FIG2_CANDIDATE_FORMAT = "fqahc_fig2_candidate_v4"
 const FIG2_PROGRESS_EVENT_FORMAT = "fqahc_fig2_progress_event_v1"
@@ -285,6 +288,30 @@ function _validate_fig2_manifest(data)
     _fig2_required(data, "raw_pump_policy") ==
         "no_offset_no_unwrap_no_sign_flip_no_branch_translation" || throw(
         ArgumentError("Fig. 2 manifest must preserve raw pump data")
+    )
+    backend = _fig2_required(data, "backend")
+    backend isa AbstractDict || throw(
+        ArgumentError("Fig. 2 manifest backend must be a table")
+    )
+    backend_id = _fig2_required(backend, "id")
+    if backend_id == FIG2_LEGACY_BACKEND_ID
+        throw(ArgumentError(
+            "Fig. 2 production manifest may not select the legacy ITensor backend"
+        ))
+    end
+    backend_id == FIG2_PRODUCTION_BACKEND_ID || throw(
+        ArgumentError("unsupported Fig. 2 production backend id")
+    )
+    _fig2_required(backend, "mpskit_commit") == MPSKIT_BACKEND_COMMIT || throw(
+        ArgumentError("Fig. 2 MPSKit commit is not fixed")
+    )
+    _fig2_required(backend, "tensorkittensors_commit") ==
+        TENSORKITTENSORS_COMMIT || throw(
+        ArgumentError("Fig. 2 TensorKitTensors commit is not fixed")
+    )
+    _fig2_required(backend, "legacy_backend_role") ==
+        FIG2_LEGACY_BACKEND_ROLE || throw(
+        ArgumentError("Fig. 2 legacy backend role is not diagnostic_only")
     )
     counting = _fig2_integer_vector(data, "counting")
     counting == [1, 1, 2, 3, 5] || throw(
