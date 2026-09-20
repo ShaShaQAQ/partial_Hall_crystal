@@ -393,6 +393,133 @@ end
     end
 end
 
+@testset "MPSKit candidate resumes from the latest progress generation" begin
+    spec = load_fig2_benchmark(MPSKIT_FIG2_MANIFEST_PATH)
+    candidate_id = first(fig2_initial_candidates(spec.config)).id
+    solver_schedules = Vector{Vector{Int}}()
+    first_input_state = Ref{Any}(nothing)
+
+    function interrupt_once_solver(
+        hamiltonian,
+        initial_state;
+        maxdim_schedule,
+        cutoff,
+        idmrg_maxiter,
+        vumps_maxiter,
+        galerkin_tol,
+        energy_imag_tol=1e-10,
+        verbosity=0,
+        progress_callback=(args...) -> nothing,
+    )
+        _ = (galerkin_tol, energy_imag_tol, verbosity)
+        push!(solver_schedules, Int.(maxdim_schedule))
+        environments = MPSKit.environments(
+            initial_state,
+            hamiltonian,
+            initial_state,
+        )
+        energy = ComplexF64(MPSKit.expectation_value(
+            initial_state,
+            hamiltonian,
+            environments,
+        )) / length(initial_state)
+        dimensions = InfiniteCylinderDMRG._mpskit_solver_link_dimensions(
+            initial_state
+        )
+        record = MPSKitSolverStageRecord(
+            1,
+            first(maxdim_schedule),
+            maximum(dimensions),
+            Float64(cutoff),
+            idmrg_maxiter,
+            vumps_maxiter,
+            real(energy),
+            imag(energy),
+            0.0,
+            0.0,
+            0.0,
+            0.01,
+        )
+        progress_callback(initial_state, environments, [record])
+        if length(solver_schedules) == 1
+            first_input_state[] = initial_state
+            error("synthetic candidate interruption after checkpoint")
+        end
+        @test initial_state !== first_input_state[]
+        return MPSKitSolverResult(
+            initial_state,
+            environments,
+            [record],
+            real(energy),
+            imag(energy),
+            0.0,
+            0.0,
+            dimensions,
+            true,
+        )
+    end
+
+    operations = mpskit_fig2_operations(
+        spec;
+        solver=interrupt_once_solver,
+        provenance=mpskit_fig2_fixture_provenance,
+        candidate_ids=(args...) -> [candidate_id],
+    )
+    mktempdir() do directory
+        arguments = (
+            spec,
+            8,
+            1,
+            0.0,
+            candidate_id,
+            nothing,
+            directory,
+        )
+        interrupted = try
+            operations.run_candidate(arguments...)
+            nothing
+        catch error
+            error
+        end
+        @test interrupted isa ErrorException
+        @test occursin(
+            "synthetic candidate interruption",
+            sprint(showerror, interrupted),
+        )
+        @test solver_schedules == [[4, 8]]
+        first_pointer = TOML.parsefile(joinpath(
+            directory, ".progress", "latest.toml"
+        ))
+        @test first_pointer["event_sequence"] == 1
+        @test first_pointer["resume_count"] == 0
+        first_generation = joinpath(directory, first_pointer["state_path"])
+        @test isfile(first_generation)
+        @test InfiniteCylinderDMRG._fig2_file_sha256(first_generation) ==
+            first_pointer["state_sha256"]
+
+        evidence = operations.run_candidate(arguments...)
+        @test evidence isa Fig2CandidateEvidence
+        @test evidence.restart_valid
+        @test solver_schedules == [[4, 8], [8]]
+        audit = operations.progress_audit(
+            spec,
+            directory,
+            8,
+            1,
+            0.0,
+            candidate_id,
+            joinpath(directory, operations.checkpoint_filename),
+        )
+        @test audit.complete
+        @test audit.event_count == 2
+        @test audit.resume_count == 1
+        @test audit.latest_maxlinkdim == evidence.achieved_maxlinkdim
+        @test TOML.parsefile(joinpath(directory, "progress.toml"))[
+            "resume_count"
+        ] == 1
+    end
+end
+
 @testset "MPSKit adapter runs the audited candidate workflow" begin
     required = (
         :MPSKIT_FIG2_ALGORITHM,
