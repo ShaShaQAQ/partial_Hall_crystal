@@ -26,6 +26,18 @@ class ModerateFqahcPlotTests(unittest.TestCase):
         self.assertIn("moderate-coupling FQAHC candidate", text)
         self.assertNotIn("CDW 低能流形放大", text)
 
+    def test_optical_component_plots_use_graph_relative_key_position(self):
+        text = PLOT_SOURCE.read_text()
+        optical_loop = text.split(
+            "for key, column, ylabel, component_title in components:", 1
+        )[1]
+
+        self.assertIn(
+            "set key opaque box at graph 0.98,0.96 right top;",
+            optical_loop,
+        )
+        self.assertNotIn("set key opaque box top right;", optical_loop)
+
     def write_synthetic_result(self, directory):
         spectrum_path = directory / "spectrum.dat"
         spectrum_lines = ["# k E-E0"]

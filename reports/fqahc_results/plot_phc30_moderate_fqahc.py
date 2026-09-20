@@ -285,7 +285,7 @@ def generate_figures(
         lines.extend([
             "set output {};".format(_gnuplot_quote(outputs[key])),
             "set title '{}'; set xlabel '频率 omega'; set ylabel '{}';".format(component_title, ylabel),
-            "set xrange [{}:{}]; set autoscale y; set key opaque box top right;".format(
+            "set xrange [{}:{}]; set autoscale y; set key opaque box at graph 0.98,0.96 right top;".format(
                 reference_frequencies[0], reference_frequencies[-1]
             ),
             "plot {}; unset output;".format(", ".join(plot_parts)),
