@@ -1,6 +1,13 @@
 using Test
 using SparseArrays
 
+function spectrum_driver_output(driver, expression, arguments=String[])
+    project = dirname(Base.active_project())
+    command = `$(Base.julia_cmd()) --startup-file=no --threads=1
+        --project=$project -e $expression $driver $arguments`
+    return read(command, String)
+end
+
 @testset "30-site spectrum driver loads" begin
     driver = joinpath(
         @__DIR__, "..", "cases", "case3_30sites_Np12",
@@ -30,6 +37,17 @@ using SparseArrays
                 lanczos_sparse_sectors, KSector[], ThreadedCSR[])
         end
     end
+end
+
+@testset "spectrum driver propagates Np in a fresh process" begin
+    driver = joinpath(
+        @__DIR__, "..", "cases", "case3_30sites_Np12",
+        "run_spectrum.jl")
+    expression =
+        "driver = popfirst!(ARGS); include(driver); print(SPECTRUM_NP)"
+    output = spectrum_driver_output(
+        driver, expression, ["--Np", "13"])
+    @test strip(output) == "13"
 end
 
 @testset "single-sector threaded spectrum Lanczos" begin

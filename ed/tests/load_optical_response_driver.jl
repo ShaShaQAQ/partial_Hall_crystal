@@ -2,6 +2,13 @@ using Test
 
 ENV["PHC_PREFLIGHT"] = "1"
 
+function optical_driver_command(driver, expression, arguments=String[])
+    project = dirname(Base.active_project())
+    command = `$(Base.julia_cmd()) --startup-file=no --threads=1
+        --project=$project -e $expression $driver $arguments`
+    return addenv(command, "PHC_PREFLIGHT" => "1")
+end
+
 @testset "large optical-response driver loads" begin
     include(joinpath(
         @__DIR__, "..", "cases", "case3_30sites_Np12",
@@ -24,6 +31,55 @@ ENV["PHC_PREFLIGHT"] = "1"
         response_partial_path(7, "legacy"), "partial_5.jld2")
     @test endswith(
         response_partial_path(7, "corrected"), "partial_7.jld2")
+end
+
+@testset "optical driver propagates Np in a fresh process" begin
+    driver = joinpath(
+        @__DIR__, "..", "cases", "case3_30sites_Np12",
+        "run_optical_response.jl")
+    expression =
+        "driver = popfirst!(ARGS); include(driver); print(RESPONSE_NP)"
+    output = read(optical_driver_command(
+        driver, expression, ["--Np", "13"]), String)
+    @test strip(output) == "13"
+end
+
+@testset "optical driver rejects saved particle-number mismatch" begin
+    mktempdir() do directory
+        partial_path = joinpath(directory, "partial_5.jld2")
+        jldsave(partial_path; Np=12)
+
+        driver = joinpath(
+            @__DIR__, "..", "cases", "case3_30sites_Np12",
+            "run_optical_response.jl")
+        expression = join([
+            "driver = popfirst!(ARGS)",
+            "include(driver)",
+            "load_response_ground_state(RESPONSE_SECTOR)",
+        ], "; ")
+        arguments = [
+            "--Np", "13",
+            "--sector", "5",
+            "--lattice", "corrected",
+            "--data-dir", directory,
+            "--t1", "1.0",
+            "--t3", "0.2",
+            "--V1", "10.0",
+            "--V2", "2.0",
+            "--V3", "2.0",
+        ]
+        buffer = IOBuffer()
+        process = run(pipeline(
+            ignorestatus(optical_driver_command(
+                driver, expression, arguments)),
+            stdout=buffer,
+            stderr=buffer,
+        ))
+        message = String(take!(buffer))
+        @test !success(process)
+        @test occursin(
+            "saved particle number does not match --Np", message)
+    end
 end
 
 @testset "large optical-response output records model parameters" begin

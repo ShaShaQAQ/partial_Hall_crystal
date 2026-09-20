@@ -7,6 +7,7 @@ include("../../shared/structure_factor.jl")
 
 using Dates
 using JLD2
+using LinearAlgebra
 using Printf
 using SHA
 
@@ -77,7 +78,18 @@ function classify_candidate_manifold(
     ground_energy = ordered[1][2]
     top_energy = ordered[manifold_size][2]
     next_absolute = ordered[manifold_size + 1][2]
-    sectors = sort([level[1] for level in ordered[1:manifold_size]])
+    candidate_sectors = [level[1]
+                         for level in ordered[1:manifold_size]]
+    repeated_sectors = sort([
+        sector for sector in unique(candidate_sectors)
+        if count(==(sector), candidate_sectors) > 1
+    ])
+    isempty(repeated_sectors) || throw(ArgumentError(
+        "candidate manifold contains repeated sector " *
+        "$(first(repeated_sectors)); partial files save only one ground " *
+        "state per sector, so an excited-state wavefunction is " *
+        "unavailable"))
+    sectors = sort(candidate_sectors)
     return (
         sectors=sectors,
         ground_energy=ground_energy,
@@ -96,7 +108,7 @@ function file_sha256(path::AbstractString)
 end
 
 function validate_manifold_partial(
-        data, path, expected=manifold_expected_parameters())
+        data, path, expected, expected_sector::Integer)
     observed = (
         Np=Int(data["Np"]),
         t1=Float64(data["t1"]),
@@ -108,6 +120,62 @@ function validate_manifold_partial(
     )
     observed == expected || error(
         "parameter mismatch in $path: expected $expected, got $observed")
+
+    sector_start = Int(data["sector_start"])
+    sector_end = Int(data["sector_end"])
+    sector_start == expected_sector == sector_end || error(
+        "sector range mismatch in $path: expected " *
+        "$expected_sector:$expected_sector, got $sector_start:$sector_end")
+
+    ev_pairs = data["ev_pairs"]
+    ev_sectors = Set(Int(momentum)
+                     for (momentum, _) in ev_pairs)
+    ev_sectors == Set([Int(expected_sector)]) || error(
+        "ev_pairs sectors mismatch in $path: expected " *
+        "[$expected_sector], got $(sort!(collect(ev_sectors)))")
+
+    ground_states = data["gs_vecs"]
+    state_sectors = Set(Int(momentum) for momentum in keys(ground_states))
+    state_sectors == Set([Int(expected_sector)]) || error(
+        "gs_vecs sectors mismatch in $path: expected " *
+        "[$expected_sector], got $(sort!(collect(state_sectors)))")
+
+    residuals = data["residuals"]
+    residual_sectors = Set(Int(momentum) for momentum in keys(residuals))
+    residual_sectors == Set([Int(expected_sector)]) || error(
+        "residuals sectors mismatch in $path: expected " *
+        "[$expected_sector], got $(sort!(collect(residual_sectors)))")
+
+    state_norm = norm(ground_states[expected_sector])
+    isfinite(state_norm) &&
+        isapprox(state_norm, 1.0; atol=1e-10, rtol=0) || error(
+        "sector $expected_sector ground state in $path is not normalized: " *
+        "norm=$state_norm")
+
+    residual = Float64(residuals[expected_sector])
+    isfinite(residual) && 0 <= residual < 1e-7 || error(
+        "sector $expected_sector residual in $path must be finite and " *
+        "< 1e-7, got $residual")
+
+    sector_ground_energies = data["sector_ground_energies"]
+    energy_sectors = Set(
+        Int(momentum) for momentum in keys(sector_ground_energies))
+    energy_sectors == Set([Int(expected_sector)]) || error(
+        "sector_ground_energies sectors mismatch in $path: expected " *
+        "[$expected_sector], got $(sort!(collect(energy_sectors)))")
+    saved_ground_energy = Float64(
+        sector_ground_energies[expected_sector])
+    sector_energies = Float64[
+        energy for (momentum, energy) in ev_pairs
+        if Int(momentum) == expected_sector
+    ]
+    ev_ground_energy = minimum(sector_energies)
+    isfinite(saved_ground_energy) && isfinite(ev_ground_energy) &&
+        isapprox(saved_ground_energy, ev_ground_energy;
+                 atol=1e-10, rtol=1e-12) || error(
+        "sector $expected_sector ground energy mismatch in $path: " *
+        "saved=$saved_ground_energy ev_pairs=$ev_ground_energy")
+
     for key in ("momentum_step", "translation_character_error", "hopping_count")
         haskey(data, key) || error("missing lattice fingerprint $key in $path")
     end
@@ -135,10 +203,12 @@ function load_manifold_partials()
     metadata = NamedTuple[]
     seen_sectors = Set{Int}()
 
-    for path in manifold_partial_paths()
+    expected = manifold_expected_parameters()
+    for (expected_sector, path) in zip(0:14, manifold_partial_paths())
         isfile(path) || error("missing partial spectrum file: $path")
         data = load(path)
-        parameters = validate_manifold_partial(data, path)
+        parameters = validate_manifold_partial(
+            data, path, expected, expected_sector)
         append!(all_levels, [
             (Int(momentum), Float64(energy))
             for (momentum, energy) in data["ev_pairs"]

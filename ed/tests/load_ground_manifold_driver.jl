@@ -1,5 +1,12 @@
 using Test
 
+function manifold_driver_output(driver, expression, arguments=String[])
+    project = dirname(Base.active_project())
+    command = `$(Base.julia_cmd()) --startup-file=no --threads=1
+        --project=$project -e $expression $driver $arguments`
+    return read(command, String)
+end
+
 @testset "ground-manifold analyzer loads" begin
     driver = joinpath(
         @__DIR__, "..", "cases", "case3_30sites_Np12",
@@ -30,4 +37,21 @@ using Test
             for sector in 0:14
         ]
     end
+end
+
+@testset "ground-manifold driver propagates CLI values in a fresh process" begin
+    driver = joinpath(
+        @__DIR__, "..", "cases", "case3_30sites_Np12",
+        "analyze_ground_manifold.jl")
+    expression = join([
+        "driver = popfirst!(ARGS)",
+        "include(driver)",
+        "print(MANIFOLD_NP, \",\", MANIFOLD_SIZE)",
+    ], "; ")
+    output = manifold_driver_output(
+        driver,
+        expression,
+        ["--Np", "13", "--manifold-size", "3"],
+    )
+    @test strip(output) == "13,3"
 end
