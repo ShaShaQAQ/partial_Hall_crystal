@@ -2,6 +2,8 @@ using Test
 using TOML
 using InfiniteCylinderDMRG
 
+import MPSKit
+
 const MPSKIT_FIG2_MANIFEST_PATH = normpath(joinpath(
     @__DIR__, "..", "benchmarks", "fqahc_fig2.toml"
 ))
@@ -32,6 +34,97 @@ function capture_mpskit_fig2_manifest_error(data)
             error
         end
     end
+end
+
+function mpskit_fig2_fixture_solver(
+    hamiltonian,
+    initial_state;
+    maxdim_schedule,
+    cutoff,
+    idmrg_maxiter,
+    vumps_maxiter,
+    galerkin_tol,
+    energy_imag_tol=1e-10,
+    verbosity=0,
+    progress_callback=(args...) -> nothing,
+)
+    _ = (galerkin_tol, energy_imag_tol, verbosity)
+    length(maxdim_schedule) == 1 || throw(
+        ArgumentError("fixture solver requires exactly one schedule stage"),
+    )
+    environments = MPSKit.environments(
+        initial_state,
+        hamiltonian,
+        initial_state,
+    )
+    energy = ComplexF64(MPSKit.expectation_value(
+        initial_state,
+        hamiltonian,
+        environments,
+    )) / length(initial_state)
+    dimensions = InfiniteCylinderDMRG._mpskit_solver_link_dimensions(
+        initial_state
+    )
+    record = MPSKitSolverStageRecord(
+        1,
+        only(maxdim_schedule),
+        maximum(dimensions),
+        Float64(cutoff),
+        idmrg_maxiter,
+        vumps_maxiter,
+        real(energy),
+        imag(energy),
+        0.0,
+        0.0,
+        0.0,
+        0.01,
+    )
+    progress_callback(initial_state, environments, [record])
+    return MPSKitSolverResult(
+        initial_state,
+        environments,
+        [record],
+        real(energy),
+        imag(energy),
+        0.0,
+        0.0,
+        dimensions,
+        true,
+    )
+end
+
+function mpskit_fig2_fixture_provenance(spec, output, runtime_seconds)
+    active_project = abspath(Base.active_project())
+    project_manifest = joinpath(dirname(active_project), "Manifest.toml")
+    benchmark_source = normpath(joinpath(
+        @__DIR__, "..", "src", "Fig2Benchmark.jl"
+    ))
+    base = Dict{String,Any}(
+        "format" => "fqahc_fig2_provenance_v2",
+        "manifest_sha256" => spec.sha256,
+        "git_commit" => InfiniteCylinderDMRG._fig2_repository_commit(),
+        "git_tree_clean" => true,
+        "julia_version" => string(VERSION),
+        "pbs_job_id" => get(ENV, "PBS_JOBID", "adapter-test.w003"),
+        "threads" => Threads.nthreads(),
+        "blas_threads" => 1,
+        "strided_threads" => 1,
+        "blocksparse_threaded" => Threads.nthreads() > 1,
+        "runtime_seconds" => runtime_seconds,
+        "active_project" => active_project,
+        "project_manifest" => project_manifest,
+        "project_manifest_sha256" =>
+            InfiniteCylinderDMRG._fig2_file_sha256(project_manifest),
+        "benchmark_source" => benchmark_source,
+        "benchmark_source_sha256" =>
+            InfiniteCylinderDMRG._fig2_file_sha256(benchmark_source),
+    )
+    return InfiniteCylinderDMRG._mpskit_fig2_provenance(
+        spec,
+        output,
+        runtime_seconds;
+        base_provenance=(args...) -> deepcopy(base),
+    )
 end
 
 @testset "MPSKit Fig. 2 workflow adapter" begin
@@ -297,6 +390,71 @@ end
         @test provenance["backend_adapter_source"] == adapter_source
         @test provenance["backend_adapter_source_sha256"] ==
             InfiniteCylinderDMRG._fig2_file_sha256(adapter_source)
+    end
+end
+
+@testset "MPSKit adapter runs the audited candidate workflow" begin
+    required = (
+        :MPSKIT_FIG2_ALGORITHM,
+        :_mpskit_fig2_write_solver_outputs!,
+    )
+    @test all(name -> isdefined(InfiniteCylinderDMRG, name), required)
+    if all(name -> isdefined(InfiniteCylinderDMRG, name), required)
+        spec = load_fig2_benchmark(MPSKIT_FIG2_MANIFEST_PATH)
+        candidate_id = first(fig2_initial_candidates(spec.config)).id
+        operations = mpskit_fig2_operations(
+            spec;
+            solver=mpskit_fig2_fixture_solver,
+            provenance=mpskit_fig2_fixture_provenance,
+            candidate_ids=(args...) -> [candidate_id],
+        )
+        mktempdir() do directory
+            run = run_fig2_benchmark(
+                spec,
+                directory;
+                stage="adapter_fixture",
+                dimensions=[1],
+                fluxes=[0.0],
+                operations,
+            )
+            @test length(run.selections) == 1
+            selection = only(run.selections)
+            @test selection.candidate_id == candidate_id
+            @test selection.restart_valid
+
+            candidate_directory = joinpath(directory, selection.directory)
+            for filename in InfiniteCylinderDMRG.FIG2_REQUIRED_CANDIDATE_FILES
+                @test isfile(joinpath(candidate_directory, filename))
+            end
+            summary = TOML.parsefile(joinpath(
+                candidate_directory, "summary.toml"
+            ))
+            @test summary["algorithm"] ==
+                InfiniteCylinderDMRG.MPSKIT_FIG2_ALGORITHM
+            @test summary["backend"]["id"] == "mpskit_idmrg_v1"
+            @test summary["optimization"]["maxdim_schedule"] == [1]
+            @test summary["optimization"]["recomputed_galerkin_gate"] ==
+                1.0e-6
+
+            convergence = readlines(joinpath(
+                candidate_directory, "convergence.tsv"
+            ))
+            @test length(convergence) == 2
+            @test first(convergence) ==
+                InfiniteCylinderDMRG.FIG2_ARTIFACT_HEADERS["convergence.tsv"]
+            @test length(readlines(joinpath(
+                candidate_directory, "density.tsv"
+            ))) == sites_per_cell(spec.config) + 1
+
+            ledger = TOML.parsefile(joinpath(directory, "ledger.toml"))
+            @test length(ledger["candidate"]) == 1
+            @test length(ledger["selection"]) == 1
+            @test only(ledger["candidate"])["restart_valid"]
+            @test only(ledger["candidate"])["progress_event_count"] == 1
+            @test isfile(joinpath(directory, "pump_raw.tsv"))
+            raw_rows = readlines(joinpath(directory, "pump_raw.tsv"))
+            @test length(raw_rows) == 2
+        end
     end
 end
 end
