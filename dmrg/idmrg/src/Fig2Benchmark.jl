@@ -1227,6 +1227,7 @@ function _fig2_validate_progress_chain(root, identity, pointer)
     latest = nothing
     verified = 0
     state_paths = String[]
+    events = Dict{String,Any}[]
     while true
         absolute, relative = _fig2_progress_path(
             root, event_path, "event"
@@ -1238,6 +1239,7 @@ function _fig2_validate_progress_chain(root, identity, pointer)
             ArgumentError("Fig. 2 progress event checksum mismatch")
         )
         event = Dict{String,Any}(TOML.parsefile(absolute))
+        push!(events, event)
         get(event, "format", "") == FIG2_PROGRESS_EVENT_FORMAT || throw(
             ArgumentError("unsupported Fig. 2 progress event format")
         )
@@ -1280,6 +1282,7 @@ function _fig2_validate_progress_chain(root, identity, pointer)
         latest=something(latest),
         verified_event_count=verified,
         state_paths,
+        events=reverse!(events),
     )
 end
 
@@ -1368,6 +1371,7 @@ function _fig2_load_progress(
             joinpath(root, ".progress", "latest.toml")
         ),
         pointer,
+        events=chain.events,
     )
 end
 
@@ -3555,7 +3559,8 @@ function _validate_fig2_candidate_artifacts(
     get(summary, "format", "") == TEXT_OUTPUT_FORMAT || throw(
         ArgumentError("candidate summary format is invalid")
     )
-    get(summary, "algorithm", "") == "VUMPS" || throw(
+    algorithm = get(summary, "algorithm", "")
+    algorithm in ("VUMPS", MPSKIT_FIG2_ALGORITHM) || throw(
         ArgumentError("candidate summary algorithm is invalid")
     )
     get(summary, "valid", nothing) isa Bool || throw(
@@ -3594,12 +3599,21 @@ function _validate_fig2_candidate_artifacts(
         )
         _validate_fig2_tsv_structure(path, filename)
     end
-    final_convergence = _validate_fig2_convergence_tsv(
-        joinpath(directory, "convergence.tsv"),
-        summary_schedule;
-        optimization=convergence_optimization,
-        energy_normalization_sites=sites_per_cell(spec.config),
-    )
+    final_convergence = if algorithm == MPSKIT_FIG2_ALGORITHM
+        _validate_mpskit_fig2_convergence_tsv(
+            joinpath(directory, "convergence.tsv"),
+            summary_schedule;
+            optimization=convergence_optimization,
+            energy_normalization_sites=sites_per_cell(spec.config),
+        )
+    else
+        _validate_fig2_convergence_tsv(
+            joinpath(directory, "convergence.tsv"),
+            summary_schedule;
+            optimization=convergence_optimization,
+            energy_normalization_sites=sites_per_cell(spec.config),
+        )
+    end
     replayed_energy_per_site = (
         final_convergence.energy_left + final_convergence.energy_right
     ) / (2 * sites_per_cell(spec.config))
