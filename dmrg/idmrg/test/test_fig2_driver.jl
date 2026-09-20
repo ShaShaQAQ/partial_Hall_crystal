@@ -1019,6 +1019,41 @@ if all(
         )
     end
 
+    @testset "Fig. 2 workflow fixes the operations checkpoint filename" begin
+        spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
+        provenance_calls = Ref(0)
+        operations = Fig2BenchmarkOperations(
+            checkpoint_filename="alternate-state.h5",
+            provenance=(args...) -> begin
+                provenance_calls[] += 1
+                synthetic_fig2_provenance(args...)
+            end,
+        )
+        mktempdir() do directory
+            error = try
+                run_fig2_benchmark(
+                    spec,
+                    directory;
+                    stage="invalid_checkpoint_filename",
+                    dimensions=Int[],
+                    fluxes=Float64[],
+                    operations,
+                )
+                nothing
+            catch captured
+                captured
+            end
+            @test error isa ArgumentError
+            if error isa ArgumentError
+                message = lowercase(sprint(showerror, error))
+                @test occursin("checkpoint", message)
+                @test occursin("state.h5", message)
+            end
+            @test provenance_calls[] == 0
+            @test !isfile(joinpath(directory, "manifest.toml"))
+        end
+    end
+
     function synthetic_restart_gate(
         spec,
         directory;
