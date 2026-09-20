@@ -204,9 +204,15 @@ export BLOCKTENSORKIT_COMMIT,
     MPSKitEntanglementSector,
     MPSKitEntanglementData,
     MPSKitNeutralTransferData,
+    MPSKitSchmidtMomentumData,
+    MPSKitMomentumData,
     mpskit_energy_data,
     mpskit_density_data,
     mpskit_entanglement_data,
-    mpskit_neutral_transfer_data
+    mpskit_neutral_transfer_data,
+    mpskit_transverse_translation_mpo,
+    mpskit_schmidt_momentum_data,
+    mpskit_momentum_entanglement_data,
+    mpskit_mixed_transfer_fidelity
 
 end
