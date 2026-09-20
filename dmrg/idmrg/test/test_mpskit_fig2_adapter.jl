@@ -128,6 +128,44 @@ function mpskit_fig2_fixture_provenance(spec, output, runtime_seconds)
 end
 
 @testset "MPSKit Fig. 2 workflow adapter" begin
+@testset "honestly nonconverged MPSKit candidates remain auditable" begin
+    mktempdir() do directory
+        convergence_path = joinpath(directory, "convergence.tsv")
+        open(convergence_path, "w") do io
+            println(
+                io,
+                InfiniteCylinderDMRG.FIG2_ARTIFACT_HEADERS["convergence.tsv"],
+            )
+            println(
+                io,
+                "1\t1\t32\t134.00815366738232\t134.00815366738232\t" *
+                "0.0\tmissing\t3.6971586444442827e-7\t" *
+                "0.00021504286660055388\t0.00021504286660056603\t" *
+                "5267.638652202\tfalse",
+            )
+        end
+
+        final = InfiniteCylinderDMRG._validate_mpskit_fig2_convergence_tsv(
+            convergence_path,
+            [32];
+            optimization=(;
+                multisite_update_alg=:sequential,
+                solver_tolerance_policy=
+                    "max_previous_precision_error_or_vumps_tol_over_100",
+                vumps_tol=1.0e-6,
+                energy_tol=1.0e-6,
+                energy_mismatch_tol=1.0e-6,
+                stable_iterations=2,
+            ),
+            energy_normalization_sites=36,
+        )
+
+        @test final.maxlinkdim == 32
+        @test final.converged === false
+        @test final.precision_error == 0.00021504286660056603
+    end
+end
+
 @testset "production backend manifest contract" begin
     manifest = TOML.parsefile(MPSKIT_FIG2_MANIFEST_PATH)
     @test get(manifest, "format", "") == "fqahc_fig2_benchmark_v5"
