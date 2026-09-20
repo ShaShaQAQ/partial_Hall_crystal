@@ -40,6 +40,7 @@ include("Fig2Benchmark.jl")
 include("MPSKitBackend.jl")
 include("MPSKitHamiltonian.jl")
 include("MPSKitSolver.jl")
+include("MPSKitCheckpoint.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -190,6 +191,10 @@ export BLOCKTENSORKIT_COMMIT,
     MPSKitSolverStageRecord,
     MPSKitSolverResult,
     mpskit_solver_converged,
-    run_mpskit_idmrg
+    run_mpskit_idmrg,
+    MPSKitCheckpointData,
+    mpskit_state_space_fingerprints,
+    save_mpskit_checkpoint,
+    load_mpskit_checkpoint
 
 end
