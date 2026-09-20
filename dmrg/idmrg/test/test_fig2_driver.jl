@@ -6904,6 +6904,34 @@ if all(
             )
             @test isfile(joinpath(directory, "ledger.toml"))
             @test isfile(joinpath(directory, "acceptance.toml"))
+
+            automatic_output = joinpath(directory, "automatic_backend")
+            selected_backends = String[]
+            automatic = run_fig2_benchmark_main([
+                "--manifest=$FIG2_MANIFEST_PATH",
+                "--stage=cli_automatic_backend_test",
+                "--output=$automatic_output",
+                "--dimensions=4",
+                "--flux_units_2pi=0,3",
+                "--threads=3",
+            ];
+                operations=nothing,
+                operations_for_backend=loaded_spec -> begin
+                    push!(
+                        selected_backends,
+                        String(loaded_spec.data["backend"]["id"]),
+                    )
+                    operations
+                end,
+                configure_threads=threads ->
+                    push!(configured_threads, threads),
+            )
+            @test selected_backends == ["mpskit_idmrg_v1"]
+            @test configured_threads == [3, 3]
+            @test automatic.run isa Fig2BenchmarkRun
+            @test length(automatic.run.selections) == 2
+            @test isfile(joinpath(automatic_output, "ledger.toml"))
+            @test isfile(joinpath(automatic_output, "acceptance.toml"))
         end
     end
 
