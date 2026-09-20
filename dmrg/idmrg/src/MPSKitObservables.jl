@@ -518,27 +518,51 @@ function _mpskit_identity_finite_mpo(physical_spaces)
     return MPSKit.FiniteMPO(tensors)
 end
 
+function _mpskit_adjacent_fermionic_swap_mpo(physical_spaces, site::Int)
+    1 <= site < length(physical_spaces) || throw(
+        ArgumentError("adjacent swap site lies outside the finite MPO"),
+    )
+    physical_spaces[site] == physical_spaces[site + 1] || throw(
+        ArgumentError("adjacent fermionic swap requires equal physical spaces"),
+    )
+    local_gate = TensorKit.TensorMap(
+        TensorKit.BraidingTensor(
+            physical_spaces[site],
+            physical_spaces[site + 1],
+        ),
+    )
+    local_mpo = MPSKit.FiniteMPO(local_gate)
+    tensors = [
+        MPSKit.add_util_leg(TensorKit.id(physical_space)) for
+        physical_space in physical_spaces
+    ]
+    tensors[site] = local_mpo[1]
+    tensors[site + 1] = local_mpo[2]
+    return MPSKit.FiniteMPO(tensors)
+end
+
 function _mpskit_finite_transverse_translation_mpo(
     c::InfiniteCylinderConfig,
 )
     _paper_translation_Ny(c)
-    translation = _mpskit_identity_finite_mpo(mpskit_physical_spaces(c))
+    physical_spaces = mpskit_physical_spaces(c)
+    translation = _mpskit_identity_finite_mpo(physical_spaces)
     for x in 0:(c.x_period - 1)
         first_site = x * c.Ly + 1
         last_site = (x + 1) * c.Ly
         for swap_site in (last_site - 2):-1:first_site
-            MPSKit.swap!(
-                translation,
-                swap_site;
-                trunc=MatrixAlgebraKit.notrunc(),
+            swap_gate = _mpskit_adjacent_fermionic_swap_mpo(
+                physical_spaces,
+                swap_site,
             )
+            translation = swap_gate * translation
         end
         for swap_site in (last_site - 1):-1:(first_site + 1)
-            MPSKit.swap!(
-                translation,
-                swap_site;
-                trunc=MatrixAlgebraKit.notrunc(),
+            swap_gate = _mpskit_adjacent_fermionic_swap_mpo(
+                physical_spaces,
+                swap_site,
             )
+            translation = swap_gate * translation
         end
     end
     return translation
