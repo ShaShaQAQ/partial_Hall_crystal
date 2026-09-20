@@ -344,7 +344,7 @@ its `state.h5`, convergence/expansion tables, density, raw charge and momentum
 entanglement spectra, raw Schmidt sectors, mixed fidelity, and candidate
 metadata.
 
-`ledger.toml` is replaced atomically only after all ten required candidate
+`ledger.toml` is replaced atomically only after all eleven required candidate
 artifacts exist and their SHA-256 values have been recorded. Re-running the
 same stage validates the byte-identical manifest copy and every completed-file
 checksum, skips completed candidates/selections, loads the most recent selected
