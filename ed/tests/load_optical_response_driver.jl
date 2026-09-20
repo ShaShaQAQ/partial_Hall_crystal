@@ -7,6 +7,12 @@ ENV["PHC_PREFLIGHT"] = "1"
         @__DIR__, "..", "cases", "case3_30sites_Np12",
         "run_optical_response.jl"))
     @test isdefined(Main, :run_large_optical_response)
+    @test isdefined(Main, :RESPONSE_NP)
+    if isdefined(Main, :RESPONSE_NP)
+        expected_np = parse(
+            Int, parse_response_argument("--Np", "12"))
+        @test RESPONSE_NP == expected_np
+    end
     @test RESPONSE_PREFLIGHT
     @test RESPONSE_LATTICE == "legacy"
     @test response_lattice("legacy") isa GenLat
@@ -31,7 +37,10 @@ end
             drude=ComplexF64[0.5 + 1.8im, 2.6 + 3.9im],
         )
         kernel = (alpha=[1.0, 2.0], beta=[0.3], breakdown=false)
-        model = (Np=12, t1=1.0, t3=0.2, V1=10.0, V2=2.0, V3=2.0)
+        expected_np = parse(
+            Int, parse_response_argument("--Np", "12"))
+        model = (Np=expected_np, t1=1.0, t3=0.2,
+                 V1=10.0, V2=2.0, V3=2.0)
 
         save_response_curve(
             output_path, 5, 1.25, 1e-12, 0.75, 0.5, 12sqrt(3),
@@ -39,7 +48,7 @@ end
             model_parameters=model, requested_mmax=600)
 
         saved = load(output_path)
-        @test saved["Np"] == 12
+        @test saved["Np"] == expected_np
         @test saved["t1"] == 1.0
         @test saved["t3"] == 0.2
         @test saved["V1"] == 10.0

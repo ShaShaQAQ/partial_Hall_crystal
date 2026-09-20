@@ -57,7 +57,7 @@ SPECTRUM_SECTOR_END == SPECTRUM_SECTOR_START ||
     error("30-site corrected spectrum jobs must contain one sector")
 SPECTRUM_LATTICE in ("corrected", "legacy") ||
     error("lattice must be corrected or legacy")
-SPECTRUM_NP == 12 || error("this 30-site workflow expects Np=12")
+1 <= SPECTRUM_NP < 30 || error("Np must satisfy 1 <= Np < 30")
 SPECTRUM_NEV > 0 || error("nev must be positive")
 SPECTRUM_KRYLOVDIM > SPECTRUM_NEV ||
     error("krylovdim must be greater than nev")

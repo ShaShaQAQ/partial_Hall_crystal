@@ -44,6 +44,8 @@ const RESPONSE_V2 = parse(
     Float64, parse_response_argument("--V2", "0.0"))
 const RESPONSE_V3 = parse(
     Float64, parse_response_argument("--V3", "0.0"))
+const RESPONSE_NP = parse(
+    Int, parse_response_argument("--Np", "12"))
 const RESPONSE_LATTICE = parse_response_argument(
     "--lattice", "legacy")
 const RESPONSE_DATA_DIR = parse_response_argument(
@@ -56,6 +58,7 @@ const RESPONSE_PREFLIGHT =
 0 <= RESPONSE_SECTOR <= 14 || error("sector must be in 0:14")
 RESPONSE_MMAX > 0 || error("mmax must be positive")
 RESPONSE_OMEGA_STEP > 0 || error("omega step must be positive")
+1 <= RESPONSE_NP < 30 || error("Np must satisfy 1 <= Np < 30")
 RESPONSE_LATTICE in ("legacy", "corrected") ||
     error("lattice must be legacy or corrected")
 
@@ -75,7 +78,10 @@ function load_response_ground_state(sector::Int)
     path = response_partial_path(sector)
     isfile(path) || error("missing saved data: $path")
     data = load(path)
-    Int(data["Np"]) == 12 || error("this driver expects Np=12")
+    saved_np = Int(data["Np"])
+    saved_np == RESPONSE_NP || error(
+        "saved particle number does not match --Np: " *
+        "saved=$saved_np requested=$RESPONSE_NP")
     saved_parameters = (
         t1=Float64(data["t1"]),
         t3=Float64(data["t3"]),
@@ -227,8 +233,8 @@ function run_large_optical_response()
     lattice = response_lattice()
     println("[1] lattice: Ns=$(lattice.Ns) Nuc=$(lattice.Nuc) " *
             "source=$(saved.path)")
-    println("[2] generating C($(lattice.Ns),12) basis")
-    basis = gen_basis(lattice.Ns, 12)
+    println("[2] generating C($(lattice.Ns),$RESPONSE_NP) basis")
+    basis = gen_basis(lattice.Ns, RESPONSE_NP)
     println("[3] building momentum sector $RESPONSE_SECTOR")
     translation_maps = translation_site_maps(lattice)
     sector_time = @elapsed sector = build_ksector(
@@ -332,7 +338,7 @@ function run_large_optical_response()
         diamagnetic_expectation, source_norm2, area, RESPONSE_ETA,
         frequencies, curve, kernel, RESPONSE_LATTICE;
         model_parameters=(
-            Np=12,
+            Np=RESPONSE_NP,
             t1=RESPONSE_T1,
             t3=RESPONSE_T3,
             V1=RESPONSE_V1,
