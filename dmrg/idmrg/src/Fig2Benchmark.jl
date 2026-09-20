@@ -1908,6 +1908,12 @@ const FIG2_GENERATION_PROVENANCE_KEYS = (
     "project_manifest_sha256",
     "benchmark_source",
     "benchmark_source_sha256",
+    "backend_id",
+    "mpskit_commit",
+    "tensorkittensors_commit",
+    "blocktensorkit_commit",
+    "backend_adapter_source",
+    "backend_adapter_source_sha256",
 )
 
 function _fig2_threading_provenance_valid(provenance)
@@ -1970,6 +1976,7 @@ function _fig2_generation_provenance(spec, provenance)
             _fig2_file_sha256(benchmark_source) || throw(
         ArgumentError("execution provenance benchmark source is invalid")
     )
+    _fig2_validate_backend_provenance(spec, provenance)
     generation = Dict{String,Any}(
         key => deepcopy(provenance[key]) for key in FIG2_GENERATION_PROVENANCE_KEYS
     )
@@ -1999,6 +2006,12 @@ function _fig2_validate_generation_compatibility(stored, current)
         "project_manifest_sha256",
         "benchmark_source",
         "benchmark_source_sha256",
+        "backend_id",
+        "mpskit_commit",
+        "tensorkittensors_commit",
+        "blocktensorkit_commit",
+        "backend_adapter_source",
+        "backend_adapter_source_sha256",
     )
     all(key -> haskey(stored, key) && stored[key] == current[key], immutable_keys) ||
         throw(ArgumentError(
@@ -5774,6 +5787,7 @@ function _fig2_provenance_result(
         provenance = toml_parsefile(path)
         active_project, project_manifest = _fig2_project_manifest()
         benchmark_source = abspath(@__FILE__)
+        _fig2_validate_backend_provenance(spec, provenance)
         commit = get(provenance, "git_commit", "")
         pbs_job_id = get(provenance, "pbs_job_id", "")
         runtime_seconds = get(provenance, "runtime_seconds", nothing)
@@ -5870,7 +5884,48 @@ function _fig2_pinned_backend_revision(
         "TensorKitTensors",
         String(_fig2_required(backend, "tensorkittensors_commit")),
     )
+    _fig2_pinned_dependency_revision(
+        project,
+        manifest,
+        "BlockTensorKit",
+        BLOCKTENSORKIT_COMMIT,
+    )
     return mpskit_revision
+end
+
+function _fig2_validate_backend_provenance(spec, provenance)
+    provenance isa AbstractDict || throw(ArgumentError(
+        "Fig. 2 backend provenance must be a dictionary"
+    ))
+    snapshot = _fig2_validated_snapshot(spec)
+    backend = _fig2_required(snapshot, "backend")
+    active_project, project_manifest = _fig2_project_manifest()
+    _fig2_pinned_backend_revision(
+        active_project,
+        project_manifest,
+        backend,
+    )
+    adapter_source = abspath(joinpath(@__DIR__, "MPSKitFig2Adapter.jl"))
+    isfile(adapter_source) || throw(ArgumentError(
+        "Fig. 2 backend adapter source is missing"
+    ))
+    expected = Dict{String,Any}(
+        "backend_id" => String(_fig2_required(backend, "id")),
+        "mpskit_commit" =>
+            String(_fig2_required(backend, "mpskit_commit")),
+        "tensorkittensors_commit" =>
+            String(_fig2_required(backend, "tensorkittensors_commit")),
+        "blocktensorkit_commit" => BLOCKTENSORKIT_COMMIT,
+        "backend_adapter_source" => adapter_source,
+        "backend_adapter_source_sha256" =>
+            _fig2_file_sha256(adapter_source),
+    )
+    for (key, value) in expected
+        get(provenance, key, nothing) == value || throw(ArgumentError(
+            "Fig. 2 backend provenance $key is invalid"
+        ))
+    end
+    return true
 end
 
 function _fig2_restart_gate_result(

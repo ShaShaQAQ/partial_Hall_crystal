@@ -997,6 +997,9 @@ if all(
         benchmark_source = joinpath(
             dirname(pathof(InfiniteCylinderDMRG)), "Fig2Benchmark.jl"
         )
+        backend_adapter_source = joinpath(
+            dirname(pathof(InfiniteCylinderDMRG)), "MPSKitFig2Adapter.jl"
+        )
         return Dict{String,Any}(
             "format" => "fqahc_fig2_provenance_v2",
             "manifest_sha256" => spec.sha256,
@@ -1016,6 +1019,15 @@ if all(
             "benchmark_source" => benchmark_source,
             "benchmark_source_sha256" =>
                 InfiniteCylinderDMRG._fig2_file_sha256(benchmark_source),
+            "backend_id" => "mpskit_idmrg_v1",
+            "mpskit_commit" => MPSKIT_BACKEND_COMMIT,
+            "tensorkittensors_commit" => TENSORKITTENSORS_COMMIT,
+            "blocktensorkit_commit" => BLOCKTENSORKIT_COMMIT,
+            "backend_adapter_source" => backend_adapter_source,
+            "backend_adapter_source_sha256" =>
+                InfiniteCylinderDMRG._fig2_file_sha256(
+                    backend_adapter_source
+                ),
         )
     end
 
