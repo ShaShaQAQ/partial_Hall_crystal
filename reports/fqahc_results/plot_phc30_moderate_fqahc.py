@@ -283,6 +283,10 @@ def generate_figures(
             )
         )
         lines.extend([
+            "reset session;",
+            "set datafile commentschars '#';",
+            "set term pngcairo size 1320,800 enhanced font 'Noto Sans SC,15';",
+            "set border linewidth 1.2; set grid ytics lc rgb '#d8d8d8' lw 1;",
             "set output {};".format(_gnuplot_quote(outputs[key])),
             "set title '{}'; set xlabel '频率 omega'; set ylabel '{}';".format(component_title, ylabel),
             "set xrange [{}:{}]; set autoscale y; set key opaque box at graph 0.98,0.96 right top;".format(

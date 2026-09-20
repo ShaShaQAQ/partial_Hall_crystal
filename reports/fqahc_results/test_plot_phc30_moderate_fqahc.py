@@ -38,6 +38,25 @@ class ModerateFqahcPlotTests(unittest.TestCase):
         )
         self.assertNotIn("set key opaque box top right;", optical_loop)
 
+    def test_each_optical_component_resets_gnuplot_session(self):
+        text = PLOT_SOURCE.read_text()
+        optical_loop = text.split(
+            "for key, column, ylabel, component_title in components:", 1
+        )[1]
+        component_setup = optical_loop.split("lines.extend([", 1)[1].split(
+            '"set output {};".format', 1
+        )[0]
+
+        for command in (
+            '"reset session;"',
+            '"set datafile commentschars \'#\';"',
+            '"set term pngcairo size 1320,800 enhanced font '
+            "'Noto Sans SC,15';\"",
+            '"set border linewidth 1.2; set grid ytics lc rgb '
+            "'#d8d8d8' lw 1;\"",
+        ):
+            self.assertIn(command, component_setup)
+
     def write_synthetic_result(self, directory):
         spectrum_path = directory / "spectrum.dat"
         spectrum_lines = ["# k E-E0"]
