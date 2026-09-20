@@ -1,0 +1,40 @@
+#!/bin/bash
+#PBS -N phc30_n13_spec
+#PBS -q short
+#PBS -l select=1:ncpus=24:mem=90gb
+#PBS -l walltime=10:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+: "${PHC_RESULT_ID:?set PHC_RESULT_ID}"
+: "${PHC_V1:?set PHC_V1}"
+: "${PHC_V2:?set PHC_V2}"
+: "${PHC_V3:?set PHC_V3}"
+: "${PBS_ARRAY_INDEX:?submit as an array over sectors 0:14}"
+
+W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitations}
+PHC_RUN_ROOT=${PHC_RUN_ROOT:-/home/public/shajy/codex_runs}
+PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_ROOT}/${PHC_RESULT_ID}/spectrum}
+JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}
+PHC_SECTOR=${PBS_ARRAY_INDEX}
+
+((PHC_SECTOR >= 0 && PHC_SECTOR <= 14)) || {
+    echo "PBS_ARRAY_INDEX must be a momentum sector in 0:14" >&2
+    exit 2
+}
+
+export JULIA_NUM_THREADS=24
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=4
+
+mkdir -p "${PHC_DATA_DIR}"
+cd "${W003_REPO}"
+exec "${JULIA_BIN}" --threads=24 --project=. \
+    ed/cases/case3_30sites_Np12/run_spectrum.jl \
+    --sector-start "${PHC_SECTOR}" --sector-end "${PHC_SECTOR}" \
+    --output-dir "${PHC_DATA_DIR}" \
+    --lattice corrected --Np 13 \
+    --t1 1.0 --t3 0.2 \
+    --V1 "${PHC_V1}" --V2 "${PHC_V2}" --V3 "${PHC_V3}" \
+    --nev 8 --krylovdim 60

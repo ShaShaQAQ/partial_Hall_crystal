@@ -148,6 +148,46 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn("--V2 2.0", optical_all)
         self.assertIn("--V3 2.0", optical_all)
 
+    def test_w003_np13_workflow_is_parameterized_and_isolated(self):
+        submit_dir = (
+            ROOT / "ed" / "cases" / "case3_30sites_Np12" / "submit"
+        )
+        jobs = {
+            "spectrum": submit_dir / "run_np13_spectrum_w003.pbs",
+            "analysis": submit_dir / "run_np13_analyze_w003.pbs",
+            "optical": submit_dir / "run_np13_optical_w003.pbs",
+        }
+        for path in jobs.values():
+            self.assertTrue(path.is_file(), str(path))
+            text = path.read_text()
+            self.assertIn("#PBS -q short", text)
+            self.assertIn("select=1:ncpus=24:mem=90gb", text)
+            self.assertIn("--threads=24", text)
+            self.assertIn("PHC_RESULT_ID", text)
+            self.assertIn("PHC_V1", text)
+            self.assertIn("PHC_V2", text)
+            self.assertIn("PHC_V3", text)
+            self.assertIn("--Np 13", text)
+            self.assertIn("--lattice corrected", text)
+
+        spectrum = jobs["spectrum"].read_text()
+        self.assertIn("PBS_ARRAY_INDEX", spectrum)
+        self.assertIn("--nev 8", spectrum)
+        self.assertIn("--krylovdim 60", spectrum)
+        self.assertIn("run_spectrum.jl", spectrum)
+
+        analysis = jobs["analysis"].read_text()
+        self.assertIn("PHC_MANIFOLD_SIZE", analysis)
+        self.assertIn("PHC_PHASE_LABEL", analysis)
+        self.assertIn("analyze_ground_manifold.jl", analysis)
+
+        optical = jobs["optical"].read_text()
+        self.assertIn("PHC_SECTORS", optical)
+        self.assertIn("PBS_ARRAY_INDEX", optical)
+        self.assertIn("--mmax 600", optical)
+        self.assertIn("--eta 0.065", optical)
+        self.assertIn("run_optical_response.jl", optical)
+
 
 if __name__ == "__main__":
     unittest.main()

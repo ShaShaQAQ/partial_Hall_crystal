@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N phc30_n13_opt
+#PBS -q short
+#PBS -l select=1:ncpus=24:mem=90gb
+#PBS -l walltime=10:00:00
+#PBS -j oe
+
+set -euo pipefail
+
+: "${PHC_RESULT_ID:?set PHC_RESULT_ID}"
+: "${PHC_V1:?set PHC_V1}"
+: "${PHC_V2:?set PHC_V2}"
+: "${PHC_V3:?set PHC_V3}"
+: "${PHC_SECTORS:?set PHC_SECTORS to the comma-separated manifold sectors}"
+: "${PBS_ARRAY_INDEX:?submit as an array over indices into PHC_SECTORS}"
+
+W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-ed-excitations}
+PHC_RUN_ROOT=${PHC_RUN_ROOT:-/home/public/shajy/codex_runs}
+PHC_DATA_DIR=${PHC_DATA_DIR:-${PHC_RUN_ROOT}/${PHC_RESULT_ID}/spectrum}
+PHC_OUTPUT_DIR=${PHC_OUTPUT_DIR:-${PHC_RUN_ROOT}/${PHC_RESULT_ID}/optical}
+JULIA_BIN=${JULIA_BIN:-/home/shajy/bin/julia}
+
+IFS=',' read -r -a sector_list <<< "${PHC_SECTORS}"
+((PBS_ARRAY_INDEX >= 0 && PBS_ARRAY_INDEX < ${#sector_list[@]})) || {
+    echo "PBS_ARRAY_INDEX is outside PHC_SECTORS" >&2
+    exit 2
+}
+PHC_SECTOR=${sector_list[PBS_ARRAY_INDEX]}
+
+export JULIA_NUM_THREADS=24
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export PHC_BLAS_THREADS=1
+
+mkdir -p "${PHC_OUTPUT_DIR}"
+cd "${W003_REPO}"
+exec "${JULIA_BIN}" --threads=24 --project=. \
+    ed/cases/case3_30sites_Np12/run_optical_response.jl \
+    --sector "${PHC_SECTOR}" --data-dir "${PHC_DATA_DIR}" \
+    --out-dir "${PHC_OUTPUT_DIR}" \
+    --lattice corrected --Np 13 \
+    --t1 1.0 --t3 0.2 \
+    --V1 "${PHC_V1}" --V2 "${PHC_V2}" --V3 "${PHC_V3}" \
+    --mmax 600 --eta 0.065 --omega-max 10.0 --omega-step 0.002
