@@ -131,6 +131,27 @@ end
     @test !rounded_result.valid
     @test rounded_result.spectrum.validation.power_residual > 1e-5
     @test all(ismissing, getproperty.(rounded_result.spectrum.levels, :ky_index))
+
+    roundoff_density = Diagonal(ComplexF64[
+        0.5 + 5e-15,
+        0.5 + 5e-15,
+        -1e-14,
+    ])
+    diagonal_translation = Diagonal(ComplexF64[
+        1,
+        cis(2pi / Ny),
+        cis(4pi / Ny),
+    ])
+    roundoff_result = mpskit_schmidt_momentum_data(
+        [roundoff_density],
+        [diagonal_translation];
+        Ny,
+        raw_charges=[0],
+        residual_tol=1e-10,
+    )
+    @test roundoff_result.valid
+    @test roundoff_result.spectrum.valid
+    @test length(roundoff_result.spectrum.levels) == 2
 end
 
 @testset "MPSKit product-state momentum contraction" begin
@@ -157,6 +178,23 @@ end
     @test result.closure_residual < 1e-9
     @test length(result.spectrum.levels) == 1
     @test only(result.spectrum.levels).ky_index == 0
+
+    nonsymmetric_state = mpskit_product_state(config, [1, 2])
+    nonsymmetric = mpskit_momentum_entanglement_data(
+        nonsymmetric_state,
+        config;
+        cut_x=1,
+        tol=1e-10,
+        maxiter=100,
+        krylovdim=8,
+        seed=0x4d4f4d,
+        residual_tol=1e-9,
+    )
+    @test nonsymmetric isa MPSKitMomentumData
+    @test !nonsymmetric.valid
+    @test !nonsymmetric.spectrum.valid
+    @test occursin("translation", lowercase(nonsymmetric.reason))
+    @test all(ismissing, getproperty.(nonsymmetric.spectrum.levels, :ky_index))
 end
 
 @testset "MPSKit normalized mixed-transfer fidelity" begin
