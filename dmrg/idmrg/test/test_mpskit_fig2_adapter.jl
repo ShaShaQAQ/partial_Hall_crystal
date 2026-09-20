@@ -105,4 +105,61 @@ end
         end
     end
 end
+
+@testset "MPSKit checkpoint operations are backend-neutral" begin
+    required_fields = Set((
+        :backend_id,
+        :checkpoint_filename,
+        :checkpoint_save,
+        :checkpoint_load,
+        :state_maxlinkdim,
+    ))
+    @test required_fields ⊆ Set(fieldnames(Fig2BenchmarkOperations))
+    @test isdefined(InfiniteCylinderDMRG, :mpskit_fig2_operations)
+    @test isdefined(InfiniteCylinderDMRG, :fig2_operations_for_backend)
+
+    if all(
+        name -> isdefined(InfiniteCylinderDMRG, name),
+        (:mpskit_fig2_operations, :fig2_operations_for_backend),
+    ) && required_fields ⊆ Set(fieldnames(Fig2BenchmarkOperations))
+        spec = load_fig2_benchmark(MPSKIT_FIG2_MANIFEST_PATH)
+        direct = mpskit_fig2_operations(spec)
+        selected = fig2_operations_for_backend(spec)
+        @test direct.backend_id == "mpskit_idmrg_v1"
+        @test selected.backend_id == direct.backend_id
+        @test direct.checkpoint_filename == "state.h5"
+
+        occupied_sites = first(fig2_initial_candidates(spec.config)).occupied_sites
+        state = mpskit_product_state(spec.config, occupied_sites)
+        metadata = (
+            candidate_id="adapter_fixture",
+            requested_maxdim=1,
+            completed_stage=0,
+        )
+        mktempdir() do directory
+            checkpoint = joinpath(directory, direct.checkpoint_filename)
+            @test direct.checkpoint_save(
+                checkpoint,
+                state,
+                spec.config,
+                metadata,
+            ) == checkpoint
+            reloaded = direct.checkpoint_load(checkpoint, spec.config)
+            @test !(reloaded isa MPSKitCheckpointData)
+            @test direct.state_maxlinkdim(reloaded) == 1
+            @test mpskit_state_space_fingerprints(reloaded, spec.config) ==
+                mpskit_state_space_fingerprints(state, spec.config)
+
+            audit = direct.checkpoint_audit(
+                spec,
+                checkpoint,
+                spec.config.phi_y,
+            )
+            @test audit == (
+                restart_valid=true,
+                checkpoint_maxlinkdim=1,
+            )
+        end
+    end
+end
 end
