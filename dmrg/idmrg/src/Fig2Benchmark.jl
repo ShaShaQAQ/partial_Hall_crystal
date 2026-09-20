@@ -144,6 +144,16 @@ Base.@kwdef struct Fig2BenchmarkOperations
     progress_audit::Function=_default_fig2_progress_audit
 end
 
+function _fig2_checkpoint_filename(
+    operations::Fig2BenchmarkOperations,
+)
+    filename = operations.checkpoint_filename
+    filename == "state.h5" || throw(ArgumentError(
+        "Fig. 2 operations checkpoint filename must be state.h5",
+    ))
+    return filename
+end
+
 struct Fig2Selection
     dimension::Int
     point::Int
@@ -3545,11 +3555,14 @@ function _validate_fig2_candidate_artifacts(
     current_generation_provenance,
     ;
     progress_audit=_default_fig2_progress_audit,
+    checkpoint_filename="state.h5",
 )
     snapshot = _fig2_validated_snapshot(spec)
-    state_path = joinpath(directory, "state.h5")
+    state_path = joinpath(directory, checkpoint_filename)
     isfile(state_path) && filesize(state_path) > 0 || throw(
-        ArgumentError("candidate output is missing required file state.h5")
+        ArgumentError(
+            "candidate output is missing required file $checkpoint_filename"
+        )
     )
     summary_path = joinpath(directory, "summary.toml")
     isfile(summary_path) || throw(
@@ -3812,6 +3825,7 @@ function _complete_fig2_candidate!(
     generation_provenance,
     ;
     progress_audit=_default_fig2_progress_audit,
+    checkpoint_filename="state.h5",
 )
     directory = joinpath(output, relative_directory)
     for filename in FIG2_REQUIRED_CANDIDATE_FILES[1:7]
@@ -3838,7 +3852,7 @@ function _complete_fig2_candidate!(
         point,
         phi_y,
         candidate_id,
-        joinpath(directory, "state.h5"),
+        joinpath(directory, checkpoint_filename),
         evidence.achieved_maxlinkdim,
     )
     _write_fig2_bytes(
@@ -3895,6 +3909,7 @@ function _complete_fig2_candidate!(
         generation_provenance,
         ;
         progress_audit,
+        checkpoint_filename,
     )
 
     checksums = Dict{String,String}()
@@ -3915,7 +3930,7 @@ function _complete_fig2_candidate!(
         "phi_y" => phi_y,
         "candidate_id" => String(candidate_id),
         "directory" => relative_directory,
-        "state_sha256" => checksums["state.h5"],
+        "state_sha256" => checksums[checkpoint_filename],
         "progress_complete" => artifact_audit.progress.complete,
         "progress_event_count" => artifact_audit.progress.event_count,
         "progress_resume_count" => artifact_audit.progress.resume_count,
@@ -4119,7 +4134,11 @@ function _fig2_replayed_candidate_energy_per_site(spec, directory)
         (2 * sites_per_cell(spec.config))
 end
 
-function _fig2_mixed_reference_from_candidate_row(root, row)
+function _fig2_mixed_reference_from_candidate_row(
+    root,
+    row;
+    checkpoint_filename="state.h5",
+)
     dimension, point, candidate_id = _fig2_candidate_key(row)
     directory = get(row, "directory", nothing)
     directory isa AbstractString || throw(ArgumentError(
@@ -4138,12 +4157,12 @@ function _fig2_mixed_reference_from_candidate_row(root, row)
     ))
     checksums = get(row, "checksums", nothing)
     checksums isa AbstractDict &&
-        get(checksums, "state.h5", nothing) == state_sha256 || throw(
+        get(checksums, checkpoint_filename, nothing) == state_sha256 || throw(
         ArgumentError(
             "mixed reference selected candidate state checksum fields disagree"
         )
     )
-    state_path = joinpath(root, expected_directory, "state.h5")
+    state_path = joinpath(root, expected_directory, checkpoint_filename)
     isfile(state_path) && filesize(state_path) > 0 || throw(ArgumentError(
         "mixed reference selected checkpoint is missing"
     ))
@@ -4160,8 +4179,17 @@ function _fig2_mixed_reference_from_candidate_row(root, row)
     )
 end
 
-function _fig2_mixed_reference_for_selection(root, selection, candidate_row)
-    expected = _fig2_mixed_reference_from_candidate_row(root, candidate_row)
+function _fig2_mixed_reference_for_selection(
+    root,
+    selection,
+    candidate_row;
+    checkpoint_filename="state.h5",
+)
+    expected = _fig2_mixed_reference_from_candidate_row(
+        root,
+        candidate_row;
+        checkpoint_filename,
+    )
     identity = if selection isa Fig2Selection
         (
             selection.dimension,
@@ -4192,6 +4220,8 @@ function _validate_fig2_mixed_reference_chain(
     root,
     candidate_rows,
     selection_rows,
+    ;
+    checkpoint_filename="state.h5",
 )
     for row in values(candidate_rows)
         dimension, point, _ = _fig2_candidate_key(row)
@@ -4215,7 +4245,10 @@ function _validate_fig2_mixed_reference_chain(
             "mixed reference prior selected candidate row is missing"
         ))
         expected = _fig2_mixed_reference_for_selection(
-            root, selected, candidate_rows[selected_key]
+            root,
+            selected,
+            candidate_rows[selected_key];
+            checkpoint_filename,
         )
         _fig2_same_mixed_reference(actual, expected) || throw(ArgumentError(
             "candidate mixed reference does not match the exact prior selected checkpoint"
@@ -4336,6 +4369,7 @@ function _validate_persisted_fig2_candidate_files(
     ;
     checkpoint_audit=_default_fig2_persisted_checkpoint_audit,
     progress_audit=_default_fig2_progress_audit,
+    checkpoint_filename="state.h5",
 )
     get(row, "complete", false) === true || throw(
         ArgumentError("persisted Fig. 2 candidate is not marked complete")
@@ -4362,6 +4396,7 @@ function _validate_persisted_fig2_candidate_files(
         current_generation_provenance,
         ;
         progress_audit,
+        checkpoint_filename,
     )
     for filename in FIG2_REQUIRED_CANDIDATE_FILES
         haskey(checksums, filename) || throw(
@@ -4375,7 +4410,8 @@ function _validate_persisted_fig2_candidate_files(
             ArgumentError("persisted candidate checksum mismatch for $filename")
         )
     end
-    get(row, "state_sha256", "") == String(checksums["state.h5"]) || throw(
+    get(row, "state_sha256", "") ==
+        String(checksums[checkpoint_filename]) || throw(
         ArgumentError("persisted candidate state checksum is inconsistent")
     )
     get(row, "progress_sha256", "") == String(checksums["progress.toml"]) || throw(
@@ -4398,7 +4434,7 @@ function _validate_persisted_fig2_candidate_files(
             ArgumentError("persisted candidate metadata $key disagrees with progress audit")
         )
     end
-    checkpoint_path = joinpath(directory, "state.h5")
+    checkpoint_path = joinpath(directory, checkpoint_filename)
     checkpoint_result = checkpoint_audit(
         spec, checkpoint_path, Float64(row["phi_y"])
     )
@@ -4694,6 +4730,7 @@ function run_fig2_benchmark(
     operations::Fig2BenchmarkOperations=Fig2BenchmarkOperations(),
 )
     _fig2_validated_snapshot(spec)
+    checkpoint_filename = _fig2_checkpoint_filename(operations)
     started_ns = time_ns()
     isempty(strip(stage)) && throw(ArgumentError("benchmark stage must not be empty"))
     dims, phis = _validate_fig2_schedule(dimensions, fluxes)
@@ -4716,6 +4753,7 @@ function run_fig2_benchmark(
             generation_provenance;
             checkpoint_audit=operations.checkpoint_audit,
             progress_audit=operations.progress_audit,
+            checkpoint_filename,
         ),
         values(persisted_candidates),
     )
@@ -4757,7 +4795,10 @@ function run_fig2_benchmark(
         candidate_ids_provider=operations.candidate_ids,
     )
     _validate_fig2_mixed_reference_chain(
-        root, persisted_candidates, persisted_selections
+        root,
+        persisted_candidates,
+        persisted_selections;
+        checkpoint_filename,
     )
     selections = Fig2Selection[]
     for dimension in dims
@@ -4796,7 +4837,9 @@ function run_fig2_benchmark(
             end
             if isnothing(previous_state) && !isnothing(previous_selection)
                 checkpoint = joinpath(
-                    root, previous_selection.directory, "state.h5"
+                    root,
+                    previous_selection.directory,
+                    checkpoint_filename,
                 )
                 previous_state = operations.load_state(
                     spec,
@@ -4826,6 +4869,8 @@ function run_fig2_benchmark(
                     root,
                     previous_selection,
                     persisted_candidates[previous_key],
+                    ;
+                    checkpoint_filename,
                 )
             end
             candidates = NamedTuple[]
@@ -4876,6 +4921,7 @@ function run_fig2_benchmark(
                     generation_provenance,
                     ;
                     progress_audit=operations.progress_audit,
+                    checkpoint_filename,
                 )
                 push!(candidates, (;
                     candidate_id,
@@ -4913,7 +4959,11 @@ function run_fig2_benchmark(
             previous_selection = selection
             previous_state = selected.evidence.state
             if isnothing(previous_state)
-                checkpoint = joinpath(root, selection.directory, "state.h5")
+                checkpoint = joinpath(
+                    root,
+                    selection.directory,
+                    checkpoint_filename,
+                )
                 previous_state = operations.load_state(
                     spec, dimension, point, selection, checkpoint
                 )
