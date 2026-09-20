@@ -257,4 +257,46 @@ end
         end
     end
 end
+
+@testset "MPSKit provenance and restart pin audit" begin
+    spec = load_fig2_benchmark(MPSKIT_FIG2_MANIFEST_PATH)
+    @test spec.data["restart_gate"]["backend_commit"] ==
+        MPSKIT_BACKEND_COMMIT
+    @test isdefined(InfiniteCylinderDMRG, :_mpskit_fig2_provenance)
+
+    active_project = abspath(Base.active_project())
+    project_manifest = joinpath(dirname(active_project), "Manifest.toml")
+    backend = spec.data["backend"]
+    pin_auditor = InfiniteCylinderDMRG._fig2_pinned_backend_revision
+    @test applicable(pin_auditor, active_project, project_manifest, backend)
+    if applicable(pin_auditor, active_project, project_manifest, backend)
+        @test pin_auditor(active_project, project_manifest, backend) ==
+            MPSKIT_BACKEND_COMMIT
+    end
+
+    if isdefined(InfiniteCylinderDMRG, :_mpskit_fig2_provenance)
+        base = Dict{String,Any}(
+            "format" => "fqahc_fig2_provenance_v2",
+            "manifest_sha256" => spec.sha256,
+            "git_commit" => repeat("a", 40),
+        )
+        provenance = InfiniteCylinderDMRG._mpskit_fig2_provenance(
+            spec,
+            "unused",
+            1.25;
+            base_provenance=(args...) -> deepcopy(base),
+        )
+        @test provenance["backend_id"] == "mpskit_idmrg_v1"
+        @test provenance["mpskit_commit"] == MPSKIT_BACKEND_COMMIT
+        @test provenance["tensorkittensors_commit"] ==
+            TENSORKITTENSORS_COMMIT
+        @test provenance["blocktensorkit_commit"] == BLOCKTENSORKIT_COMMIT
+        adapter_source = normpath(joinpath(
+            @__DIR__, "..", "src", "MPSKitFig2Adapter.jl"
+        ))
+        @test provenance["backend_adapter_source"] == adapter_source
+        @test provenance["backend_adapter_source_sha256"] ==
+            InfiniteCylinderDMRG._fig2_file_sha256(adapter_source)
+    end
+end
 end
