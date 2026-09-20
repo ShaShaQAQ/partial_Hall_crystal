@@ -124,7 +124,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
         "format" => "fqahc_fig2_restart_gate_v1",
         "evidence_filename" => "restart_gate.toml",
         "backend_commit" =>
-            "765f2777703bc1138b009adbed1b97bde1973402",
+            "811ecf6c06c1f7c1bc656da61abcd679effcd428",
         "energy_tolerance" => 1.0e-10,
         "density_tolerance" => 1.0e-10,
         "required_checks" => [
@@ -1034,7 +1034,7 @@ if all(
             "project_manifest_sha256" =>
                 provenance["project_manifest_sha256"],
             "backend_commit" =>
-                "765f2777703bc1138b009adbed1b97bde1973402",
+                "811ecf6c06c1f7c1bc656da61abcd679effcd428",
             "save_process_exit_code" => 0,
             "resume_process_exit_code" => 0,
             "save_process_id" => "save:101",
@@ -3068,7 +3068,7 @@ if all(
                 "format" => "fqahc_fig2_restart_gate_v1",
                 "evidence_filename" => "restart_gate.toml",
                 "backend_commit" =>
-                    "765f2777703bc1138b009adbed1b97bde1973402",
+                    "811ecf6c06c1f7c1bc656da61abcd679effcd428",
                 "energy_tolerance" => 1.0e-10,
                 "density_tolerance" => 1.0e-10,
                 "required_checks" => [

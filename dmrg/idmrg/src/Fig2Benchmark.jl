@@ -526,7 +526,7 @@ function _validate_fig2_manifest(data)
         ArgumentError("Fig. 2 restart-gate evidence filename is not fixed")
     )
     _fig2_required(restart_gate, "backend_commit") ==
-        ITENSOR_INFINITE_MPS_COMMIT || throw(
+        _fig2_required(backend, "mpskit_commit") || throw(
         ArgumentError("Fig. 2 restart-gate backend commit is not fixed")
     )
     for (key, target) in (
@@ -5751,31 +5751,62 @@ function _fig2_provenance_result(
     end
 end
 
-function _fig2_pinned_backend_revision(active_project, project_manifest)
-    project = TOML.parsefile(active_project)
-    source = get(get(project, "sources", Dict{String,Any}()),
-        "ITensorInfiniteMPS", nothing)
+function _fig2_pinned_dependency_revision(
+    project,
+    manifest,
+    package::AbstractString,
+    expected_revision::AbstractString,
+)
+    sources = get(project, "sources", Dict{String,Any}())
+    source = get(sources, package, nothing)
     source isa AbstractDict || throw(ArgumentError(
-        "active project has no pinned ITensorInfiniteMPS backend source"
+        "active project has no pinned $package source"
     ))
     project_revision = get(source, "rev", "")
 
-    manifest = TOML.parsefile(project_manifest)
     dependencies = get(manifest, "deps", nothing)
     dependencies isa AbstractDict || throw(ArgumentError(
         "project manifest has no dependency table for the pinned backend"
     ))
-    entries = get(dependencies, "ITensorInfiniteMPS", nothing)
+    entries = get(dependencies, package, nothing)
     entries isa AbstractVector && length(entries) == 1 &&
         only(entries) isa AbstractDict || throw(ArgumentError(
-        "project manifest ITensorInfiniteMPS backend entry is missing or ambiguous"
+        "project manifest $package entry is missing or ambiguous"
     ))
     manifest_revision = get(only(entries), "repo-rev", "")
-    project_revision == ITENSOR_INFINITE_MPS_COMMIT &&
-        manifest_revision == ITENSOR_INFINITE_MPS_COMMIT || throw(ArgumentError(
-        "project dependency provenance does not use the pinned ITensorInfiniteMPS backend commit"
+    project_revision == expected_revision &&
+        manifest_revision == expected_revision || throw(ArgumentError(
+        "project dependency provenance does not use the pinned $package commit"
     ))
-    return ITENSOR_INFINITE_MPS_COMMIT
+    return String(expected_revision)
+end
+
+function _fig2_pinned_backend_revision(
+    active_project,
+    project_manifest,
+    backend,
+)
+    project = TOML.parsefile(active_project)
+    manifest = TOML.parsefile(project_manifest)
+    backend isa AbstractDict || throw(
+        ArgumentError("Fig. 2 backend dependency contract is missing")
+    )
+    _fig2_required(backend, "id") == FIG2_PRODUCTION_BACKEND_ID || throw(
+        ArgumentError("Fig. 2 production backend dependency ID is invalid")
+    )
+    mpskit_revision = _fig2_pinned_dependency_revision(
+        project,
+        manifest,
+        "MPSKit",
+        String(_fig2_required(backend, "mpskit_commit")),
+    )
+    _fig2_pinned_dependency_revision(
+        project,
+        manifest,
+        "TensorKitTensors",
+        String(_fig2_required(backend, "tensorkittensors_commit")),
+    )
+    return mpskit_revision
 end
 
 function _fig2_restart_gate_result(
@@ -5833,7 +5864,7 @@ function _fig2_restart_gate_result(
             )
         )
         backend_commit = _fig2_pinned_backend_revision(
-            active_project, project_manifest
+            active_project, project_manifest, snapshot["backend"]
         )
         get(gate, "backend_commit", "") == backend_commit &&
             get(gate, "backend_commit", "") == contract["backend_commit"] ||

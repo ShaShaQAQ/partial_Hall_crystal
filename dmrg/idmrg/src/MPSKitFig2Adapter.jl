@@ -193,6 +193,29 @@ function _mpskit_fig2_checkpoint_audit(spec, checkpoint, phi_y)
     )
 end
 
+function _mpskit_fig2_provenance(
+    spec,
+    output,
+    runtime_seconds;
+    base_provenance=_default_fig2_provenance,
+)
+    provenance = Dict{String,Any}(
+        base_provenance(spec, output, runtime_seconds)
+    )
+    backend = mpskit_backend_provenance()
+    adapter_source = abspath(@__FILE__)
+    merge!(provenance, Dict{String,Any}(
+        "backend_id" => backend.backend,
+        "mpskit_commit" => backend.mpskit_commit,
+        "tensorkittensors_commit" => backend.tensorkittensors_commit,
+        "blocktensorkit_commit" => backend.blocktensorkit_commit,
+        "backend_adapter_source" => adapter_source,
+        "backend_adapter_source_sha256" =>
+            _fig2_file_sha256(adapter_source),
+    ))
+    return provenance
+end
+
 function _mpskit_fig2_run_candidate(args...)
     throw(ArgumentError(
         "MPSKit Fig. 2 candidate adapter is not configured yet",
@@ -214,7 +237,7 @@ function mpskit_fig2_operations(spec::Fig2BenchmarkSpec)
         candidate_ids=_default_fig2_candidate_ids,
         run_candidate=_mpskit_fig2_run_candidate,
         load_state=_mpskit_fig2_load_state,
-        provenance=_default_fig2_provenance,
+        provenance=_mpskit_fig2_provenance,
         checkpoint_audit=_mpskit_fig2_checkpoint_audit,
         progress_audit=_mpskit_fig2_progress_audit,
     )
