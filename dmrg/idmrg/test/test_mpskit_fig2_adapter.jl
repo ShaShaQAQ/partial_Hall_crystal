@@ -162,4 +162,99 @@ end
         end
     end
 end
+
+@testset "MPSKit progress generations reload through backend hooks" begin
+    required = (
+        :MPSKitFig2ProgressEvent,
+        :_mpskit_fig2_persist_progress_event!,
+        :_mpskit_fig2_finalize_progress!,
+    )
+    @test all(name -> isdefined(InfiniteCylinderDMRG, name), required)
+    if all(name -> isdefined(InfiniteCylinderDMRG, name), required)
+        spec = load_fig2_benchmark(MPSKIT_FIG2_MANIFEST_PATH)
+        operations = mpskit_fig2_operations(spec)
+        occupied_sites = first(fig2_initial_candidates(spec.config)).occupied_sites
+        state = mpskit_product_state(spec.config, occupied_sites)
+        record = MPSKitSolverStageRecord(
+            1,
+            1,
+            1,
+            1.0e-9,
+            1,
+            1,
+            -0.25,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.01,
+        )
+        event = InfiniteCylinderDMRG.MPSKitFig2ProgressEvent(
+            1,
+            state,
+            record,
+        )
+        candidate_id = "adapter_progress"
+        mktempdir() do directory
+            persisted =
+                InfiniteCylinderDMRG._mpskit_fig2_persist_progress_event!(
+                    spec,
+                    directory,
+                    1,
+                    1,
+                    spec.config.phi_y,
+                    candidate_id,
+                    [1],
+                    event;
+                    resume_count=0,
+                )
+            @test persisted.event_sequence == 1
+            @test persisted.maxlinkdim == 1
+            @test isfile(joinpath(directory, persisted.state_path))
+
+            final_checkpoint = joinpath(
+                directory,
+                operations.checkpoint_filename,
+            )
+            metadata = (
+                candidate_id,
+                requested_maxdim=1,
+                completed_stage=1,
+            )
+            operations.checkpoint_save(
+                final_checkpoint,
+                state,
+                spec.config,
+                metadata,
+            )
+            finalized =
+                InfiniteCylinderDMRG._mpskit_fig2_finalize_progress!(
+                    spec,
+                    directory,
+                    1,
+                    1,
+                    spec.config.phi_y,
+                    candidate_id,
+                    final_checkpoint,
+                )
+            audited = operations.progress_audit(
+                spec,
+                directory,
+                1,
+                1,
+                spec.config.phi_y,
+                candidate_id,
+                final_checkpoint,
+            )
+            @test finalized == audited
+            @test audited.complete
+            @test audited.event_count == 1
+            @test audited.resume_count == 0
+            @test audited.latest_maxlinkdim == 1
+            @test audited.final_state_sha256 ==
+                InfiniteCylinderDMRG._fig2_file_sha256(final_checkpoint)
+            @test occursin(r"^[0-9a-f]{64}$", audited.progress_sha256)
+        end
+    end
+end
 end
