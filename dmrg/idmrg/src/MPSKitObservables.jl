@@ -577,12 +577,13 @@ function _mpskit_retained_block_residuals(
     density_blocks,
     translation_blocks,
     probability_tol::Float64,
+    positivity_tol::Float64,
     Ny::Int,
 )
     probabilities, _, density_bases, locations = _block_density_basis(
         density_blocks,
         zeros(Int, length(density_blocks)),
-        max(probability_tol, eps(Float64)),
+        max(positivity_tol, eps(Float64)),
     )
     density_basis_translations = [
         density_bases[block]' * translation_blocks[block] * density_bases[block]
@@ -681,6 +682,7 @@ function mpskit_schmidt_momentum_data(
         densities,
         translations,
         threshold,
+        tolerance,
         circumference,
     )
     combined_unitary = max(
@@ -1050,6 +1052,48 @@ function _mpskit_invalidate_spectrum(
     )
 end
 
+function _invalid_mpskit_momentum_for_state(
+    state,
+    c::InfiniteCylinderConfig,
+    cut::Int,
+    bond::Int,
+    reason::AbstractString;
+    transfer_eigenvalue=ComplexF64(NaN),
+    transfer_residual::Real=Inf,
+    transfer_converged::Bool=false,
+    dominant_gap::Real=NaN,
+)
+    entanglement = _mpskit_entanglement_cut_data(state, c; cut_x=cut)
+    residual = Float64(transfer_residual)
+    isnan(residual) && (residual = Inf)
+    validation = MomentumValidation(
+        Inf,
+        Inf,
+        Inf,
+        residual,
+        false,
+        String(reason),
+    )
+    spectrum = _invalid_momentum_data(
+        getproperty.(entanglement.levels, :probability),
+        getproperty.(entanglement.levels, :raw_charge),
+        validation,
+    )
+    return MPSKitMomentumData(
+        cut,
+        bond,
+        spectrum,
+        Inf,
+        ComplexF64(transfer_eigenvalue),
+        residual,
+        transfer_converged,
+        Float64(dominant_gap),
+        ComplexF64(NaN),
+        false,
+        String(reason),
+    )
+end
+
 function mpskit_momentum_entanglement_data(
     state,
     c::InfiniteCylinderConfig;
@@ -1088,37 +1132,67 @@ function mpskit_momentum_entanglement_data(
     _validate_mpskit_observable_state(state, c; physical_spaces=true)
     cut = Int(cut_x)
     bond = cut * c.Ly
-    translation = mpskit_transverse_translation_mpo(c)
-    solution = _mpskit_twisted_transfer_solution(
-        state,
-        translation;
-        tol=Float64(tol),
-        maxiter=Int(maxiter),
-        krylovdim=Int(krylovdim),
-        seed,
-    )
-    virtual = _mpskit_virtual_translation_at_bond(
-        state,
-        translation,
-        solution.vector,
-        bond,
-    )
-    blocks = _mpskit_schmidt_translation_blocks(
-        state,
-        virtual,
-        bond,
-        c.Ny,
-    )
-    schmidt = mpskit_schmidt_momentum_data(
-        blocks.density_blocks,
-        blocks.translation_blocks;
-        Ny=c.Ny,
-        raw_charges=blocks.raw_charges,
-        residual_tol,
-        degeneracy_tol,
-        transfer_residual=solution.residual,
-        probability_tol,
-    )
+    translation, solution = try
+        local_translation = mpskit_transverse_translation_mpo(c)
+        local_solution = _mpskit_twisted_transfer_solution(
+            state,
+            local_translation;
+            tol=Float64(tol),
+            maxiter=Int(maxiter),
+            krylovdim=Int(krylovdim),
+            seed,
+        )
+        local_translation, local_solution
+    catch exception
+        reason = "invalid transverse-translation transfer solve: " *
+            sprint(showerror, exception)
+        return _invalid_mpskit_momentum_for_state(
+            state,
+            c,
+            cut,
+            bond,
+            reason,
+        )
+    end
+    blocks, schmidt = try
+        virtual = _mpskit_virtual_translation_at_bond(
+            state,
+            translation,
+            solution.vector,
+            bond,
+        )
+        local_blocks = _mpskit_schmidt_translation_blocks(
+            state,
+            virtual,
+            bond,
+            c.Ny,
+        )
+        local_schmidt = mpskit_schmidt_momentum_data(
+            local_blocks.density_blocks,
+            local_blocks.translation_blocks;
+            Ny=c.Ny,
+            raw_charges=local_blocks.raw_charges,
+            residual_tol,
+            degeneracy_tol,
+            transfer_residual=solution.residual,
+            probability_tol,
+        )
+        local_blocks, local_schmidt
+    catch exception
+        reason = "invalid transverse-translation Schmidt projection: " *
+            sprint(showerror, exception)
+        return _invalid_mpskit_momentum_for_state(
+            state,
+            c,
+            cut,
+            bond,
+            reason;
+            transfer_eigenvalue=solution.value,
+            transfer_residual=solution.residual,
+            transfer_converged=solution.converged,
+            dominant_gap=solution.gap,
+        )
+    end
     transfer_failures = String[]
     solution.converged || push!(
         transfer_failures,
