@@ -43,7 +43,7 @@ def summarize_manifold(rows, manifold_size=15):
     }
 
 
-def load_structure_factor(path):
+def load_structure_factor(path, expected_sectors=None):
     """Load per-sector and manifold-averaged structure-factor curves."""
     curves = {}
     average = None
@@ -63,9 +63,12 @@ def load_structure_factor(path):
         else:
             curves.setdefault(int(label), []).append(row)
 
-    expected = set(range(15))
-    if set(curves) != expected:
-        raise ValueError("expected structure-factor curves for sectors 0 through 14")
+    if not curves:
+        raise ValueError("structure-factor file contains no state curves")
+    if expected_sectors is not None and set(curves) != set(expected_sectors):
+        raise ValueError(
+            "structure-factor sectors do not match the selected manifold"
+        )
     arrays = {sector: np.asarray(rows) for sector, rows in curves.items()}
     if any(array.shape != (15, 4) for array in arrays.values()):
         raise ValueError("each sector must contain 15 momentum samples")
@@ -91,13 +94,13 @@ def load_optical_curve(path):
 
 
 def write_optical_manifold_average(optical_paths, output_path):
-    """Write mean, standard deviation, minimum, and maximum over 15 sectors."""
-    expected = set(range(15))
-    if set(optical_paths) != expected:
-        raise ValueError("optical average requires sectors 0 through 14")
-    curves = [load_optical_curve(optical_paths[sector]) for sector in range(15)]
+    """Write response statistics over a nonempty selected manifold."""
+    sectors = tuple(sorted(int(sector) for sector in optical_paths))
+    if not sectors:
+        raise ValueError("optical average requires at least one sector")
+    curves = [load_optical_curve(optical_paths[sector]) for sector in sectors]
     frequencies = curves[0][:, 0]
-    for sector, curve in enumerate(curves[1:], start=1):
+    for sector, curve in zip(sectors[1:], curves[1:]):
         if not np.array_equal(curve[:, 0], frequencies):
             raise ValueError(
                 "optical sector {} uses a different frequency mesh".format(sector)
@@ -124,7 +127,7 @@ def write_optical_manifold_average(optical_paths, output_path):
     np.savetxt(
         str(output_path), statistics, fmt="%.16g",
         header=(
-            "15 态等权光电导统计量；"
+            "{} 态等权光电导统计量；".format(len(sectors)) +
             "eta=0.065 M=600\n" + " ".join(columns)
         ),
     )
@@ -151,31 +154,43 @@ def _gnuplot_quote(path):
     return '"{}"'.format(text)
 
 
-def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
+def generate_figures(
+    spectrum_path, structure_path, optical_paths, output_dir, *,
+    manifold_size=15, figure_prefix="phc30_moderate",
+    title="倾斜 30-site ED：Np=12，t1=1，t3=0.2，V1=10，V2=V3=2",
+):
     """Generate the spectrum, structure-factor, and four conductivity plots."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     spectrum = load_spectrum(spectrum_path)
-    load_structure_factor(structure_path)
+    summary = summarize_manifold(spectrum, manifold_size=manifold_size)
+    if len(set(summary["sectors"])) != manifold_size:
+        raise ValueError(
+            "selected manifold contains multiple levels in one sector; "
+            "additional eigenvectors are required"
+        )
+    load_structure_factor(structure_path, summary["sectors"])
+    if set(optical_paths) != set(summary["sectors"]):
+        raise ValueError("optical sectors do not match the selected manifold")
+    first_optical_path = Path(optical_paths[summary["sectors"][0]])
     average_path = (
-        Path(optical_paths[0]).parent / "optical_manifold_average.dat"
+        first_optical_path.parent / "optical_manifold_average.dat"
     )
     statistics = write_optical_manifold_average(optical_paths, average_path)
     reference_frequencies = statistics[:, 0]
 
     outputs = {
-        "spectrum": output_dir / "phc30_moderate_manybody_spectrum.png",
-        "structure_factor": output_dir / "phc30_moderate_structure_factor.png",
-        "regular_real": output_dir / "phc30_moderate_sigma_xx_regular_real.png",
-        "regular_imag": output_dir / "phc30_moderate_sigma_xx_regular_imag.png",
-        "total_real": output_dir / "phc30_moderate_sigma_xx_total_real.png",
-        "total_imag": output_dir / "phc30_moderate_sigma_xx_total_imag.png",
+        "spectrum": output_dir / f"{figure_prefix}_manybody_spectrum.png",
+        "structure_factor": output_dir / f"{figure_prefix}_structure_factor.png",
+        "regular_real": output_dir / f"{figure_prefix}_sigma_xx_regular_real.png",
+        "regular_imag": output_dir / f"{figure_prefix}_sigma_xx_regular_imag.png",
+        "total_real": output_dir / f"{figure_prefix}_sigma_xx_total_real.png",
+        "total_imag": output_dir / f"{figure_prefix}_sigma_xx_total_imag.png",
     }
     gnuplot = shutil.which("gnuplot")
     if gnuplot is None:
         raise RuntimeError("gnuplot is required to generate result figures")
 
-    summary = summarize_manifold(spectrum)
     spectrum_top = max(float(np.max(spectrum[:, 1])) * 1.05, 0.1)
     zoom_top = max(summary["next_energy"] * 1.25, summary["width"] * 2.0, 0.05)
     selected_sectors = ",".join(str(value) for value in summary["sectors"])
@@ -188,43 +203,47 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
         "set border linewidth 1.2; set grid ytics lc rgb '#d8d8d8' lw 1;",
         "set key opaque box top left;",
         "set output {};".format(_gnuplot_quote(outputs["spectrum"])),
-        "set multiplot layout 1,2 title "
-        "'倾斜 30-site ED：Np=12，t1=1，t3=0.2，V1=10，V2=V3=2';",
+        "set multiplot layout 1,2 title '{}';".format(title),
         "set xlabel '动量扇区 k'; set ylabel 'E-E0';",
         "set xrange [-0.5:14.5]; set xtics 0,1,14; set yrange [-0.02:{}];".format(spectrum_top),
         "set title '每个动量扇区保存的 8 个能级';",
-        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 15 态', "
+        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 {2} 态', "
         "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title '保存的高能态';".format(
-            spectrum_file, summary["width"] + 1e-12
+            spectrum_file, summary["width"] + 1e-12, manifold_size
         ),
         "set ylabel ''; set yrange [{}:{}];".format(-0.005 * zoom_top, zoom_top),
-        "set title '3x5 候选低能流形放大'; set key center right;",
+        "set title '{}'; set key center right;".format(
+            "3x5 候选低能流形放大" if manifold_size == 15
+            else "{} 态候选低能流形放大".format(manifold_size)
+        ),
         "set arrow 1 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 2 lw 1.5 lc rgb '#c43b3b';".format(summary["width"]),
         "set arrow 2 from graph 0, first {0:.16g} to graph 1, first {0:.16g} nohead dt 3 lw 1.5 lc rgb '#2b6ca3';".format(summary["next_energy"]),
         "set label 1 '最低态所在扇区：{}' at graph 0.03,0.94 front;".format(selected_sectors),
         "set label 2 '流形宽度 = {:.8g}' at graph 0.03,0.87 front;".format(summary["width"]),
-        "set label 3 '第 15 至 16 态间隔 = {:.8g}' at graph 0.03,0.80 front;".format(summary["separation"]),
-        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 15 态', "
+        "set label 3 '第 {0} 至 {1} 态间隔 = {2:.8g}' at graph 0.03,0.80 front;".format(
+            manifold_size, manifold_size + 1, summary["separation"]
+        ),
+        "plot {0} using (($2 <= {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 1.15 lc rgb '#c43b3b' title '最低 {2} 态', "
         "{0} using (($2 > {1:.16g}) ? $1 : 1/0):2 with points pt 7 ps 0.70 lc rgb '#607d9b' title '保存的高能态';".format(
-            spectrum_file, summary["width"] + 1e-12
+            spectrum_file, summary["width"] + 1e-12, manifold_size
         ),
         "unset multiplot; unset arrow 1; unset arrow 2; unset label 1; unset label 2; unset label 3; unset output;",
         "set term pngcairo size 1320,800 enhanced font 'Noto Sans SC,15';",
         "set output {};".format(_gnuplot_quote(outputs["structure_factor"])),
-        "set title '温和参数 30-site 静态结构因子';",
+        "set title '{}：静态结构因子';".format(title),
         "set xlabel '动量 q'; set ylabel 'N(q)（原胞归一化）';",
         "set xrange [-0.3:14.3]; set xtics 0,1,14; set yrange [0:*]; set key opaque box top right;",
     ]
     structure_plots = [
         "{0} using (strcol(1) eq '{1}' ? $2 : 1/0):3 with linespoints pt 7 ps 0.35 lw 0.8 lc {2} notitle".format(
-            structure_file, sector, sector + 1
+            structure_file, sector, color_index
         )
-        for sector in range(15)
+        for color_index, sector in enumerate(summary["sectors"], start=1)
     ]
     structure_plots.append(
         "{} using (strcol(1) eq 'average' ? $2 : 1/0):3 "
-        "with linespoints pt 6 ps 1.0 lw 2.7 lc rgb '#171717' title '15 态平均'".format(
-            structure_file
+        "with linespoints pt 6 ps 1.0 lw 2.7 lc rgb '#171717' title '{} 态平均'".format(
+            structure_file, manifold_size
         )
     )
     lines.append("plot " + ", ".join(structure_plots) + "; unset output;")
@@ -235,25 +254,41 @@ def generate_figures(spectrum_path, structure_path, optical_paths, output_dir):
         ("total_real", 2, "Re sigma_xx^{total}", "总电导实部"),
         ("total_imag", 3, "Im sigma_xx^{total}", "总电导虚部"),
     )
-    for key, column, ylabel, title in components:
-        curves = [_gnuplot_quote(Path(optical_paths[sector]).resolve()) for sector in (0, 5, 10)]
+    preferred = (0, 5, 10)
+    representative_sectors = (
+        preferred if all(sector in optical_paths for sector in preferred)
+        else summary["sectors"][:3]
+    )
+    colors = ("#1f77b4", "#d62728", "#2f855a")
+    dashes = (3, 2, 4)
+    for key, column, ylabel, component_title in components:
         average_file = _gnuplot_quote(average_path.resolve())
         minimum_column = column + 12
         maximum_column = column + 18
+        plot_parts = [
+            "{0} using 1:{1}:{2} with filledcurves lc rgb '#d9d9d9' title '扇区极值范围'".format(
+                average_file, minimum_column, maximum_column
+            )
+        ]
+        for index, sector in enumerate(representative_sectors):
+            curve_file = _gnuplot_quote(Path(optical_paths[sector]).resolve())
+            plot_parts.append(
+                "{0} using 1:{1} with lines lw 1.2 dt {2} lc rgb '{3}' title '扇区 k={4}'".format(
+                    curve_file, column, dashes[index], colors[index], sector
+                )
+            )
+        plot_parts.append(
+            "{0} using 1:{1} with lines lw 2.8 dt 1 lc rgb '#171717' title '{2} 态平均'".format(
+                average_file, column, manifold_size
+            )
+        )
         lines.extend([
             "set output {};".format(_gnuplot_quote(outputs[key])),
-            "set title '{}'; set xlabel '频率 omega'; set ylabel '{}';".format(title, ylabel),
+            "set title '{}'; set xlabel '频率 omega'; set ylabel '{}';".format(component_title, ylabel),
             "set xrange [{}:{}]; set autoscale y; set key opaque box top right;".format(
                 reference_frequencies[0], reference_frequencies[-1]
             ),
-            "plot {4} using 1:{5}:{6} with filledcurves lc rgb '#d9d9d9' title '扇区极值范围', "
-            "{0} using 1:{3} with lines lw 1.2 dt 3 lc rgb '#1f77b4' title '扇区 k=0', "
-            "{1} using 1:{3} with lines lw 1.1 dt 2 lc rgb '#d62728' title '扇区 k=5', "
-            "{2} using 1:{3} with lines lw 1.1 dt 4 lc rgb '#2f855a' title '扇区 k=10', "
-            "{4} using 1:{3} with lines lw 2.8 dt 1 lc rgb '#171717' title '15 态平均'; unset output;".format(
-                curves[0], curves[1], curves[2], column,
-                average_file, minimum_column, maximum_column,
-            ),
+            "plot {}; unset output;".format(", ".join(plot_parts)),
         ])
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".gnuplot", delete=False) as handle:
@@ -277,18 +312,31 @@ def main():
     parser.add_argument("--result-dir", type=Path, default=DEFAULT_RESULT_DIR)
     parser.add_argument("--optical-dir", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--manifold-size", type=int, default=15)
+    parser.add_argument("--figure-prefix", default="phc30_moderate")
+    parser.add_argument(
+        "--title",
+        default="倾斜 30-site ED：Np=12，t1=1，t3=0.2，V1=10，V2=V3=2",
+    )
     arguments = parser.parse_args()
     data_dir = arguments.result_dir / "data"
     optical_dir = arguments.optical_dir or data_dir / "optical"
+    spectrum_path = data_dir / "spectrum.dat"
+    summary = summarize_manifold(
+        load_spectrum(spectrum_path), arguments.manifold_size
+    )
     optical_paths = {
         sector: optical_dir / "sector_{}_optical_response.dat".format(sector)
-        for sector in range(15)
+        for sector in summary["sectors"]
     }
     outputs = generate_figures(
-        data_dir / "spectrum.dat",
+        spectrum_path,
         data_dir / "structure_factor_ground_manifold.dat",
         optical_paths,
         arguments.output_dir,
+        manifold_size=arguments.manifold_size,
+        figure_prefix=arguments.figure_prefix,
+        title=arguments.title,
     )
     for key, path in outputs.items():
         print("{}: {}".format(key, path))

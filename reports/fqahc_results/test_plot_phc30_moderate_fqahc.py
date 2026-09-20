@@ -154,6 +154,36 @@ class ModerateFqahcPlotTests(unittest.TestCase):
             np.testing.assert_allclose(statistics[:, 13:19], curves[:, :, 1:7].min(axis=0))
             np.testing.assert_allclose(statistics[:, 19:25], curves[:, :, 1:7].max(axis=0))
 
+    def test_writes_selected_three_state_optical_statistics(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            _, _, optical = self.write_synthetic_result(directory)
+            selected = {sector: optical[sector] for sector in (2, 7, 12)}
+            output_path = directory / "optical_three_state_average.dat"
+
+            statistics = write_optical_manifold_average(selected, output_path)
+
+            self.assertEqual(statistics.shape, (101, 25))
+            self.assertIn("3 态等权光电导统计量", output_path.read_text())
+
+    def test_generates_configurable_np13_figure_names(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            spectrum, structure, optical = self.write_synthetic_result(directory)
+            output_dir = directory / "figures"
+
+            outputs = generate_figures(
+                spectrum, structure, optical, output_dir,
+                manifold_size=15,
+                figure_prefix="phc30_np13_moderate",
+                title="30-site ED：Np=13",
+            )
+
+            self.assertTrue(all(
+                path.name.startswith("phc30_np13_moderate_")
+                for path in outputs.values()
+            ))
+
 
 if __name__ == "__main__":
     unittest.main()

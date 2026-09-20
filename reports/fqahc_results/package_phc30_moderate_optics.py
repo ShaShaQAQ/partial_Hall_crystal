@@ -24,6 +24,19 @@ DEFAULT_SOURCE_DIR = Path(
     "/home/public/shajy/codex_runs/"
     "phc30_np12_v1_10_v2_2_v3_2_fqahc/optical"
 )
+DEFAULT_RESULT_ID = "phc30_np12_v1_10_v2_2_v3_2_fqahc"
+DEFAULT_EXPECTED_METADATA = {
+    "lattice": "corrected",
+    "Np": "12",
+    "t1": "1.0",
+    "t3": "0.2",
+    "V1": "10.0",
+    "V2": "2.0",
+    "V3": "2.0",
+    "requested_mmax": "600",
+    "lanczos_steps": "600",
+    "lanczos_breakdown": "false",
+}
 
 
 def sha256_file(path):
@@ -46,20 +59,11 @@ def parse_response_header(path):
     return fields
 
 
-def validate_response_header(fields, sector, path):
-    expected = {
-        "sector": str(sector),
-        "lattice": "corrected",
-        "Np": "12",
-        "t1": "1.0",
-        "t3": "0.2",
-        "V1": "10.0",
-        "V2": "2.0",
-        "V3": "2.0",
-        "requested_mmax": "600",
-        "lanczos_steps": "600",
-        "lanczos_breakdown": "false",
-    }
+def validate_response_header(fields, sector, path, expected_metadata=None):
+    expected = dict(DEFAULT_EXPECTED_METADATA)
+    if expected_metadata is not None:
+        expected.update({key: str(value) for key, value in expected_metadata.items()})
+    expected["sector"] = str(sector)
     for key, value in expected.items():
         if fields.get(key) != value:
             raise ValueError(
@@ -77,23 +81,32 @@ def _toml_string(value):
     return '"{}"'.format(str(value).replace("\\", "\\\\").replace('"', '\\"'))
 
 
-def package_optical_results(source_dir, result_dir):
+def package_optical_results(
+    source_dir, result_dir, *, sectors=range(15),
+    result_id=DEFAULT_RESULT_ID, expected_metadata=None,
+):
     source_dir = Path(source_dir).resolve()
     result_dir = Path(result_dir).resolve()
+    sectors = tuple(int(sector) for sector in sectors)
+    if not sectors or len(set(sectors)) != len(sectors):
+        raise ValueError("sectors must be a nonempty sequence without duplicates")
+    if any(sector < 0 or sector > 14 for sector in sectors):
+        raise ValueError("sectors must lie in 0:14")
     output_dir = result_dir / "data" / "optical"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     records = []
     copied_paths = {}
     curves = {}
-    for sector in range(15):
+    for sector in sectors:
         stem = "sector_{}_optical_response".format(sector)
         data_source = source_dir / (stem + ".dat")
         jld2_source = source_dir / (stem + ".jld2")
         if not data_source.is_file() or not jld2_source.is_file():
             raise FileNotFoundError("missing optical outputs for sector {}".format(sector))
         fields = parse_response_header(data_source)
-        residual = validate_response_header(fields, sector, data_source)
+        residual = validate_response_header(
+            fields, sector, data_source, expected_metadata)
         curve = load_optical_curve(data_source)
         data_destination = output_dir / data_source.name
         shutil.copy2(str(data_source), str(data_destination))
@@ -121,7 +134,7 @@ def package_optical_results(source_dir, result_dir):
     manifest_path = result_dir / "optical_manifest.toml"
     with manifest_path.open("w") as output:
         output.write("schema_version = 1\n")
-        output.write('result_id = "phc30_np12_v1_10_v2_2_v3_2_fqahc"\n')
+        output.write("result_id = {}\n".format(_toml_string(result_id)))
         output.write('storage_host = "W003"\n')
         output.write("source_directory = {}\n".format(_toml_string(source_dir)))
         output.write("generated_at = {}\n".format(_toml_string(datetime.now().isoformat())))
@@ -146,7 +159,7 @@ def package_optical_results(source_dir, result_dir):
     peak_index = int(np.argmax(average_regular_real))
     diagnostics_path = result_dir / "data" / "optical_diagnostics.txt"
     with diagnostics_path.open("w") as output:
-        output.write("sectors={}\n".format(",".join(str(k) for k in range(15))))
+        output.write("sectors={}\n".format(",".join(str(k) for k in sectors)))
         output.write("maximum_residual={:.16g}\n".format(maximum_residual))
         output.write("drude_weight_mean={:.16g}\n".format(drude_weights.mean()))
         output.write("drude_weight_std={:.16g}\n".format(drude_weights.std()))
@@ -156,7 +169,7 @@ def package_optical_results(source_dir, result_dir):
         output.write("average_regular_peak_value={:.16g}\n".format(average_regular_real[peak_index]))
 
     return {
-        "sectors": tuple(range(15)),
+        "sectors": sectors,
         "maximum_residual": maximum_residual,
         "average_path": average_path,
         "manifest_path": manifest_path,
@@ -168,8 +181,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
     parser.add_argument("--result-dir", type=Path, default=DEFAULT_RESULT_DIR)
+    parser.add_argument("--sectors", default=",".join(str(k) for k in range(15)))
+    parser.add_argument("--result-id", default=DEFAULT_RESULT_ID)
+    parser.add_argument("--Np", default="12")
+    parser.add_argument("--t1", default="1.0")
+    parser.add_argument("--t3", default="0.2")
+    parser.add_argument("--V1", default="10.0")
+    parser.add_argument("--V2", default="2.0")
+    parser.add_argument("--V3", default="2.0")
     arguments = parser.parse_args()
-    summary = package_optical_results(arguments.source_dir, arguments.result_dir)
+    sectors = tuple(int(value) for value in arguments.sectors.split(","))
+    expected_metadata = {
+        "Np": arguments.Np,
+        "t1": arguments.t1,
+        "t3": arguments.t3,
+        "V1": arguments.V1,
+        "V2": arguments.V2,
+        "V3": arguments.V3,
+    }
+    summary = package_optical_results(
+        arguments.source_dir, arguments.result_dir,
+        sectors=sectors,
+        result_id=arguments.result_id,
+        expected_metadata=expected_metadata,
+    )
     print("packaged sectors: {}".format(summary["sectors"]))
     print("maximum residual: {:.6e}".format(summary["maximum_residual"]))
     print("manifest: {}".format(summary["manifest_path"]))
