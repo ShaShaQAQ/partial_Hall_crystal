@@ -1,0 +1,8 @@
+sectors=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14
+maximum_residual=5.506057888005199e-12
+drude_weight_mean=-1.923004722924851
+drude_weight_std=0.8082451494173644
+drude_weight_min=-2.919037372848053
+drude_weight_max=-1.092715887328596
+average_regular_peak_omega=1.2
+average_regular_peak_value=3.773389760031857

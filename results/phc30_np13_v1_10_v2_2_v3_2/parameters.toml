@@ -1,0 +1,12 @@
+result_id = "phc30_np13_v1_10_v2_2_v3_2"
+phase_label = "Np=13 moderate-coupling candidate manifold"
+Ns = 30
+Nuc = 15
+Np = 13
+t1 = 1.0
+t3 = 0.2
+V1 = 10.0
+V2 = 2.0
+V3 = 2.0
+lattice_convention = "corrected"
+candidate_manifold_size = 15

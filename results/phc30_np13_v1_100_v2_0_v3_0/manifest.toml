@@ -1,0 +1,185 @@
+schema_version = 1
+result_id = "phc30_np13_v1_100_v2_0_v3_0"
+storage_host = "W003"
+data_directory = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum"
+generated_at = "2026-09-20T11:23:05.512"
+
+[[partial_files]]
+sector_start = 0
+sector_end = 0
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_0.jld2"
+size_bytes = 127754182
+sha256 = "a3362ef8e966c892c2d57659016a70008ebf4bee2a7165b4f87a7d307be1af47"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 1
+sector_end = 1
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_1.jld2"
+size_bytes = 127754182
+sha256 = "43a4f80bfadd8cca5376892a53df89c97b04adf98df15e7ffcfd02f1b5e329bd"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 2
+sector_end = 2
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_2.jld2"
+size_bytes = 127754182
+sha256 = "efb4adffc3b58e3be46b1322e59666e1299e1545a0cb1d3767eedf6535921c1a"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 3
+sector_end = 3
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_3.jld2"
+size_bytes = 127754182
+sha256 = "028e744c6ed73274eb277e74ec52bf88e6a70e6c33c7933fe7cad65c89f79d8a"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 4
+sector_end = 4
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_4.jld2"
+size_bytes = 127754182
+sha256 = "f1aadc3c9e28ff36fdab9ce25483c0d7c3ee24757fa08a0a2e18e303cb3f5d41"
+nev = 8
+krylovdim = 120
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 5
+sector_end = 5
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_5.jld2"
+size_bytes = 127754182
+sha256 = "05fcdb08df8eda5afc9de790e88e0ab13e4fc170e53696999e0313bd3d3c83a6"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 6
+sector_end = 6
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_6.jld2"
+size_bytes = 127754182
+sha256 = "e726b16aaeb216b4bda1c76c6083cae4298e9e4bc06c3b319e1d5fb0762adf39"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 7
+sector_end = 7
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_7.jld2"
+size_bytes = 127754182
+sha256 = "1b720e6579f9ea3abc49ad4c58fd432132509f56e09c637f311b70ca7720c3e6"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 8
+sector_end = 8
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_8.jld2"
+size_bytes = 127754182
+sha256 = "e3daac7c84e503d2d78a862c966acbdaf29ea0ce6097293c4d0c13ea822912fb"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 9
+sector_end = 9
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_9.jld2"
+size_bytes = 127754182
+sha256 = "cb963978d99f3134b07daace966f198fc813e7868c5056822268f2f0fc4777c9"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 10
+sector_end = 10
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_10.jld2"
+size_bytes = 127754182
+sha256 = "7c25118ef9a1a146e636b4a3c1a9a9e53cc04526c2ad47924e83a3d7dc002379"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 11
+sector_end = 11
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_11.jld2"
+size_bytes = 127754182
+sha256 = "f2c258bf97c94bcbeecc321070b461a0ae4a996c35e68ba173008367a789fa30"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 12
+sector_end = 12
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_12.jld2"
+size_bytes = 127754182
+sha256 = "22df7c78d7c2e6f1d010e5808bf9a990db0c8db5624e1d860bfc90cc7e25afcf"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 13
+sector_end = 13
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_13.jld2"
+size_bytes = 127754182
+sha256 = "56a181f79fb5fe28c741256df07f4c9969295c88e7f23e39b7fb7691e173d823"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300
+
+[[partial_files]]
+sector_start = 14
+sector_end = 14
+path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/spectrum/partial_14.jld2"
+size_bytes = 127754182
+sha256 = "f7e90b4211bee4110c7e03ac75c9db5d5252a6c0e2320d38aa8485e4ac4ea605"
+nev = 8
+krylovdim = 60
+momentum_step = [1.6755160819145563, 0.7255197456936872]
+translation_character_error = 1.4235553061974497e-14
+hopping_count = 300

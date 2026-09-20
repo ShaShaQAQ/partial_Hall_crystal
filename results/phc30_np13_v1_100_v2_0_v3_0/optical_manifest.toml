@@ -1,0 +1,215 @@
+schema_version = 1
+result_id = "phc30_np13_v1_100_v2_0_v3_0"
+storage_host = "W003"
+source_directory = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical"
+generated_at = "2026-09-20T12:46:16.959801"
+
+[[responses]]
+sector = 0
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_0_optical_response.dat"
+data_size_bytes = 629737
+data_sha256 = "388c15a60fe2b3d3b5cad4f80ebb8b95c716879c93037a3a88c6903dbbf214d0"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_0_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "38f1a325cbab932e8528528d499687cca3440afbf2baf2fced997c34d927eea0"
+ground_energy = 892.8138774549019
+residual = 3.679455335287407e-12
+source_norm2 = 32.51476514045299
+diamagnetic_expectation = 4.904912901559554
+drude_weight = -1.670154549121887
+
+[[responses]]
+sector = 1
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_1_optical_response.dat"
+data_size_bytes = 626276
+data_sha256 = "6924c9987dbeef6646d523b4228d7e427d616419037e97ac08eef9d840ff3644"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_1_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "2ed2a183db463c18513b4813e8660a557c19703ed350b8eee9dba10d5ea31203"
+ground_energy = 892.884557202236
+residual = 3.585935501676828e-12
+source_norm2 = 32.69425522216669
+diamagnetic_expectation = 4.77705334428402
+drude_weight = -2.854778404691634
+
+[[responses]]
+sector = 2
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_2_optical_response.dat"
+data_size_bytes = 631783
+data_sha256 = "735638dc91d7e2c24c188f30997e6d9157ee0761868e98ea8004792769b027de"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_2_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "03c0b4b2b21ea78106a7835f8a18848d5c54bfc69f22b70d7789c07d054d4f37"
+ground_energy = 892.7693923475454
+residual = 3.967270348991604e-12
+source_norm2 = 33.22135585337101
+diamagnetic_expectation = 4.497867981878298
+drude_weight = -1.099102700774366
+
+[[responses]]
+sector = 3
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_3_optical_response.dat"
+data_size_bytes = 631815
+data_sha256 = "f6b224c8819aa1a8a95532b25e1baf9fabddeedac0bcf872907b6d536dce72cb"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_3_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "d48894254b302c4ea82af27b5fbf21696d4e269dd30ea7a18dcfa138df1533a7"
+ground_energy = 892.771480754498
+residual = 3.652055568930841e-12
+source_norm2 = 33.29909176495052
+diamagnetic_expectation = 4.50154137051726
+drude_weight = -1.096641491064803
+
+[[responses]]
+sector = 4
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_4_optical_response.dat"
+data_size_bytes = 626260
+data_sha256 = "ef762153079b71e9adb7f1eb0948cef2f7077c559f1885ada1187df0311b93fb"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_4_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "b8bcfccc981db3c9f81229042d6a68a750e007037581d77dc986853044a83b87"
+ground_energy = 892.8858603552419
+residual = 4.155156342475648e-12
+source_norm2 = 32.62436867954135
+diamagnetic_expectation = 4.77924229299243
+drude_weight = -2.864875821637274
+
+[[responses]]
+sector = 5
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_5_optical_response.dat"
+data_size_bytes = 629818
+data_sha256 = "78625fb7e0822b1cb2114f442d27f9f9e192e09d8b655afd19c0516314a2093d"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_5_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "6f1fad023c2874fb8cf948498f2a067c7ea9c66689f2015a9bc82bc60e7bf8cb"
+ground_energy = 892.8170398098528
+residual = 4.268402387981299e-12
+source_norm2 = 32.57163750275403
+diamagnetic_expectation = 4.910432362794862
+drude_weight = -1.660306469016478
+
+[[responses]]
+sector = 6
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_6_optical_response.dat"
+data_size_bytes = 626101
+data_sha256 = "3dfef354aea19a2c12a619ecc4dff5db0b5d5432234067eb603abb24dab59eb9"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_6_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "04c25e4a61c6ac6068c159800a68efdbc94efe7fd8087621555a4d4431434d0e"
+ground_energy = 892.8883747792557
+residual = 4.421867147524549e-12
+source_norm2 = 32.67407344412971
+diamagnetic_expectation = 4.787699188777188
+drude_weight = -2.919037372848053
+
+[[responses]]
+sector = 7
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_7_optical_response.dat"
+data_size_bytes = 631776
+data_sha256 = "8efbddd6be4839a45062202a0ea1da023c013b14dff14a8b8e89864966bcb380"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_7_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "ab417ba04535e6ad944eb4504f9e91089f51ca82f38a18fa1cb9099093034b9e"
+ground_energy = 892.7743315012099
+residual = 3.770468848561591e-12
+source_norm2 = 33.28365245281715
+diamagnetic_expectation = 4.509691036247598
+drude_weight = -1.092715887328596
+
+[[responses]]
+sector = 8
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_8_optical_response.dat"
+data_size_bytes = 631760
+data_sha256 = "8c944430b9fea9d0644ebe81724dee7345e83843b0e953923b1c3d8d97e63d00"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_8_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "60c1b25c4414a86a5e982f51c0eb45e036bdfc7448072b750fcb152303318a7f"
+ground_energy = 892.7743315012137
+residual = 4.457045785404068e-12
+source_norm2 = 33.28365245281444
+diamagnetic_expectation = 4.509691036248906
+drude_weight = -1.0927158873497
+
+[[responses]]
+sector = 9
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_9_optical_response.dat"
+data_size_bytes = 626047
+data_sha256 = "8e33252b8f8eac110536ce00626477b0465739ec4ac04378e2a03a188799eedf"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_9_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "e8ddf13c6ad8d8128743af99682f07460cb14279698377e2728091da678546a7"
+ground_energy = 892.8883747792507
+residual = 4.407687860675457e-12
+source_norm2 = 32.67407344412727
+diamagnetic_expectation = 4.787699188777428
+drude_weight = -2.919037372818487
+
+[[responses]]
+sector = 10
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_10_optical_response.dat"
+data_size_bytes = 629836
+data_sha256 = "8182f84b894298995df4816c438540b08cc2e8bf3e513d736e8e74a4103c710f"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_10_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "e97a417c518957b19559b7fca11b034e25015d8d2c6e3708d1aef3145f05cf3c"
+ground_energy = 892.8170398098523
+residual = 4.418913175381346e-12
+source_norm2 = 32.57163750275496
+diamagnetic_expectation = 4.910432362794886
+drude_weight = -1.660306469015016
+
+[[responses]]
+sector = 11
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_11_optical_response.dat"
+data_size_bytes = 626286
+data_sha256 = "c7ff971c40d6cca0b9c12f2a2567803758037f7b39aa62d3c2eb1a30c1bbc7bc"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_11_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "3645d4c9382f043126d1ceb03b019e1789d616a59a7313e308e3fdbf28472d80"
+ground_energy = 892.8858603552436
+residual = 3.654533872867244e-12
+source_norm2 = 32.62436867954273
+diamagnetic_expectation = 4.779242292992208
+drude_weight = -2.864875821641294
+
+[[responses]]
+sector = 12
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_12_optical_response.dat"
+data_size_bytes = 631831
+data_sha256 = "e39f154e7d46cdc3c75b0d9fdc9e757bedbc19a1a779baee23e63cdd55a5155c"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_12_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "2a0d839ea93dc1e9d352c2a479a5b70d579e2b4d29aa571224e1d44e6a7d35d9"
+ground_energy = 892.7714807544987
+residual = 3.427961993974122e-12
+source_norm2 = 33.29909176495252
+diamagnetic_expectation = 4.501541370516769
+drude_weight = -1.096641491061326
+
+[[responses]]
+sector = 13
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_13_optical_response.dat"
+data_size_bytes = 631775
+data_sha256 = "f4a87e4c6a422de13f4cb2aab54b69d87d139a0ef8dffb77f40823908aa3652a"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_13_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "4172403a25ca5b7914cfeef84c6919938562a926fec31aa4f264f4557aa9e086"
+ground_energy = 892.7693923475509
+residual = 5.506057888005199e-12
+source_norm2 = 33.22135585336451
+diamagnetic_expectation = 4.497867981880205
+drude_weight = -1.099102700801907
+
+[[responses]]
+sector = 14
+data_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_14_optical_response.dat"
+data_size_bytes = 626273
+data_sha256 = "5383a72c67143bd3ac1e000c9ac84e5613af8b280b1fea4ec2a9f37f164436f7"
+jld2_path = "/home/public/shajy/codex_runs/phc30_np13_v1_100_v2_0_v3_0/optical/sector_14_optical_response.jld2"
+jld2_size_bytes = 297766
+jld2_sha256 = "cd3f1f9434ba14522dd20a6ebd12ceb9dc6e7b84d430dd831b04ca9bdcee03c9"
+ground_energy = 892.8845572022348
+residual = 3.820994159893802e-12
+source_norm2 = 32.69425522216682
+diamagnetic_expectation = 4.777053344283839
+drude_weight = -2.854778404701951

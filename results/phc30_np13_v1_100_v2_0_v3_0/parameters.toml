@@ -1,0 +1,12 @@
+result_id = "phc30_np13_v1_100_v2_0_v3_0"
+phase_label = "Np=13 strong-coupling low-energy manifold"
+Ns = 30
+Nuc = 15
+Np = 13
+t1 = 1.0
+t3 = 0.2
+V1 = 100.0
+V2 = 0.0
+V3 = 0.0
+lattice_convention = "corrected"
+candidate_manifold_size = 15
