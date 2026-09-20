@@ -449,7 +449,10 @@ end
             ledger = TOML.parsefile(joinpath(directory, "ledger.toml"))
             @test length(ledger["candidate"]) == 1
             @test length(ledger["selection"]) == 1
-            @test only(ledger["candidate"])["restart_valid"]
+            candidate_metadata = TOML.parsefile(joinpath(
+                candidate_directory, "candidate.toml"
+            ))
+            @test candidate_metadata["restart_valid"]
             @test only(ledger["candidate"])["progress_event_count"] == 1
             @test isfile(joinpath(directory, "pump_raw.tsv"))
             raw_rows = readlines(joinpath(directory, "pump_raw.tsv"))
