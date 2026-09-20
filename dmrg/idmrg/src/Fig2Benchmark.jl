@@ -117,7 +117,25 @@ function _default_fig2_provenance end
 function _default_fig2_persisted_checkpoint_audit end
 function _default_fig2_progress_audit end
 
+function _default_fig2_checkpoint_save(path, state, config, metadata)
+    _ = metadata
+    return save_checkpoint(path, state, config)
+end
+
+function _default_fig2_checkpoint_load(path, config)
+    return load_checkpoint(path, config)
+end
+
+function _default_fig2_state_maxlinkdim(state)
+    return maximum(link_dimensions(state))
+end
+
 Base.@kwdef struct Fig2BenchmarkOperations
+    backend_id::String=FIG2_LEGACY_BACKEND_ID
+    checkpoint_filename::String="state.h5"
+    checkpoint_save::Function=_default_fig2_checkpoint_save
+    checkpoint_load::Function=_default_fig2_checkpoint_load
+    state_maxlinkdim::Function=_default_fig2_state_maxlinkdim
     candidate_ids::Function=_default_fig2_candidate_ids
     run_candidate::Function=_default_fig2_run_candidate
     load_state::Function=_default_fig2_load_state

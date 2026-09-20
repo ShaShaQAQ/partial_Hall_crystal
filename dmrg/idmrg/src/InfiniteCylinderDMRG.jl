@@ -42,6 +42,7 @@ include("MPSKitHamiltonian.jl")
 include("MPSKitSolver.jl")
 include("MPSKitCheckpoint.jl")
 include("MPSKitObservables.jl")
+include("MPSKitFig2Adapter.jl")
 
 export CylinderModelParams,
     NB_DISPS,
@@ -213,6 +214,8 @@ export BLOCKTENSORKIT_COMMIT,
     mpskit_transverse_translation_mpo,
     mpskit_schmidt_momentum_data,
     mpskit_momentum_entanglement_data,
-    mpskit_mixed_transfer_fidelity
+    mpskit_mixed_transfer_fidelity,
+    mpskit_fig2_operations,
+    fig2_operations_for_backend
 
 end
