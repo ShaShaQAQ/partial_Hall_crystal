@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+#PBS -N phc_mpskit_gate
+#PBS -q cmt
+#PBS -l nodes=1:ppn=24
+#PBS -l walltime=01:00:00
+#PBS -j oe
+
+set -euo pipefail
+export PATH=/home/shajy/bin:/usr/local/bin:/usr/bin:/bin:/opt/bin:/opt/pbs/bin
+
+: "${PBS_JOBID:?run_mpskit_gate.pbs must run inside PBS}"
+: "${MPSKIT_GATE:=restart}"
+: "${MPSKIT_GATE_THREADS:=4}"
+: "${MPSKIT_GATE_OUTPUT:?MPSKIT_GATE_OUTPUT is required}"
+
+W003_REPO=${W003_REPO:-/home/public/shajy/codex/partial_Hall_crystal-idmrg-production}
+JULIA_BIN=${JULIA_BIN:-/home/public/shajy/codex/runtime/julia-1.12.5/bin/julia}
+JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-/home/public/shajy/codex/depots/idmrg-julia-1.12.5}
+results_base=/home/public/shajy/codex/results/fqahc-fig2
+results_prefix=/home/public/shajy/codex/results/fqahc-fig2/
+result_root="$results_base/pbs/${PBS_JOBID}"
+mkdir -p "$result_root"
+
+record_exit() {
+  exit_code=$?
+  printf 'exit_code = %d\n' "$exit_code" > "$result_root/job_status.toml"
+  trap - EXIT
+  exit "$exit_code"
+}
+trap record_exit EXIT
+
+[[ "$MPSKIT_GATE" == restart ]] || {
+  echo "MPSKIT_GATE must be restart" >&2
+  exit 2
+}
+[[ "$MPSKIT_GATE_THREADS" == 4 ]] || {
+  echo "MPSKIT_GATE_THREADS must use the measured four-thread setting" >&2
+  exit 2
+}
+
+repo=$(/usr/bin/realpath -m "$W003_REPO")
+output=$(/usr/bin/realpath -m "$MPSKIT_GATE_OUTPUT")
+[[ "$repo" == /home/public/shajy/codex/partial_Hall_crystal-idmrg-production ]] || {
+  echo "W003_REPO is not the dedicated production checkout" >&2
+  exit 2
+}
+case "$output" in
+  "$results_prefix"*) ;;
+  *)
+    echo "MPSKIT_GATE_OUTPUT must be below $results_prefix" >&2
+    exit 2
+    ;;
+esac
+[[ "$output" != "$results_base" ]] || {
+  echo "MPSKIT_GATE_OUTPUT must not be the shared results root" >&2
+  exit 2
+}
+
+test -x "$JULIA_BIN"
+test -f "$repo/dmrg/idmrg/test/test_mpskit_checkpoint.jl"
+checkout_auditor="$repo/dmrg/idmrg/bin/audit_production_checkout.jl"
+test -f "$checkout_auditor"
+mkdir -p "$output"
+
+exec 9>> "$output/.mpskit_gate.lock"
+if ! /usr/bin/flock -n 9; then
+  echo "another PBS job holds the MPSKit gate lock: $output" >&2
+  exit 3
+fi
+printf '%s\n' "$PBS_JOBID" > "$output/.mpskit_gate.lock"
+
+for filename in \
+  restart_gate.toml \
+  before.toml \
+  after.toml \
+  state.h5 \
+  state-resumed.h5 \
+  state-next-flux.h5; do
+  [[ ! -e "$output/$filename" ]] || {
+    echo "restart gate output already exists: $output/$filename" >&2
+    exit 3
+  }
+done
+
+cd "$repo"
+checkout_audit="$result_root/checkout_audit.txt"
+if ! "$JULIA_BIN" --startup-file=no "$checkout_auditor" "$repo" \
+    > "$checkout_audit"; then
+  cat "$checkout_audit" >&2
+  echo "W003 checkout audit blocks MPSKit production gate" >&2
+  exit 4
+fi
+head_commit=$(sed -n 's/^head_commit=//p' "$checkout_audit")
+origin_commit=$(sed -n 's/^origin_dmrg=//p' "$checkout_audit")
+[[ "$head_commit" =~ ^[0-9a-f]{40}$ && "$head_commit" == "$origin_commit" ]] || {
+  echo "W003 production checkout must have HEAD == origin/DMRG" >&2
+  exit 4
+}
+
+export LC_ALL=C
+export JULIA_DEPOT_PATH
+export JULIA_PKG_OFFLINE=true
+export JULIA_PKG_USE_CLI_GIT=true
+export GIT_CONFIG_GLOBAL="$JULIA_DEPOT_PATH/gitconfig"
+export JULIA_NUM_THREADS="$MPSKIT_GATE_THREADS"
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+work_root="$output/gate_runs/$PBS_JOBID"
+mkdir -p "$work_root"
+export IDMRG_TEST_ARTIFACTS="$work_root"
+artifact_root="$work_root/mpskit_checkpoint_restart"
+
+{
+  hostname
+  printf 'pbs_job_id=%s\n' "$PBS_JOBID"
+  printf 'gate=%s\n' "$MPSKIT_GATE"
+  printf 'git_commit=%s\n' "$head_commit"
+  printf 'origin_dmrg=%s\n' "$origin_commit"
+  printf 'output=%s\n' "$output"
+  printf 'threads=%s\n' "$MPSKIT_GATE_THREADS"
+  cat "$checkout_audit"
+  sha256sum \
+    "$repo/dmrg/idmrg/jobs/run_mpskit_gate.pbs" \
+    "$repo/dmrg/idmrg/src/MPSKitCheckpoint.jl" \
+    "$repo/dmrg/idmrg/test/test_mpskit_checkpoint.jl" \
+    "$repo/dmrg/idmrg/test/mpskit_checkpoint_helpers.jl" \
+    "$repo/dmrg/idmrg/test/mpskit_checkpoint_save.jl" \
+    "$repo/dmrg/idmrg/test/mpskit_checkpoint_resume.jl"
+  "$JULIA_BIN" --startup-file=no -e 'using InteractiveUtils; versioninfo()'
+  "$JULIA_BIN" --startup-file=no --project="$repo/dmrg/idmrg" -e \
+    'using Pkg; Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)'
+  env | sort | sed -n '/^JULIA_/p;/^OMP_/p;/^OPENBLAS_/p;/^MKL_/p;/^PBS_/p'
+  /opt/pbs/bin/qstat -f "$PBS_JOBID" || true
+} > "$result_root/provenance.txt" 2>&1
+
+/usr/bin/time -v "$JULIA_BIN" --startup-file=no \
+  --project="$repo/dmrg/idmrg" \
+  "$repo/dmrg/idmrg/test/test_mpskit_checkpoint.jl" \
+  > "$result_root/test.log" 2> "$result_root/time.txt"
+
+for filename in \
+  restart_gate.toml \
+  before.toml \
+  after.toml \
+  state.h5 \
+  state-resumed.h5 \
+  state-next-flux.h5; do
+  test -s "$artifact_root/$filename"
+  install -m 0444 "$artifact_root/$filename" "$output/$filename"
+done
+grep -Fx 'pass = true' "$output/restart_gate.toml" >/dev/null
+sha256sum \
+  "$output/restart_gate.toml" \
+  "$output/before.toml" \
+  "$output/after.toml" \
+  "$output/state.h5" \
+  "$output/state-resumed.h5" \
+  "$output/state-next-flux.h5" \
+  > "$output/restart_gate_sha256.txt"
+install -m 0444 "$result_root/provenance.txt" \
+  "$output/restart_gate_provenance.txt"
+install -m 0444 "$result_root/time.txt" "$output/restart_gate_time.txt"

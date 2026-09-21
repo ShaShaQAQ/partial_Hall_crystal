@@ -6,6 +6,10 @@ import JLD2
 
 include(joinpath(@__DIR__, "mpskit_checkpoint_helpers.jl"))
 
+const MPSKIT_CHECKPOINT_FIG2_MANIFEST = normpath(joinpath(
+    @__DIR__, "..", "benchmarks", "fqahc_fig2.toml"
+))
+
 function captured_mpskit_checkpoint_exception(f)
     try
         f()
@@ -158,6 +162,11 @@ end
 
         before = TOML.parsefile(joinpath(directory, "before.toml"))
         after = TOML.parsefile(joinpath(directory, "after.toml"))
+        @test before["process_id"] != after["process_id"]
+        @test after["load_completed"] === true
+        @test after["no_expansion_iteration_completed"] === true
+        @test after["controlled_expansion_completed"] === true
+        @test after["next_flux_iteration_completed"] === true
         @test after["configuration_signature"] ==
             before["configuration_signature"]
         @test after["physical_space_fingerprint"] ==
@@ -170,11 +179,34 @@ end
             before["galerkin_residual"] atol=1e-10 rtol=0
         @test after["pre_densities"] ≈ before["densities"] atol=1e-10 rtol=0
         @test after["pre_sector_weights"] == before["sector_weights"]
+        @test after["pre_entanglement_spectrum"] ==
+            before["entanglement_spectrum"]
         @test after["original_checkpoint_sha256"] ==
             before["checkpoint_sha256"]
         @test after["refinement_iterations"] == 1
-        @test after["post_galerkin_residual"] <= 1e-7
+        @test before["maxlinkdim"] == 4
+        @test after["pre_maxlinkdim"] == 4
+        @test after["post_maxlinkdim"] == 8
+        @test after["next_flux_phi_y"] ≈ 0.1 atol=0 rtol=0
         @test isfile(joinpath(directory, "state-resumed.h5"))
+        @test isfile(joinpath(directory, "state-next-flux.h5"))
         @test !isempty(after["resumed_checkpoint_sha256"])
+        @test !isempty(after["next_flux_checkpoint_sha256"])
+
+        spec = load_fig2_benchmark(MPSKIT_CHECKPOINT_FIG2_MANIFEST)
+        gate = write_fig2_restart_gate!(
+            spec,
+            directory;
+            before_path=joinpath(directory, "before.toml"),
+            after_path=joinpath(directory, "after.toml"),
+            save_process_exit_code=save_process.exitcode,
+            resume_process_exit_code=resume_process.exitcode,
+        )
+        @test gate["pass"] === true
+        @test gate["pre_maxlinkdim"] == 4
+        @test gate["post_maxlinkdim"] == 8
+        @test gate["energy_absolute_error"] <= 1e-10
+        @test gate["density_max_absolute_error"] <= 1e-10
+        @test TOML.parsefile(joinpath(directory, "restart_gate.toml")) == gate
     end
 end

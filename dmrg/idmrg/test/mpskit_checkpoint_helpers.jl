@@ -31,6 +31,46 @@ function mpskit_checkpoint_test_fixture()
     return config, hamiltonian, state, operators.number
 end
 
+function mpskit_checkpoint_restart_fixture(phi_y::Real=0.0)
+    config = InfiniteCylinderConfig(;
+        Ly=4,
+        x_period=1,
+        filling_num=1,
+        filling_den=1,
+        phi_y,
+    )
+    physical_spaces = mpskit_physical_spaces(config)
+    operators = InfiniteCylinderDMRG._mpskit_fermion_operators(
+        first(physical_spaces);
+        centered=true,
+    )
+    hopping(amplitude) = amplitude * operators.plus_min -
+        conj(amplitude) * operators.min_plus
+    bulk = hopping(-1.0 + 0.0im)
+    seam = hopping((-1.0 + 0.0im) * cis(config.phi_y))
+    hamiltonian = MPSKit.InfiniteMPOHamiltonian(
+        physical_spaces,
+        (1, 2) => bulk,
+        (2, 3) => bulk,
+        (3, 4) => bulk,
+        (4, 5) => seam,
+    )
+    state = mpskit_product_state(config, [1, 3])
+    return config, hamiltonian, state, operators.number
+end
+
+function mpskit_checkpoint_entanglement_spectrum(state, bond::Integer=2)
+    spectrum = MPSKit.entanglement_spectrum(state, Int(bond))
+    rows = [
+        Dict(
+            "sector" => string(sector),
+            "singular_values" => Float64.(real.(collect(singular_values))),
+        ) for (sector, singular_values) in pairs(spectrum)
+    ]
+    sort!(rows; by=row -> row["sector"])
+    return rows
+end
+
 function mpskit_checkpoint_observations(state, hamiltonian, number_operator)
     environments = MPSKit.environments(state, hamiltonian, state)
     energy_per_site = real(
@@ -62,6 +102,7 @@ function mpskit_checkpoint_observations(state, hamiltonian, number_operator)
         galerkin_residual,
         densities,
         sector_weights,
+        entanglement_spectrum=mpskit_checkpoint_entanglement_spectrum(state),
     )
 end
 

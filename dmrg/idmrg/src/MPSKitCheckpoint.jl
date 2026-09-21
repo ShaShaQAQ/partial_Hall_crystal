@@ -297,3 +297,425 @@ function save_mpskit_checkpoint(
         end
     end
 end
+
+function _mpskit_restart_gate_value(data, key::String, description::String)
+    haskey(data, key) || throw(ArgumentError(
+        "$description evidence is missing $key",
+    ))
+    return data[key]
+end
+
+function _mpskit_restart_gate_bool(data, key::String, description::String)
+    value = _mpskit_restart_gate_value(data, key, description)
+    value isa Bool || throw(ArgumentError(
+        "$description evidence $key must be Boolean",
+    ))
+    return value
+end
+
+function _mpskit_restart_gate_integer(data, key::String, description::String)
+    value = _mpskit_restart_gate_value(data, key, description)
+    value isa Integer && !(value isa Bool) || throw(ArgumentError(
+        "$description evidence $key must be an integer",
+    ))
+    return Int(value)
+end
+
+function _mpskit_restart_gate_number(data, key::String, description::String)
+    value = _mpskit_restart_gate_value(data, key, description)
+    value isa Real && !(value isa Bool) || throw(ArgumentError(
+        "$description evidence $key must be a real number",
+    ))
+    converted = Float64(value)
+    isfinite(converted) || throw(ArgumentError(
+        "$description evidence $key must be finite",
+    ))
+    return converted
+end
+
+function _mpskit_restart_gate_string(data, key::String, description::String)
+    value = _mpskit_restart_gate_value(data, key, description)
+    value isa AbstractString && !isempty(value) || throw(ArgumentError(
+        "$description evidence $key must be a nonempty string",
+    ))
+    return String(value)
+end
+
+function _mpskit_restart_gate_vector(data, key::String, description::String)
+    value = _mpskit_restart_gate_value(data, key, description)
+    value isa AbstractVector || throw(ArgumentError(
+        "$description evidence $key must be an array",
+    ))
+    converted = Float64[]
+    for entry in value
+        entry isa Real && !(entry isa Bool) || throw(ArgumentError(
+            "$description evidence $key entries must be real numbers",
+        ))
+        number = Float64(entry)
+        isfinite(number) || throw(ArgumentError(
+            "$description evidence $key entries must be finite",
+        ))
+        push!(converted, number)
+    end
+    return converted
+end
+
+function _mpskit_restart_gate_sector_weights(
+    data,
+    key::String,
+    description::String,
+)
+    rows = _mpskit_restart_gate_value(data, key, description)
+    rows isa AbstractVector || throw(ArgumentError(
+        "$description evidence $key must be an array of tables",
+    ))
+    weights = Dict{String,Float64}()
+    for row in rows
+        row isa AbstractDict || throw(ArgumentError(
+            "$description evidence $key rows must be tables",
+        ))
+        sector = _mpskit_restart_gate_string(row, "sector", description)
+        haskey(weights, sector) && throw(ArgumentError(
+            "$description evidence $key has duplicate sector $sector",
+        ))
+        weights[sector] = _mpskit_restart_gate_number(
+            row,
+            "weight",
+            description,
+        )
+    end
+    isempty(weights) && throw(ArgumentError(
+        "$description evidence $key must not be empty",
+    ))
+    return weights
+end
+
+function _mpskit_restart_gate_spectrum(
+    data,
+    key::String,
+    description::String,
+)
+    rows = _mpskit_restart_gate_value(data, key, description)
+    rows isa AbstractVector || throw(ArgumentError(
+        "$description evidence $key must be an array of tables",
+    ))
+    spectrum = Dict{String,Vector{Float64}}()
+    for row in rows
+        row isa AbstractDict || throw(ArgumentError(
+            "$description evidence $key rows must be tables",
+        ))
+        sector = _mpskit_restart_gate_string(row, "sector", description)
+        haskey(spectrum, sector) && throw(ArgumentError(
+            "$description evidence $key has duplicate sector $sector",
+        ))
+        spectrum[sector] = _mpskit_restart_gate_vector(
+            row,
+            "singular_values",
+            description,
+        )
+    end
+    isempty(spectrum) && throw(ArgumentError(
+        "$description evidence $key must not be empty",
+    ))
+    return spectrum
+end
+
+function _mpskit_restart_gate_max_error(first_values, second_values)
+    length(first_values) == length(second_values) || return Inf
+    isempty(first_values) && return 0.0
+    return maximum(abs.(first_values .- second_values))
+end
+
+function _mpskit_restart_gate_dict_error(first_values, second_values)
+    keys(first_values) == keys(second_values) || return Inf
+    errors = Float64[]
+    for key in keys(first_values)
+        first_value = first_values[key]
+        second_value = second_values[key]
+        if first_value isa AbstractVector
+            push!(
+                errors,
+                _mpskit_restart_gate_max_error(first_value, second_value),
+            )
+        else
+            push!(errors, abs(first_value - second_value))
+        end
+    end
+    return isempty(errors) ? 0.0 : maximum(errors)
+end
+
+function write_fig2_restart_gate!(
+    spec::Fig2BenchmarkSpec,
+    output::AbstractString;
+    before_path::AbstractString,
+    after_path::AbstractString,
+    save_process_exit_code::Integer,
+    resume_process_exit_code::Integer,
+)
+    before_file = abspath(before_path)
+    after_file = abspath(after_path)
+    before_file != after_file || throw(ArgumentError(
+        "restart-gate save and resume evidence paths must be distinct",
+    ))
+    isfile(before_file) || throw(ArgumentError(
+        "restart-gate save evidence does not exist: $before_file",
+    ))
+    isfile(after_file) || throw(ArgumentError(
+        "restart-gate resume evidence does not exist: $after_file",
+    ))
+    save_process_exit_code isa Bool && throw(ArgumentError(
+        "save process exit code must be an integer",
+    ))
+    resume_process_exit_code isa Bool && throw(ArgumentError(
+        "resume process exit code must be an integer",
+    ))
+
+    snapshot = _fig2_validated_snapshot(spec)
+    contract = snapshot["restart_gate"]
+    before = TOML.parsefile(before_file)
+    after = TOML.parsefile(after_file)
+    save_process_id = _mpskit_restart_gate_string(
+        before,
+        "process_id",
+        "save-process",
+    )
+    resume_process_id = _mpskit_restart_gate_string(
+        after,
+        "process_id",
+        "resume-process",
+    )
+    save_process_id != resume_process_id || throw(ArgumentError(
+        "restart-gate save and resume process IDs must be distinct",
+    ))
+
+    pre_maxlinkdim = _mpskit_restart_gate_integer(
+        after,
+        "pre_maxlinkdim",
+        "resume-process",
+    )
+    no_expansion_maxlinkdim = _mpskit_restart_gate_integer(
+        after,
+        "no_expansion_post_maxlinkdim",
+        "resume-process",
+    )
+    post_maxlinkdim = _mpskit_restart_gate_integer(
+        after,
+        "post_maxlinkdim",
+        "resume-process",
+    )
+    saved_maxlinkdim = _mpskit_restart_gate_integer(
+        before,
+        "maxlinkdim",
+        "save-process",
+    )
+    energy_error = abs(
+        _mpskit_restart_gate_number(
+            after,
+            "pre_energy_per_site",
+            "resume-process",
+        ) -
+        _mpskit_restart_gate_number(
+            before,
+            "energy_per_site",
+            "save-process",
+        ),
+    )
+    density_error = _mpskit_restart_gate_max_error(
+        _mpskit_restart_gate_vector(
+            after,
+            "pre_densities",
+            "resume-process",
+        ),
+        _mpskit_restart_gate_vector(
+            before,
+            "densities",
+            "save-process",
+        ),
+    )
+    sector_error = _mpskit_restart_gate_dict_error(
+        _mpskit_restart_gate_sector_weights(
+            after,
+            "pre_sector_weights",
+            "resume-process",
+        ),
+        _mpskit_restart_gate_sector_weights(
+            before,
+            "sector_weights",
+            "save-process",
+        ),
+    )
+    spectrum_error = _mpskit_restart_gate_dict_error(
+        _mpskit_restart_gate_spectrum(
+            after,
+            "pre_entanglement_spectrum",
+            "resume-process",
+        ),
+        _mpskit_restart_gate_spectrum(
+            before,
+            "entanglement_spectrum",
+            "save-process",
+        ),
+    )
+    energy_tolerance = Float64(contract["energy_tolerance"])
+    density_tolerance = Float64(contract["density_tolerance"])
+
+    evidence_directory = dirname(before_file)
+    dirname(after_file) == evidence_directory || throw(ArgumentError(
+        "restart-gate save and resume evidence must share a directory",
+    ))
+    checkpoint = joinpath(evidence_directory, "state.h5")
+    resumed_checkpoint = joinpath(evidence_directory, "state-resumed.h5")
+    next_flux_checkpoint = joinpath(evidence_directory, "state-next-flux.h5")
+    all(isfile, (checkpoint, resumed_checkpoint, next_flux_checkpoint)) ||
+        throw(ArgumentError(
+            "restart-gate checkpoint evidence is incomplete",
+        ))
+    checkpoint_sha256 = _fig2_file_sha256(checkpoint)
+    resumed_checkpoint_sha256 = _fig2_file_sha256(resumed_checkpoint)
+    next_flux_checkpoint_sha256 = _fig2_file_sha256(next_flux_checkpoint)
+    checkpoint_integrity =
+        checkpoint_sha256 == _mpskit_restart_gate_string(
+            before,
+            "checkpoint_sha256",
+            "save-process",
+        ) == _mpskit_restart_gate_string(
+            after,
+            "original_checkpoint_sha256",
+            "resume-process",
+        ) &&
+        resumed_checkpoint_sha256 == _mpskit_restart_gate_string(
+            after,
+            "resumed_checkpoint_sha256",
+            "resume-process",
+        ) &&
+        next_flux_checkpoint_sha256 == _mpskit_restart_gate_string(
+            after,
+            "next_flux_checkpoint_sha256",
+            "resume-process",
+        )
+
+    site_spaces_reproduced =
+        _mpskit_restart_gate_string(
+            before,
+            "configuration_signature",
+            "save-process",
+        ) == _mpskit_restart_gate_string(
+            after,
+            "configuration_signature",
+            "resume-process",
+        ) &&
+        _mpskit_restart_gate_string(
+            before,
+            "physical_space_fingerprint",
+            "save-process",
+        ) == _mpskit_restart_gate_string(
+            after,
+            "physical_space_fingerprint",
+            "resume-process",
+        ) &&
+        _mpskit_restart_gate_string(
+            before,
+            "virtual_space_fingerprint",
+            "save-process",
+        ) == _mpskit_restart_gate_string(
+            after,
+            "virtual_space_fingerprint",
+            "resume-process",
+        )
+    next_flux_phi_y = _mpskit_restart_gate_number(
+        after,
+        "next_flux_phi_y",
+        "resume-process",
+    )
+    checks = Dict{String,Bool}(
+        "load_completed" =>
+            _mpskit_restart_gate_bool(
+                after,
+                "load_completed",
+                "resume-process",
+            ) && checkpoint_integrity,
+        "no_expansion_iteration_completed" =>
+            _mpskit_restart_gate_bool(
+                after,
+                "no_expansion_iteration_completed",
+                "resume-process",
+            ) &&
+            _mpskit_restart_gate_integer(
+                after,
+                "refinement_iterations",
+                "resume-process",
+            ) == 1 &&
+            no_expansion_maxlinkdim == pre_maxlinkdim,
+        "controlled_expansion_completed" =>
+            _mpskit_restart_gate_bool(
+                after,
+                "controlled_expansion_completed",
+                "resume-process",
+            ) &&
+            saved_maxlinkdim == pre_maxlinkdim == 4 &&
+            post_maxlinkdim == 8,
+        "energy_reproduced" => energy_error <= energy_tolerance,
+        "density_reproduced" => density_error <= density_tolerance,
+        "schmidt_sectors_reproduced" => sector_error <= density_tolerance,
+        "entanglement_spectrum_reproduced" =>
+            spectrum_error <= density_tolerance,
+        "site_indices_reproduced" => site_spaces_reproduced,
+        "next_flux_iteration_completed" =>
+            _mpskit_restart_gate_bool(
+                after,
+                "next_flux_iteration_completed",
+                "resume-process",
+            ) &&
+            _mpskit_restart_gate_integer(
+                after,
+                "next_flux_iterations",
+                "resume-process",
+            ) == 1 &&
+            next_flux_phi_y == 0.1,
+    )
+    required_checks = String.(contract["required_checks"])
+    Set(keys(checks)) == Set(required_checks) || error(
+        "restart-gate writer and manifest required checks disagree",
+    )
+    pass = Int(save_process_exit_code) == 0 &&
+        Int(resume_process_exit_code) == 0 &&
+        all(checks[check] for check in required_checks)
+
+    active_project, project_manifest = _fig2_project_manifest()
+    backend = mpskit_backend_provenance()
+    gate = Dict{String,Any}(
+        "format" => String(contract["format"]),
+        "pass" => pass,
+        "manifest_sha256" => spec.sha256,
+        "git_commit" => _fig2_repository_commit(),
+        "julia_version" => string(VERSION),
+        "project_manifest_sha256" => _fig2_file_sha256(project_manifest),
+        "backend_commit" => backend.mpskit_commit,
+        "save_process_exit_code" => Int(save_process_exit_code),
+        "resume_process_exit_code" => Int(resume_process_exit_code),
+        "save_process_id" => "save:$save_process_id",
+        "resume_process_id" => "resume:$resume_process_id",
+        "pre_maxlinkdim" => pre_maxlinkdim,
+        "post_maxlinkdim" => post_maxlinkdim,
+        "next_flux_phi_y" => next_flux_phi_y,
+        "energy_absolute_error" => energy_error,
+        "energy_tolerance" => energy_tolerance,
+        "density_max_absolute_error" => density_error,
+        "density_tolerance" => density_tolerance,
+        "schmidt_sector_max_absolute_error" => sector_error,
+        "entanglement_spectrum_max_absolute_error" => spectrum_error,
+        "save_evidence_sha256" => _fig2_file_sha256(before_file),
+        "resume_evidence_sha256" => _fig2_file_sha256(after_file),
+        "checkpoint_sha256" => checkpoint_sha256,
+        "resumed_checkpoint_sha256" => resumed_checkpoint_sha256,
+        "next_flux_checkpoint_sha256" => next_flux_checkpoint_sha256,
+        "active_project" => active_project,
+        "project_manifest" => project_manifest,
+    )
+    merge!(gate, checks)
+    root = abspath(output)
+    mkpath(root)
+    gate_path = joinpath(root, String(contract["evidence_filename"]))
+    _write_fig2_toml(gate_path, gate)
+    return TOML.parsefile(gate_path)
+end
