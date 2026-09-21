@@ -2,13 +2,14 @@ const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v6"
 const FIG2_PRODUCTION_BACKEND_ID = "mpskit_idmrg_v1"
 const FIG2_LEGACY_BACKEND_ID = "itensor_infinite_mps_v1"
 const FIG2_LEGACY_BACKEND_ROLE = "diagnostic_only"
-const FIG2_LEDGER_FORMAT = "fqahc_fig2_ledger_v3"
-const FIG2_CANDIDATE_FORMAT = "fqahc_fig2_candidate_v4"
+const FIG2_LEDGER_FORMAT = "fqahc_fig2_ledger_v4"
+const FIG2_CANDIDATE_FORMAT = "fqahc_fig2_candidate_v5"
 const FIG2_PROGRESS_EVENT_FORMAT = "fqahc_fig2_progress_event_v1"
 const FIG2_PROGRESS_POINTER_FORMAT = "fqahc_fig2_progress_pointer_v1"
 const FIG2_PROGRESS_SUMMARY_FORMAT = "fqahc_fig2_progress_summary_v1"
 const FIG2_PROGRESS_CONVERGENCE_STATE_POLICY = "reset_on_resume"
 const FIG2_MIXED_REFERENCE_ABSENT = "absent"
+const FIG2_DIMENSION_PREDECESSOR_ABSENT = "absent"
 const FIG2_PAPER_CURVE_FLUX_UNITS_2PI = collect(0.0:0.125:3.0)
 const FIG2_PAPER_CURVE_DELTA_Q = Float64[
     0.000000, 0.039286, 0.080329, 0.122619, 0.165646,
@@ -82,6 +83,15 @@ struct Fig2MomentumCounting
 end
 
 struct Fig2MixedReference
+    present::Bool
+    dimension::Int
+    point::Int
+    candidate_id::String
+    directory::String
+    state_sha256::String
+end
+
+struct Fig2DimensionPredecessor
     present::Bool
     dimension::Int
     point::Int
@@ -2394,6 +2404,120 @@ function _fig2_validate_mixed_reference_point(reference, dimension, point)
     return nothing
 end
 
+function _fig2_absent_dimension_predecessor()
+    return Fig2DimensionPredecessor(
+        false,
+        0,
+        0,
+        FIG2_DIMENSION_PREDECESSOR_ABSENT,
+        FIG2_DIMENSION_PREDECESSOR_ABSENT,
+        FIG2_DIMENSION_PREDECESSOR_ABSENT,
+    )
+end
+
+function _fig2_same_dimension_predecessor(left, right)
+    return left.present == right.present &&
+        left.dimension == right.dimension &&
+        left.point == right.point &&
+        left.candidate_id == right.candidate_id &&
+        left.directory == right.directory &&
+        left.state_sha256 == right.state_sha256
+end
+
+function _fig2_dimension_predecessor_fields(
+    predecessor::Fig2DimensionPredecessor,
+)
+    return Dict{String,Any}(
+        "dimension_predecessor_present" => predecessor.present,
+        "dimension_predecessor_dimension" => predecessor.dimension,
+        "dimension_predecessor_point" => predecessor.point,
+        "dimension_predecessor_candidate_id" => predecessor.candidate_id,
+        "dimension_predecessor_directory" => predecessor.directory,
+        "dimension_predecessor_state_sha256" => predecessor.state_sha256,
+    )
+end
+
+function _fig2_dimension_predecessor_from_data(data)
+    present = get(data, "dimension_predecessor_present", nothing)
+    present isa Bool || throw(ArgumentError(
+        "candidate dimension predecessor present flag is missing or invalid"
+    ))
+    dimension = get(data, "dimension_predecessor_dimension", nothing)
+    dimension isa Integer && !(dimension isa Bool) || throw(ArgumentError(
+        "candidate dimension predecessor dimension is missing or invalid"
+    ))
+    point = get(data, "dimension_predecessor_point", nothing)
+    point isa Integer && !(point isa Bool) || throw(ArgumentError(
+        "candidate dimension predecessor point is missing or invalid"
+    ))
+    candidate_id = get(data, "dimension_predecessor_candidate_id", nothing)
+    candidate_id isa AbstractString || throw(ArgumentError(
+        "candidate dimension predecessor candidate_id is missing or invalid"
+    ))
+    directory = get(data, "dimension_predecessor_directory", nothing)
+    directory isa AbstractString || throw(ArgumentError(
+        "candidate dimension predecessor directory is missing or invalid"
+    ))
+    state_sha256 = get(data, "dimension_predecessor_state_sha256", nothing)
+    state_sha256 isa AbstractString || throw(ArgumentError(
+        "candidate dimension predecessor state_sha256 is missing or invalid"
+    ))
+    predecessor = Fig2DimensionPredecessor(
+        present,
+        Int(dimension),
+        Int(point),
+        String(candidate_id),
+        String(directory),
+        String(state_sha256),
+    )
+    if !predecessor.present
+        _fig2_same_dimension_predecessor(
+            predecessor, _fig2_absent_dimension_predecessor()
+        ) || throw(ArgumentError(
+            "candidate absent dimension predecessor does not use the strict sentinel"
+        ))
+        return predecessor
+    end
+    predecessor.dimension > 0 && predecessor.point > 0 || throw(
+        ArgumentError(
+            "candidate present dimension predecessor dimension and point must be positive"
+        )
+    )
+    predecessor.directory == _candidate_relative_directory(
+        predecessor.dimension,
+        predecessor.point,
+        predecessor.candidate_id,
+    ) || throw(ArgumentError(
+        "candidate dimension predecessor directory disagrees with its identity"
+    ))
+    occursin(r"^[0-9a-f]{64}$", predecessor.state_sha256) || throw(
+        ArgumentError("candidate dimension predecessor state_sha256 is invalid")
+    )
+    return predecessor
+end
+
+function _fig2_validate_dimension_predecessor_point(
+    predecessor,
+    dimension,
+    point,
+)
+    if point != 1
+        _fig2_same_dimension_predecessor(
+            predecessor, _fig2_absent_dimension_predecessor()
+        ) || throw(ArgumentError(
+            "non-reference-flux candidate must use the strict absent dimension predecessor"
+        ))
+        return nothing
+    end
+    predecessor.present || return nothing
+    predecessor.point == 1 && predecessor.dimension < dimension || throw(
+        ArgumentError(
+            "candidate dimension predecessor is not a lower-dimension reference-flux point"
+        )
+    )
+    return nothing
+end
+
 function _fig2_mixed_audit_from_data(data)
     return MixedTransferFidelity(
         Float64(data["fidelity_to_previous"]),
@@ -3703,6 +3827,10 @@ function _validate_fig2_candidate_artifacts(
     identity == (dimension, point, phi_y, String(candidate_id)) || throw(
         ArgumentError("candidate identity does not match its ledger row")
     )
+    dimension_predecessor = _fig2_dimension_predecessor_from_data(metadata)
+    _fig2_validate_dimension_predecessor_point(
+        dimension_predecessor, dimension, point
+    )
     requested_maxdim = _fig2_candidate_positive_integer(
         metadata, "requested_maxdim"
     )
@@ -3846,6 +3974,7 @@ function _validate_fig2_candidate_artifacts(
     )
     return (;
         metadata,
+        dimension_predecessor,
         replayed_energy_per_site,
         final_convergence,
         progress,
@@ -3862,6 +3991,7 @@ function _complete_fig2_candidate!(
     candidate_id,
     evidence,
     mixed_reference,
+    dimension_predecessor,
     relative_directory,
     generation_provenance,
     ;
@@ -3884,6 +4014,12 @@ function _complete_fig2_candidate!(
     ))
     _fig2_validate_mixed_reference_point(
         mixed_reference, dimension, point
+    )
+    dimension_predecessor isa Fig2DimensionPredecessor || throw(ArgumentError(
+        "candidate dimension predecessor must be a Fig2DimensionPredecessor"
+    ))
+    _fig2_validate_dimension_predecessor_point(
+        dimension_predecessor, dimension, point
     )
     progress = _fig2_candidate_progress_audit(
         progress_audit,
@@ -3936,6 +4072,7 @@ function _complete_fig2_candidate!(
         candidate_metadata,
         _fig2_mixed_fields(mixed_fidelity; present=!isnothing(evidence.mixed_fidelity)),
         _fig2_mixed_reference_fields(mixed_reference),
+        _fig2_dimension_predecessor_fields(dimension_predecessor),
         _fig2_momentum_fields(evidence.momentum),
         _fig2_counting_fields(evidence.momentum_counting_evidence),
     )
@@ -3984,6 +4121,7 @@ function _complete_fig2_candidate!(
             _fig2_generation_provenance_sha256(generation_provenance),
         "checksums" => checksums,
     )
+    merge!(row, _fig2_dimension_predecessor_fields(dimension_predecessor))
     push!(ledger["candidate"], row)
     _write_fig2_toml(joinpath(output, "ledger.toml"), ledger)
     return (
@@ -4298,6 +4436,154 @@ function _validate_fig2_mixed_reference_chain(
     return nothing
 end
 
+function _fig2_dimension_predecessor_from_candidate_row(
+    root,
+    row;
+    checkpoint_filename="state.h5",
+)
+    dimension, point, candidate_id = _fig2_candidate_key(row)
+    directory = get(row, "directory", nothing)
+    directory isa AbstractString || throw(ArgumentError(
+        "dimension predecessor selected candidate directory is missing"
+    ))
+    expected_directory = _candidate_relative_directory(
+        dimension, point, candidate_id
+    )
+    String(directory) == expected_directory || throw(ArgumentError(
+        "dimension predecessor selected candidate directory disagrees with its identity"
+    ))
+    state_sha256 = get(row, "state_sha256", nothing)
+    state_sha256 isa AbstractString &&
+        occursin(r"^[0-9a-f]{64}$", state_sha256) || throw(ArgumentError(
+            "dimension predecessor selected candidate state_sha256 is invalid"
+        ))
+    checksums = get(row, "checksums", nothing)
+    checksums isa AbstractDict &&
+        get(checksums, checkpoint_filename, nothing) == state_sha256 || throw(
+        ArgumentError(
+            "dimension predecessor selected candidate state checksum fields disagree"
+        )
+    )
+    state_path = joinpath(root, expected_directory, checkpoint_filename)
+    isfile(state_path) && filesize(state_path) > 0 || throw(ArgumentError(
+        "dimension predecessor selected checkpoint is missing"
+    ))
+    _fig2_file_sha256(state_path) == state_sha256 || throw(ArgumentError(
+        "dimension predecessor selected checkpoint checksum mismatch"
+    ))
+    return Fig2DimensionPredecessor(
+        true,
+        dimension,
+        point,
+        candidate_id,
+        expected_directory,
+        String(state_sha256),
+    )
+end
+
+function _fig2_dimension_predecessor_for_selection(
+    root,
+    selection,
+    candidate_row;
+    checkpoint_filename="state.h5",
+)
+    expected = _fig2_dimension_predecessor_from_candidate_row(
+        root,
+        candidate_row;
+        checkpoint_filename,
+    )
+    identity = if selection isa Fig2Selection
+        (
+            selection.dimension,
+            selection.point,
+            selection.candidate_id,
+            selection.directory,
+        )
+    else
+        (
+            Int(selection["dimension"]),
+            Int(selection["point"]),
+            String(selection["candidate_id"]),
+            String(selection["directory"]),
+        )
+    end
+    identity == (
+        expected.dimension,
+        expected.point,
+        expected.candidate_id,
+        expected.directory,
+    ) || throw(ArgumentError(
+        "dimension predecessor does not identify the selected checkpoint"
+    ))
+    return expected
+end
+
+function _validate_fig2_dimension_predecessor_chain(
+    root,
+    candidate_rows,
+    selection_rows,
+    dimensions;
+    checkpoint_filename="state.h5",
+)
+    order = Dict(dimension => index for (index, dimension) in enumerate(dimensions))
+    length(order) == length(dimensions) || throw(ArgumentError(
+        "dimension predecessor schedule contains duplicate dimensions"
+    ))
+    absent = _fig2_absent_dimension_predecessor()
+    for row in values(candidate_rows)
+        dimension, point, _ = _fig2_candidate_key(row)
+        haskey(order, dimension) || throw(ArgumentError(
+            "candidate dimension predecessor is outside the requested dimension schedule"
+        ))
+        metadata = TOML.parsefile(joinpath(
+            root, String(row["directory"]), "candidate.toml"
+        ))
+        actual = _fig2_dimension_predecessor_from_data(metadata)
+        ledger_actual = _fig2_dimension_predecessor_from_data(row)
+        _fig2_same_dimension_predecessor(actual, ledger_actual) || throw(
+            ArgumentError(
+                "candidate dimension predecessor metadata and ledger fields disagree"
+            )
+        )
+        _fig2_validate_dimension_predecessor_point(actual, dimension, point)
+        dimension_index = order[dimension]
+        if point != 1 || dimension_index == 1
+            _fig2_same_dimension_predecessor(actual, absent) || throw(
+                ArgumentError(
+                    "candidate dimension predecessor must be absent without a previous scheduled dimension"
+                )
+            )
+            continue
+        end
+        previous_dimension = dimensions[dimension_index - 1]
+        previous_selection_key = (previous_dimension, 1)
+        haskey(selection_rows, previous_selection_key) || throw(ArgumentError(
+            "candidate dimension predecessor has no previous-dimension selected checkpoint"
+        ))
+        selected = selection_rows[previous_selection_key]
+        selected_key = (
+            previous_dimension,
+            1,
+            String(selected["candidate_id"]),
+        )
+        haskey(candidate_rows, selected_key) || throw(ArgumentError(
+            "candidate dimension predecessor selected candidate row is missing"
+        ))
+        expected = _fig2_dimension_predecessor_for_selection(
+            root,
+            selected,
+            candidate_rows[selected_key];
+            checkpoint_filename,
+        )
+        _fig2_same_dimension_predecessor(actual, expected) || throw(
+            ArgumentError(
+                "candidate dimension predecessor does not match the exact previous-dimension selected checkpoint"
+            )
+        )
+    end
+    return nothing
+end
+
 function _fig2_unique_rows(rows, key_function, description)
     indexed = Dict{Any,Any}()
     for row in rows
@@ -4459,6 +4745,13 @@ function _validate_persisted_fig2_candidate_files(
         ArgumentError("persisted candidate progress checksum is inconsistent")
     )
     metadata = TOML.parsefile(joinpath(directory, "candidate.toml"))
+    ledger_predecessor = _fig2_dimension_predecessor_from_data(row)
+    _fig2_same_dimension_predecessor(
+        ledger_predecessor,
+        artifact_audit.dimension_predecessor,
+    ) || throw(ArgumentError(
+        "persisted candidate dimension predecessor ledger fields disagree with candidate metadata"
+    ))
     progress = artifact_audit.progress
     for (key, measured) in (
         "progress_complete" => progress.complete,
@@ -4745,6 +5038,9 @@ function _validate_fig2_schedule(dimensions, fluxes)
     length(unique(dims)) == length(dims) || throw(
         ArgumentError("Fig. 2 dimensions must be unique")
     )
+    issorted(dims) || throw(
+        ArgumentError("Fig. 2 dimensions must be strictly increasing")
+    )
     phis = Float64[]
     for flux in fluxes
         flux isa Real && !(flux isa Bool) && isfinite(flux) || throw(
@@ -4841,17 +5137,42 @@ function run_fig2_benchmark(
         persisted_selections;
         checkpoint_filename,
     )
+    _validate_fig2_dimension_predecessor_chain(
+        root,
+        persisted_candidates,
+        persisted_selections,
+        dims;
+        checkpoint_filename,
+    )
     selections = Fig2Selection[]
     previous_dimension_first_selection = nothing
     for dimension in dims
         previous_state = nothing
         previous_selection = nothing
+        dimension_predecessor = _fig2_absent_dimension_predecessor()
         first_selection_key = (dimension, firstindex(phis))
         if !isnothing(previous_dimension_first_selection) &&
                 !haskey(persisted_selections, first_selection_key)
+            predecessor_key = (
+                previous_dimension_first_selection.dimension,
+                previous_dimension_first_selection.point,
+                previous_dimension_first_selection.candidate_id,
+            )
+            haskey(persisted_candidates, predecessor_key) || throw(
+                ArgumentError(
+                    "dimension predecessor selected candidate row is missing"
+                )
+            )
+            dimension_predecessor =
+                _fig2_dimension_predecessor_for_selection(
+                    root,
+                    previous_dimension_first_selection,
+                    persisted_candidates[predecessor_key];
+                    checkpoint_filename,
+                )
             checkpoint = joinpath(
                 root,
-                previous_dimension_first_selection.directory,
+                dimension_predecessor.directory,
                 checkpoint_filename,
             )
             previous_state = operations.load_state(
@@ -4977,6 +5298,8 @@ function run_fig2_benchmark(
                     candidate_id,
                     evidence,
                     mixed_reference,
+                    point == 1 ? dimension_predecessor :
+                        _fig2_absent_dimension_predecessor(),
                     relative_directory,
                     generation_provenance,
                     ;
@@ -5286,6 +5609,15 @@ function _fig2_acceptance_integrity_inputs(
         validated_selections,
         ;
         candidate_ids_provider,
+    )
+    dimensions = sort!(unique(Int[
+        Int(row["dimension"]) for row in values(candidates)
+    ]))
+    _validate_fig2_dimension_predecessor_chain(
+        root,
+        candidates,
+        selection_rows,
+        dimensions,
     )
     sort!(selections; by=row -> (row.dimension, row.point))
     _write_fig2_pump_tables(spec, root, selections)
@@ -6638,7 +6970,9 @@ end
 function _default_fig2_candidate_ids(spec, dimension, point, previous_state)
     snapshot = _fig2_validated_snapshot(spec)
     candidates = fig2_initial_candidates(spec.config)
-    point == 1 && return [candidate.id for candidate in candidates]
+    initial_dimension = first(Int.(snapshot["pilot"]["maxdims"]))
+    point == 1 && dimension <= initial_dimension &&
+        return [candidate.id for candidate in candidates]
     cold_count = Int(snapshot["pilot"]["cold_candidates"])
     bounded = first(candidates, min(cold_count, length(candidates)))
     return ["warm"; ["cold_$(candidate.id)" for candidate in bounded]]

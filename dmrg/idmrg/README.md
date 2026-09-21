@@ -297,10 +297,12 @@ thread environment, `/usr/bin/time -v`, and exit code under
 `results/fqahc-fig2/pbs/$PBS_JOBID`. An interrupted stage is resubmitted with the
 same `FIG2_STAGE`, `FIG2_OUTPUT`, dimensions, and flux grid; the benchmark ledger
 audits completed candidate checksums and resumes from the last valid
-wavefunction. The root `provenance.toml` and every candidate's immutable
-generation provenance additionally persist the measured Julia, BLAS, Strided,
-and block-sparse threading state and reject a state inconsistent with the
-production contract.
+wavefunction. A fully completed replay performs no unnecessary predecessor
+load; an incomplete higher-`D` zero-flux point reloads the exact audited
+predecessor checkpoint before candidate generation. The root `provenance.toml`
+and every candidate's immutable generation provenance additionally persist the
+measured Julia, BLAS, Strided, and block-sparse threading state and reject a
+state inconsistent with the production contract.
 
 The hard walltime caps are 12 hours through `D=128`, 36 hours for `D=256`, 72
 hours through `D=1000`, and 120 hours above `D=1000`. A smaller value may be set
@@ -335,14 +337,25 @@ The result is specific to the small block structure at `D=32`; repeat the same
 checkpoint comparison at `D=256` before choosing the thread count for high-D
 stages.
 
-At zero flux, every deterministic product-state candidate is retained and the
-lowest converged valid energy per site is selected. At later flux points, the
-selected branch is the converged valid candidate with the largest valid mixed
-infinite-MPS fidelity to the previous selected state; energy only breaks a
-fidelity tie. Every `(D, flux, candidate)` owns a private directory containing
-its `state.h5`, convergence/expansion tables, density, raw charge and momentum
-entanglement spectra, raw Schmidt sectors, mixed fidelity, and candidate
-metadata.
+At zero flux of the initial `D=32` stage, every deterministic product-state
+candidate is retained and the lowest converged valid energy per site is
+selected. The zero-flux point of each higher scheduled bond dimension starts
+from the preceding dimension's selected zero-flux checkpoint and evaluates one
+`warm` candidate plus the manifest-fixed two cold controls. At later flux
+points, the selected branch is the converged valid candidate with the largest
+valid mixed infinite-MPS fidelity to the previous selected state; energy only
+breaks a fidelity tie. Every `(D, flux, candidate)` owns a private directory
+containing its `state.h5`, convergence/expansion tables, density, raw charge and
+momentum entanglement spectra, raw Schmidt sectors, mixed fidelity, and
+candidate metadata.
+
+The `fqahc_fig2_candidate_v5` metadata and `fqahc_fig2_ledger_v4` row for every
+higher-`D` zero-flux candidate both record the predecessor dimension, point,
+candidate ID, relative directory, and `state.h5` SHA-256. Replay recomputes that
+reference from the preceding dimension's selected ledger row and the checkpoint
+bytes. It rejects a reference to a different retained cold candidate even when
+that candidate and checksum are otherwise valid. Initial-dimension and nonzero-
+flux candidates use a strict absent sentinel for these cross-dimension fields.
 
 `ledger.toml` is replaced atomically only after all eleven required candidate
 artifacts exist and their SHA-256 values have been recorded. Re-running the

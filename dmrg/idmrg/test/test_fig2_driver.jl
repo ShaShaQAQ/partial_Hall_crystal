@@ -152,7 +152,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
         "provenance",
     ]
     @test InfiniteCylinderDMRG.FIG2_LEDGER_FORMAT ==
-        "fqahc_fig2_ledger_v3"
+        "fqahc_fig2_ledger_v4"
 end
 
 @testset "Fig. 2 uses sequential long-range QN updates" begin
@@ -402,6 +402,30 @@ end
         end
         @test oversized_error isa ArgumentError
     end
+end
+
+@testset "default Fig. 2 candidates continue across bond dimensions" begin
+    spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
+    initial = [candidate.id for candidate in fig2_initial_candidates(spec.config)]
+    cold_count = Int(spec.data["pilot"]["cold_candidates"])
+    controls = ["cold_$id" for id in first(initial, cold_count)]
+    continued = ["warm"; controls]
+
+    @test InfiniteCylinderDMRG._default_fig2_candidate_ids(
+        spec, 32, 1, nothing
+    ) == initial
+    @test InfiniteCylinderDMRG._default_fig2_candidate_ids(
+        spec, 64, 1, nothing
+    ) == continued
+    @test InfiniteCylinderDMRG._default_fig2_candidate_ids(
+        spec, 128, 1, nothing
+    ) == continued
+    @test InfiniteCylinderDMRG._default_fig2_candidate_ids(
+        spec, 32, 2, nothing
+    ) == continued
+    @test_throws ArgumentError InfiniteCylinderDMRG._validate_fig2_schedule(
+        [64, 32], [0.0]
+    )
 end
 
 if get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1"
@@ -3337,7 +3361,7 @@ if all(
             metadata = TOML.parsefile(joinpath(
                 directory, candidate["directory"], "candidate.toml"
             ))
-            @test metadata["format"] == "fqahc_fig2_candidate_v4"
+            @test metadata["format"] == "fqahc_fig2_candidate_v5"
             @test metadata["requested_maxdim"] == 4
             @test metadata["achieved_maxlinkdim"] == 4
             @test get(metadata, "checkpoint_maxlinkdim", nothing) == 4
@@ -4982,7 +5006,7 @@ if all(
             @test all(call.previous_state == (; point=1, candidate_id="beta") for call in calls[3:4])
 
             ledger = TOML.parsefile(joinpath(directory, "ledger.toml"))
-            @test ledger["format"] == "fqahc_fig2_ledger_v3"
+            @test ledger["format"] == "fqahc_fig2_ledger_v4"
             @test length(ledger["candidate"]) == 4
             @test length(ledger["selection"]) == 2
             @test all(row["complete"] for row in ledger["candidate"])
@@ -6837,7 +6861,7 @@ if all(
                 provenance=synthetic_fig2_provenance,
                 candidate_ids=(spec, dimension, point, previous) -> begin
                     _ = (spec, point, previous)
-                    dimension == 4 ? ["seed"] : ["warm"]
+                    dimension == 4 ? ["alpha", "seed"] : ["warm"]
                 end,
                 run_candidate=(spec, dimension, point, phi_y, candidate_id,
                                previous_state, candidate_directory) -> begin
@@ -6847,7 +6871,11 @@ if all(
                         candidate_id,
                         previous_state,
                     ))
-                    energy = dimension == 4 ? -1.0 : -1.1
+                    energy = if dimension == 4
+                        candidate_id == "seed" ? -1.0 : -0.9
+                    else
+                        -1.1
+                    end
                     raw_polarization = dimension == 4 ? 0.20 : 0.21
                     sectors = synthetic_sector_weights_for_polarization(
                         raw_polarization
@@ -6908,9 +6936,9 @@ if all(
             )
             @test [(row.dimension, row.candidate_id) for
                    row in first_run.selections] == [(4, "seed"), (8, "warm")]
-            @test length(candidate_calls) == 2
-            @test isnothing(candidate_calls[1].previous_state)
-            @test candidate_calls[2].previous_state == (;
+            @test length(candidate_calls) == 3
+            @test all(isnothing(call.previous_state) for call in candidate_calls[1:2])
+            @test candidate_calls[3].previous_state == (;
                 source=:checkpoint,
                 dimension=4,
                 point=1,
@@ -6925,8 +6953,45 @@ if all(
             ))
 
             ledger = TOML.parsefile(joinpath(directory, "ledger.toml"))
-            @test length(ledger["candidate"]) == 2
+            @test length(ledger["candidate"]) == 3
             @test length(ledger["selection"]) == 2
+            predecessor_fields(row) = (
+                row["dimension_predecessor_present"],
+                row["dimension_predecessor_dimension"],
+                row["dimension_predecessor_point"],
+                row["dimension_predecessor_candidate_id"],
+                row["dimension_predecessor_directory"],
+                row["dimension_predecessor_state_sha256"],
+            )
+            alpha_row = only(filter(
+                row -> row["dimension"] == 4 && row["candidate_id"] == "alpha",
+                ledger["candidate"],
+            ))
+            seed_row = only(filter(
+                row -> row["dimension"] == 4 && row["candidate_id"] == "seed",
+                ledger["candidate"],
+            ))
+            warm_row = only(filter(
+                row -> row["dimension"] == 8 && row["candidate_id"] == "warm",
+                ledger["candidate"],
+            ))
+            absent_predecessor = (false, 0, 0, "absent", "absent", "absent")
+            @test predecessor_fields(alpha_row) == absent_predecessor
+            @test predecessor_fields(seed_row) == absent_predecessor
+            expected_predecessor = (
+                true,
+                4,
+                1,
+                "seed",
+                seed_row["directory"],
+                seed_row["state_sha256"],
+            )
+            @test predecessor_fields(warm_row) == expected_predecessor
+            warm_metadata_path = joinpath(
+                directory, warm_row["directory"], "candidate.toml"
+            )
+            warm_metadata = TOML.parsefile(warm_metadata_path)
+            @test predecessor_fields(warm_metadata) == expected_predecessor
 
             empty!(candidate_calls)
             empty!(load_calls)
@@ -6941,6 +7006,39 @@ if all(
             @test length(resumed.selections) == 2
             @test isempty(candidate_calls)
             @test isempty(load_calls)
+
+            warm_metadata["dimension_predecessor_candidate_id"] = "alpha"
+            warm_metadata["dimension_predecessor_directory"] =
+                alpha_row["directory"]
+            warm_metadata["dimension_predecessor_state_sha256"] =
+                alpha_row["state_sha256"]
+            open(warm_metadata_path, "w") do io
+                TOML.print(io, warm_metadata; sorted=true)
+            end
+            for key in (
+                "dimension_predecessor_candidate_id",
+                "dimension_predecessor_directory",
+                "dimension_predecessor_state_sha256",
+            )
+                warm_row[key] = warm_metadata[key]
+            end
+            warm_row["checksums"]["candidate.toml"] =
+                InfiniteCylinderDMRG._fig2_file_sha256(warm_metadata_path)
+            open(joinpath(directory, "ledger.toml"), "w") do io
+                TOML.print(io, ledger; sorted=true)
+            end
+            replay_error = fig2_argument_error_message() do
+                run_fig2_benchmark(
+                    spec,
+                    directory;
+                    stage="cross_dimension",
+                    dimensions=[4, 8],
+                    fluxes=[0.0],
+                    operations,
+                )
+            end
+            @test occursin("dimension predecessor", lowercase(replay_error))
+            @test occursin("selected checkpoint", lowercase(replay_error))
         end
     end
 
