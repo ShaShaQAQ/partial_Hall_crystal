@@ -193,6 +193,23 @@ end
         atol=1e-10,
         rtol=0,
     )
+
+    budget_limited = run_mpskit_vumps_refinement(
+        hamiltonian,
+        grown.state;
+        stage=2,
+        start_iteration=4,
+        requested_maxdim=8,
+        cutoff=1e-10,
+        vumps_maxiter=1,
+        galerkin_tol=1e-7,
+        energy_imag_tol=1e-12,
+        max_chunks=1,
+        stable_iterations=2,
+    )
+    @test !budget_limited.converged
+    @test length(budget_limited.records) == 1
+    @test only(budget_limited.records).iteration == 4
 end
 
 @testset "independent dimer product states reach the same energy" begin

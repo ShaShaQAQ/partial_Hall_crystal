@@ -43,9 +43,9 @@ struct MPSKitFig2ProgressEvent{S}
         )
         return new{typeof(state)}(
             Int(sequence),
-            :mpskit_stage,
+            record.kind,
             record.stage,
-            1,
+            record.iteration,
             record.requested_maxdim,
             state,
             record,
@@ -58,6 +58,8 @@ function _fig2_progress_event_payload(event::MPSKitFig2ProgressEvent)
     return Dict{String,Any}(
         "mpskit_stage_record" => Dict(
             "stage" => record.stage,
+            "iteration" => record.iteration,
+            "kind" => string(record.kind),
             "requested_maxdim" => record.requested_maxdim,
             "actual_maxdim" => record.actual_maxdim,
             "cutoff" => record.cutoff,
@@ -175,8 +177,18 @@ function _mpskit_fig2_record_from_progress(data)
     data isa AbstractDict || throw(
         ArgumentError("MPSKit progress stage record must be a table"),
     )
+    kind_data = get(data, "kind", nothing)
+    kind_data isa AbstractString || throw(
+        ArgumentError("MPSKit progress stage record kind must be a string"),
+    )
+    kind = Symbol(kind_data)
+    kind in (:idmrg2_vumps, :vumps_refinement) || throw(
+        ArgumentError("unsupported MPSKit progress stage record kind"),
+    )
     return MPSKitSolverStageRecord(
         Int(data["stage"]),
+        Int(data["iteration"]),
+        kind,
         Int(data["requested_maxdim"]),
         Int(data["actual_maxdim"]),
         Float64(data["cutoff"]),
@@ -224,15 +236,18 @@ function _mpskit_fig2_load_progress(
             ),
         )
     end
-    getproperty.(records, :stage) == collect(eachindex(records)) || throw(
-        ArgumentError("MPSKit progress stages are not contiguous"),
+    record_audit = _mpskit_fig2_validate_record_sequence(
+        records,
+        _fig2_maxdim_schedule(dimension),
     )
-    return merge(progress, (; records))
+    return merge(progress, (; records, record_audit))
 end
 
 function _mpskit_fig2_global_record(record, stage_offset::Integer)
     return MPSKitSolverStageRecord(
         record.stage + stage_offset,
+        record.iteration,
+        record.kind,
         record.requested_maxdim,
         record.actual_maxdim,
         record.cutoff,
@@ -247,23 +262,138 @@ function _mpskit_fig2_global_record(record, stage_offset::Integer)
     )
 end
 
-function _mpskit_fig2_convergence_rows(result, config, tolerance)
+function _mpskit_fig2_validate_record_sequence(records, maxdim_schedule)
+    schedule = Int.(maxdim_schedule)
+    isempty(schedule) && throw(
+        ArgumentError("MPSKit Fig. 2 maxdim schedule cannot be empty"),
+    )
+    completed_stages = 0
+    refinement_chunks = 0
+    previous_iteration = 0
+    for (index, record) in enumerate(records)
+        record.stage > 0 && record.iteration > 0 || throw(ArgumentError(
+            "MPSKit Fig. 2 record $index has a nonpositive stage or iteration",
+        ))
+        record.stage <= length(schedule) || throw(ArgumentError(
+            "MPSKit Fig. 2 record $index exceeds the maxdim schedule",
+        ))
+        record.requested_maxdim == schedule[record.stage] || throw(
+            ArgumentError(
+                "MPSKit Fig. 2 record $index target disagrees with its stage",
+            ),
+        )
+        0 < record.actual_maxdim <= record.requested_maxdim || throw(
+            ArgumentError(
+                "MPSKit Fig. 2 record $index has an invalid actual maxdim",
+            ),
+        )
+        if record.kind == :idmrg2_vumps
+            refinement_chunks == 0 || throw(ArgumentError(
+                "MPSKit Fig. 2 growth cannot follow refinement",
+            ))
+            record.stage == completed_stages + 1 || throw(ArgumentError(
+                "MPSKit Fig. 2 growth stages are not contiguous",
+            ))
+            record.iteration == 1 || throw(ArgumentError(
+                "MPSKit Fig. 2 growth records must use iteration one",
+            ))
+            completed_stages += 1
+            previous_iteration = 1
+        elseif record.kind == :vumps_refinement
+            completed_stages == length(schedule) || throw(ArgumentError(
+                "MPSKit Fig. 2 refinement began before growth completed",
+            ))
+            record.stage == completed_stages || throw(ArgumentError(
+                "MPSKit Fig. 2 refinement changed the final growth stage",
+            ))
+            record.iteration == previous_iteration + 1 || throw(
+                ArgumentError(
+                    "MPSKit Fig. 2 refinement iterations are not contiguous",
+                ),
+            )
+            refinement_chunks += 1
+            previous_iteration = record.iteration
+        else
+            throw(ArgumentError(
+                "unsupported MPSKit Fig. 2 record kind $(record.kind)",
+            ))
+        end
+    end
+    return (; completed_stages, refinement_chunks)
+end
+
+function _mpskit_fig2_record_passes(record, tolerance)
+    return isfinite(record.energy_per_site) &&
+        isfinite(record.energy_imaginary) &&
+        abs(record.energy_imaginary) <= 1e-10 &&
+        isfinite(record.recomputed_galerkin_residual) &&
+        record.recomputed_galerkin_residual <= tolerance
+end
+
+function _mpskit_fig2_trailing_stable_count(records, tolerance)
+    isempty(records) && return 0
+    final_stage = last(records).stage
+    count = 0
+    for record in Iterators.reverse(records)
+        record.stage == final_stage || break
+        _mpskit_fig2_record_passes(record, tolerance) || break
+        count += 1
+    end
+    return count
+end
+
+function _mpskit_fig2_result(
+    state,
+    hamiltonian,
+    records,
+    converged;
+    environments=nothing,
+)
+    isempty(records) && error("MPSKit Fig. 2 solver produced no records")
+    final_environments = isnothing(environments) ?
+        MPSKit.environments(state, hamiltonian, state) : environments
+    final = last(records)
+    dimensions = _mpskit_solver_link_dimensions(state)
+    return MPSKitSolverResult(
+        state,
+        final_environments,
+        records,
+        final.energy_per_site,
+        final.energy_imaginary,
+        final.vumps_residual,
+        final.recomputed_galerkin_residual,
+        dimensions,
+        converged,
+    )
+end
+
+function _mpskit_fig2_convergence_rows(
+    result,
+    config,
+    tolerance,
+    stable_iterations,
+)
     previous_energy = nothing
+    previous_stage = 0
+    stable_count = 0
+    final_stage = maximum(getproperty.(result.records, :stage))
     return [
         let
             energy = record.energy_per_site * sites_per_cell(config)
             delta = isnothing(previous_energy) ? "missing" :
                 abs(energy - previous_energy)
             previous_energy = energy
-            stage_converged =
-                isfinite(record.energy_per_site) &&
-                isfinite(record.energy_imaginary) &&
-                abs(record.energy_imaginary) <= 1e-10 &&
-                isfinite(record.recomputed_galerkin_residual) &&
-                record.recomputed_galerkin_residual <= tolerance
+            if record.stage != previous_stage
+                stable_count = 0
+                previous_stage = record.stage
+            end
+            stable_now = _mpskit_fig2_record_passes(record, tolerance)
+            stable_count = stable_now ? stable_count + 1 : 0
+            stage_converged = record.stage == final_stage &&
+                stable_count >= stable_iterations
             (
                 record.stage,
-                1,
+                record.iteration,
                 record.actual_maxdim,
                 energy,
                 energy,
@@ -359,6 +489,8 @@ function _mpskit_fig2_summary(
                 Float64(optimization["energy_mismatch_tol"]),
             "stable_iterations" => Int(optimization["stable_iterations"]),
             "max_iterations" => Int(optimization["max_iterations"]),
+            "max_refinement_chunks" =>
+                Int(optimization["max_refinement_chunks"]),
             "multisite_update_alg" =>
                 String(optimization["multisite_update_alg"]),
             "solver_tolerance_policy" =>
@@ -396,6 +528,7 @@ function _mpskit_fig2_write_solver_outputs!(
         result,
         config,
         tolerance,
+        Int(spec.data["optimization"]["stable_iterations"]),
     )
     contents = Dict{String,String}(
         "summary.toml" => _render_summary(summary),
@@ -466,15 +599,52 @@ function _validate_mpskit_fig2_convergence_tsv(
     contract = _fig2_convergence_optimization(optimization)
     schedule = Int.(summary_schedule)
     parsed = _parse_fig2_convergence_tsv(path)
-    length(parsed) == length(schedule) || throw(ArgumentError(
-        "MPSKit convergence.tsv must contain exactly one audited row per stage",
+    hasproperty(optimization, :max_refinement_chunks) || throw(ArgumentError(
+        "MPSKit convergence optimization is missing max_refinement_chunks",
+    ))
+    max_refinement_chunks = getproperty(
+        optimization, :max_refinement_chunks
+    )
+    max_refinement_chunks isa Integer &&
+        !(max_refinement_chunks isa Bool) &&
+        max_refinement_chunks > 0 || throw(ArgumentError(
+        "MPSKit max_refinement_chunks must be a positive integer",
+    ))
+    length(schedule) <= length(parsed) <=
+        length(schedule) + max_refinement_chunks || throw(ArgumentError(
+        "MPSKit convergence.tsv exceeds its growth/refinement row budget",
     ))
     previous_energy = nothing
-    for (stage, row) in enumerate(parsed)
-        row.stage == stage && row.iteration == 1 || throw(ArgumentError(
-            "MPSKit convergence.tsv stages must be contiguous single rows",
+    previous_stage = 0
+    expected_iteration = 1
+    stable_count = 0
+    converged_seen = false
+    refinement_rows = 0
+    for (row_number, row) in enumerate(parsed)
+        converged_seen && throw(ArgumentError(
+            "MPSKit convergence.tsv contains rows after convergence",
         ))
-        0 < row.maxlinkdim <= schedule[stage] || throw(ArgumentError(
+        if row.stage == previous_stage + 1
+            row.stage <= length(schedule) || throw(ArgumentError(
+                "MPSKit convergence.tsv stage exceeds its schedule",
+            ))
+            expected_iteration = 1
+            stable_count = 0
+        elseif row.stage == previous_stage
+            row.stage == length(schedule) || throw(ArgumentError(
+                "MPSKit convergence.tsv may refine only the final stage",
+            ))
+            expected_iteration += 1
+            refinement_rows += 1
+        else
+            throw(ArgumentError(
+                "MPSKit convergence.tsv stages are not contiguous",
+            ))
+        end
+        row.iteration == expected_iteration || throw(ArgumentError(
+            "MPSKit convergence.tsv iterations are not contiguous within a stage",
+        ))
+        0 < row.maxlinkdim <= schedule[row.stage] || throw(ArgumentError(
             "MPSKit convergence.tsv actual maxlinkdim exceeds its stage cap",
         ))
         _fig2_same_float(row.energy_left, row.energy_right) &&
@@ -482,7 +652,7 @@ function _validate_mpskit_fig2_convergence_tsv(
             "MPSKit convergence.tsv real energy copies are inconsistent",
         ))
         energy = (row.energy_left + row.energy_right) / 2
-        if stage == 1
+        if row_number == 1
             ismissing(row.delta_energy) || throw(ArgumentError(
                 "first MPSKit convergence row must use the missing delta sentinel",
             ))
@@ -506,14 +676,26 @@ function _validate_mpskit_fig2_convergence_tsv(
             "MPSKit convergence diagnostics must be finite and nonnegative",
         ))
         expected_converged =
+            row.stage == length(schedule) &&
             row.precision_error <= contract.vumps_tol &&
             row.energy_mismatch / energy_normalization_sites <
                 contract.energy_mismatch_tol
+        stable_count = expected_converged ? stable_count + 1 : 0
+        expected_converged = expected_converged &&
+            stable_count >= contract.stable_iterations
         row.converged == expected_converged || throw(ArgumentError(
             "MPSKit convergence flag disagrees with the recomputed Galerkin gate",
         ))
+        converged_seen = row.converged
+        previous_stage = row.stage
         previous_energy = energy
     end
+    previous_stage == length(schedule) || throw(ArgumentError(
+        "MPSKit convergence.tsv did not complete its growth schedule",
+    ))
+    refinement_rows <= max_refinement_chunks || throw(ArgumentError(
+        "MPSKit convergence.tsv exceeds max_refinement_chunks",
+    ))
     return last(parsed)
 end
 
@@ -553,6 +735,7 @@ function _mpskit_fig2_run_candidate(
     previous_state,
     candidate_directory;
     solver=run_mpskit_idmrg,
+    refiner=run_mpskit_vumps_refinement,
     build_hamiltonian=mpskit_infinite_hamiltonian,
 )
     snapshot = _fig2_validated_snapshot(spec)
@@ -574,45 +757,40 @@ function _mpskit_fig2_run_candidate(
     ) : progress.state
     prior_records = isnothing(progress) ? MPSKitSolverStageRecord[] :
         progress.records
-    completed_stages = length(prior_records)
-    completed_stages <= length(full_schedule) || throw(ArgumentError(
-        "MPSKit progress has more stages than the requested schedule",
-    ))
-    getproperty.(prior_records, :requested_maxdim) ==
-        full_schedule[1:completed_stages] || throw(ArgumentError(
-        "MPSKit progress schedule disagrees with the requested schedule",
-    ))
+    prior_audit = _mpskit_fig2_validate_record_sequence(
+        prior_records,
+        full_schedule,
+    )
+    completed_stages = prior_audit.completed_stages
     remaining_schedule = full_schedule[(completed_stages + 1):end]
     hamiltonian = build_hamiltonian(config, spec.model)
     optimization = snapshot["optimization"]
     resume_count = isnothing(progress) ? 0 : progress.next_resume_count
+    callback_sequence = Ref(0)
+    latest_environments = nothing
 
-    result = if isempty(remaining_schedule)
-        environments = MPSKit.environments(state, hamiltonian, state)
-        record = last(prior_records)
-        dimensions = _mpskit_solver_link_dimensions(state)
-        MPSKitSolverResult(
-            state,
-            environments,
-            prior_records,
-            record.energy_per_site,
-            record.energy_imaginary,
-            record.vumps_residual,
-            record.recomputed_galerkin_residual,
-            dimensions,
-            mpskit_solver_converged(;
-                idmrg_diagnostic=record.idmrg_diagnostic,
-                recomputed_galerkin_residual=
-                    record.recomputed_galerkin_residual,
-                energy_per_site=record.energy_per_site,
-                energy_imaginary=record.energy_imaginary,
-                final_stage_reached=true,
-                galerkin_tol=Float64(optimization["vumps_tol"]),
-                energy_imag_tol=1e-10,
-            ),
+    function persist_record(stage_state, record)
+        callback_sequence[] += 1
+        event = MPSKitFig2ProgressEvent(
+            callback_sequence[],
+            stage_state,
+            record,
         )
-    else
-        callback_sequence = Ref(0)
+        return _mpskit_fig2_persist_progress_event!(
+            spec,
+            candidate_directory,
+            dimension,
+            point,
+            phi_y,
+            candidate_id,
+            full_schedule,
+            event;
+            resume_count,
+        )
+    end
+
+    records = copy(prior_records)
+    if !isempty(remaining_schedule)
         local_result = solver(
             hamiltonian,
             state;
@@ -623,56 +801,93 @@ function _mpskit_fig2_run_candidate(
             galerkin_tol=Float64(optimization["vumps_tol"]),
             energy_imag_tol=1e-10,
             progress_callback=(stage_state, environments, records) -> begin
-                _ = environments
-                callback_sequence[] += 1
+                latest_environments = environments
                 global_record = _mpskit_fig2_global_record(
                     last(records),
                     completed_stages,
                 )
-                event = MPSKitFig2ProgressEvent(
-                    callback_sequence[],
-                    stage_state,
-                    global_record,
-                )
-                _mpskit_fig2_persist_progress_event!(
-                    spec,
-                    candidate_directory,
-                    dimension,
-                    point,
-                    phi_y,
-                    candidate_id,
-                    full_schedule,
-                    event;
-                    resume_count,
-                )
+                persist_record(stage_state, global_record)
             end,
         )
-        global_records = [
-            prior_records;
+        records = [
+            records;
             [_mpskit_fig2_global_record(record, completed_stages) for
              record in local_result.records]
         ]
-        MPSKitSolverResult(
-            local_result.state,
-            local_result.environments,
-            global_records,
-            local_result.energy_per_site,
-            local_result.energy_imaginary,
-            local_result.galerkin_residual,
-            local_result.recomputed_galerkin_residual,
-            local_result.link_dimensions,
-            local_result.converged,
-        )
+        state = local_result.state
+        latest_environments = local_result.environments
     end
 
-    isempty(result.records) && error("MPSKit Fig. 2 solver produced no stages")
+    record_audit = _mpskit_fig2_validate_record_sequence(
+        records,
+        full_schedule,
+    )
+    record_audit.completed_stages == length(full_schedule) || throw(
+        ArgumentError("MPSKit Fig. 2 growth schedule did not complete"),
+    )
+    tolerance = Float64(optimization["vumps_tol"])
+    stable_iterations = Int(optimization["stable_iterations"])
+    stable_count = _mpskit_fig2_trailing_stable_count(records, tolerance)
+    converged = stable_count >= stable_iterations
+    max_refinement_chunks = Int(optimization["max_refinement_chunks"])
+    remaining_refinement_chunks =
+        max_refinement_chunks - record_audit.refinement_chunks
+    remaining_refinement_chunks >= 0 || throw(ArgumentError(
+        "MPSKit progress exceeds the immutable refinement budget",
+    ))
+
+    if !converged && remaining_refinement_chunks > 0
+        required_stable_iterations = max(
+            stable_iterations - stable_count,
+            1,
+        )
+        refinement = refiner(
+            hamiltonian,
+            state;
+            stage=length(full_schedule),
+            start_iteration=last(records).iteration + 1,
+            requested_maxdim=last(full_schedule),
+            cutoff=Float64(optimization["cutoff"]),
+            vumps_maxiter=Int(optimization["max_iterations"]),
+            galerkin_tol=tolerance,
+            energy_imag_tol=1e-10,
+            max_chunks=remaining_refinement_chunks,
+            stable_iterations=required_stable_iterations,
+            progress_callback=(stage_state, environments, local_records) -> begin
+                latest_environments = environments
+                persist_record(stage_state, last(local_records))
+            end,
+        )
+        state = refinement.state
+        latest_environments = refinement.environments
+        records = [records; refinement.records]
+        record_audit = _mpskit_fig2_validate_record_sequence(
+            records,
+            full_schedule,
+        )
+        stable_count = _mpskit_fig2_trailing_stable_count(
+            records,
+            tolerance,
+        )
+        converged = stable_count >= stable_iterations
+    end
+
+    result = _mpskit_fig2_result(
+        state,
+        hamiltonian,
+        records,
+        converged;
+        environments=latest_environments,
+    )
     checkpoint = joinpath(candidate_directory, "state.h5")
     checkpoint_metadata = (
         artifact="fig2_candidate",
         candidate_id=String(candidate_id),
         dimension=Int(dimension),
         point=Int(point),
-        completed_stages=length(result.records),
+        completed_stages=record_audit.completed_stages,
+        refinement_chunks=record_audit.refinement_chunks,
+        record_count=length(result.records),
         requested_maxdim=Int(dimension),
         achieved_maxlinkdim=maximum(result.link_dimensions),
         recomputed_galerkin_residual=result.recomputed_galerkin_residual,
@@ -832,6 +1047,7 @@ end
 function mpskit_fig2_operations(
     spec::Fig2BenchmarkSpec;
     solver=run_mpskit_idmrg,
+    refiner=run_mpskit_vumps_refinement,
     provenance=_mpskit_fig2_provenance,
     candidate_ids=_default_fig2_candidate_ids,
     build_hamiltonian=mpskit_infinite_hamiltonian,
@@ -851,6 +1067,7 @@ function mpskit_fig2_operations(
         run_candidate=(args...) -> _mpskit_fig2_run_candidate(
             args...;
             solver,
+            refiner,
             build_hamiltonian,
         ),
         load_state=_mpskit_fig2_load_state,

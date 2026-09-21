@@ -273,8 +273,8 @@ function run_mpskit_vumps_refinement(
         ArgumentError("energy_imag_tol must be finite and nonnegative")
     )
     max_chunks > 0 || throw(ArgumentError("max_chunks must be positive"))
-    0 < stable_iterations <= max_chunks || throw(
-        ArgumentError("stable_iterations must be between one and max_chunks")
+    stable_iterations > 0 || throw(
+        ArgumentError("stable_iterations must be positive")
     )
 
     state = initial_state

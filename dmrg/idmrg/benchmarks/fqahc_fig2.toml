@@ -1,4 +1,4 @@
-format = "fqahc_fig2_benchmark_v5"
+format = "fqahc_fig2_benchmark_v6"
 paper_title = "Generic integer and fractional quantum anomalous Hall crystals from interaction-driven band folding"
 paper_doi = "10.1103/mh3v-fb9w"
 paper_zotero_key = "A7PSUI68"
@@ -81,6 +81,7 @@ transfer_tol = 1.0e-8
 momentum_residual_tol = 1.0e-6
 max_iterations = 50
 stable_iterations = 2
+max_refinement_chunks = 8
 
 [pilot]
 maxdims = [32, 64, 128]

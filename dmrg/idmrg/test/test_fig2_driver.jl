@@ -26,7 +26,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
 
 @testset "immutable Fig. 2 benchmark manifest" begin
     manifest = TOML.parsefile(FIG2_MANIFEST_PATH)
-    @test manifest["format"] == "fqahc_fig2_benchmark_v5"
+    @test manifest["format"] == "fqahc_fig2_benchmark_v6"
     @test manifest["backend"] == Dict(
         "id" => "mpskit_idmrg_v1",
         "mpskit_commit" =>
@@ -100,6 +100,7 @@ struct Fig2WarmScheduleCaptured <: Exception end
         "momentum_residual_tol" => 1.0e-6,
         "max_iterations" => 50,
         "stable_iterations" => 2,
+        "max_refinement_chunks" => 8,
     )
     @test manifest["pilot"] == Dict(
         "maxdims" => [32, 64, 128],
@@ -198,6 +199,7 @@ end
         "max_iterations" => 51,
         "stable_iterations" => 3,
         "progress_generations_to_keep" => 3,
+        "max_refinement_chunks" => 9,
     )
     for (key, value) in optimization_alternatives
         @testset "optimization.$key" begin
@@ -1223,7 +1225,7 @@ if all(
 
     @testset "Fig. 2 manifest snapshot rejects post-load runtime drift" begin
         @test TOML.parsefile(FIG2_MANIFEST_PATH)["format"] ==
-            "fqahc_fig2_benchmark_v5"
+            "fqahc_fig2_benchmark_v6"
 
         function drift_error(tamper::Function, action::Function)
             spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
@@ -1652,6 +1654,7 @@ if all(
             "energy_tol" => 1.0e-6,
             "energy_mismatch_tol" => 1.0e-6,
             "stable_iterations" => 2,
+            "max_refinement_chunks" => 8,
         )
         merge!(summary_optimization, summary_optimization_overrides)
         open(joinpath(directory, "summary.toml"), "w") do io
@@ -4042,6 +4045,17 @@ if all(
                     "stable_iterations" => 3,
                 )),
                 fragments=("summary", "stable_iterations", "manifest"),
+            ),
+            (
+                label="summary refinement budget disagrees with the manifest",
+                kwargs=(; summary_optimization_overrides=Dict(
+                    "max_refinement_chunks" => 9,
+                )),
+                fragments=(
+                    "summary",
+                    "max_refinement_chunks",
+                    "manifest",
+                ),
             ),
             (
                 label="restartable checkpoint disagrees with in-memory maxlinkdim",

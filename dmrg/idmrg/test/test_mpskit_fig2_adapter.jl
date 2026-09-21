@@ -93,6 +93,77 @@ function mpskit_fig2_fixture_solver(
     )
 end
 
+function mpskit_fig2_fixture_refiner(
+    hamiltonian,
+    initial_state;
+    stage,
+    start_iteration,
+    requested_maxdim,
+    cutoff,
+    vumps_maxiter,
+    galerkin_tol,
+    energy_imag_tol=1e-10,
+    max_chunks,
+    stable_iterations,
+    verbosity=0,
+    progress_callback=(args...) -> nothing,
+)
+    _ = (
+        cutoff,
+        vumps_maxiter,
+        galerkin_tol,
+        energy_imag_tol,
+        verbosity,
+    )
+    max_chunks >= stable_iterations || throw(ArgumentError(
+        "fixture refinement budget is too small",
+    ))
+    environments = MPSKit.environments(
+        initial_state,
+        hamiltonian,
+        initial_state,
+    )
+    energy = ComplexF64(MPSKit.expectation_value(
+        initial_state,
+        hamiltonian,
+        environments,
+    )) / length(initial_state)
+    dimensions = InfiniteCylinderDMRG._mpskit_solver_link_dimensions(
+        initial_state
+    )
+    records = MPSKitSolverStageRecord[]
+    for offset in 0:(stable_iterations - 1)
+        push!(records, MPSKitSolverStageRecord(
+            stage,
+            start_iteration + offset,
+            :vumps_refinement,
+            requested_maxdim,
+            maximum(dimensions),
+            Float64(cutoff),
+            0,
+            vumps_maxiter,
+            real(energy),
+            imag(energy),
+            0.0,
+            0.0,
+            0.0,
+            0.01,
+        ))
+        progress_callback(initial_state, environments, copy(records))
+    end
+    return MPSKitSolverResult(
+        initial_state,
+        environments,
+        records,
+        real(energy),
+        imag(energy),
+        0.0,
+        0.0,
+        dimensions,
+        true,
+    )
+end
+
 function mpskit_fig2_fixture_provenance(spec, output, runtime_seconds)
     active_project = abspath(Base.active_project())
     project_manifest = joinpath(dirname(active_project), "Manifest.toml")
@@ -156,6 +227,7 @@ end
                 energy_tol=1.0e-6,
                 energy_mismatch_tol=1.0e-6,
                 stable_iterations=2,
+                max_refinement_chunks=8,
             ),
             energy_normalization_sites=36,
         )
@@ -168,7 +240,7 @@ end
 
 @testset "production backend manifest contract" begin
     manifest = TOML.parsefile(MPSKIT_FIG2_MANIFEST_PATH)
-    @test get(manifest, "format", "") == "fqahc_fig2_benchmark_v5"
+    @test get(manifest, "format", "") == "fqahc_fig2_benchmark_v6"
     @test get(manifest, "backend", nothing) == EXPECTED_MPSKIT_FIG2_BACKEND
 
     spec = try
@@ -185,7 +257,7 @@ end
 
 @testset "backend selection fails closed" begin
     baseline = TOML.parsefile(MPSKIT_FIG2_MANIFEST_PATH)
-    baseline["format"] = "fqahc_fig2_benchmark_v5"
+    baseline["format"] = "fqahc_fig2_benchmark_v6"
     baseline["backend"] = deepcopy(EXPECTED_MPSKIT_FIG2_BACKEND)
 
     cases = [
@@ -562,6 +634,7 @@ end
     operations = mpskit_fig2_operations(
         spec;
         solver=interrupt_once_solver,
+        refiner=mpskit_fig2_fixture_refiner,
         provenance=mpskit_fig2_fixture_provenance,
         candidate_ids=(args...) -> [candidate_id],
     )
@@ -611,7 +684,7 @@ end
             joinpath(directory, operations.checkpoint_filename),
         )
         @test audit.complete
-        @test audit.event_count == 2
+        @test audit.event_count == 3
         @test audit.resume_count == 1
         @test audit.latest_maxlinkdim == evidence.achieved_maxlinkdim
         @test TOML.parsefile(joinpath(directory, "progress.toml"))[
@@ -632,6 +705,7 @@ end
         operations = mpskit_fig2_operations(
             spec;
             solver=mpskit_fig2_fixture_solver,
+            refiner=mpskit_fig2_fixture_refiner,
             provenance=mpskit_fig2_fixture_provenance,
             candidate_ids=(args...) -> [candidate_id],
         )
@@ -666,7 +740,7 @@ end
             convergence = readlines(joinpath(
                 candidate_directory, "convergence.tsv"
             ))
-            @test length(convergence) == 2
+            @test length(convergence) == 3
             @test first(convergence) ==
                 InfiniteCylinderDMRG.FIG2_ARTIFACT_HEADERS["convergence.tsv"]
             @test length(readlines(joinpath(
@@ -680,7 +754,7 @@ end
                 candidate_directory, "candidate.toml"
             ))
             @test candidate_metadata["restart_valid"]
-            @test only(ledger["candidate"])["progress_event_count"] == 1
+            @test only(ledger["candidate"])["progress_event_count"] == 2
             @test isfile(joinpath(directory, "pump_raw.tsv"))
             raw_rows = readlines(joinpath(directory, "pump_raw.tsv"))
             @test length(raw_rows) == 2

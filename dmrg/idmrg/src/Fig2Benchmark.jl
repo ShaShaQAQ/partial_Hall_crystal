@@ -1,4 +1,4 @@
-const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v5"
+const FIG2_MANIFEST_FORMAT = "fqahc_fig2_benchmark_v6"
 const FIG2_PRODUCTION_BACKEND_ID = "mpskit_idmrg_v1"
 const FIG2_LEGACY_BACKEND_ID = "itensor_infinite_mps_v1"
 const FIG2_LEGACY_BACKEND_ROLE = "diagnostic_only"
@@ -451,6 +451,16 @@ function _validate_fig2_manifest(data)
     stable_iterations == 2 || throw(
         ArgumentError("Fig. 2 optimization stable_iterations is not fixed")
     )
+    max_refinement_chunks = _fig2_positive_integer(
+        optimization,
+        "max_refinement_chunks",
+        "Fig. 2 optimization max_refinement_chunks",
+    )
+    max_refinement_chunks == 8 || throw(
+        ArgumentError(
+            "Fig. 2 optimization max_refinement_chunks is not fixed"
+        )
+    )
     progress_generations_to_keep = _fig2_positive_integer(
         optimization,
         "progress_generations_to_keep",
@@ -678,6 +688,9 @@ function _fig2_runner_optimization(
             ),
             max_iterations=Int(optimization["max_iterations"]),
             stable_iterations=Int(optimization["stable_iterations"]),
+            max_refinement_chunks=Int(
+                optimization["max_refinement_chunks"]
+            ),
         )
     end
     get(ENV, "IDMRG_FIG2_REAL_SMOKE", "0") == "1" || throw(ArgumentError(
@@ -709,6 +722,9 @@ function _fig2_runner_optimization(
         momentum_residual_tol=override.momentum_residual_tol,
         max_iterations=override.max_iterations,
         stable_iterations=override.stable_iterations,
+        max_refinement_chunks=Int(
+            snapshot["optimization"]["max_refinement_chunks"]
+        ),
     )
 end
 
@@ -3194,6 +3210,17 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
             "candidate summary optimization stable_iterations disagrees with the immutable manifest"
         )
     )
+    max_refinement_chunks = get(
+        optimization, "max_refinement_chunks", nothing
+    )
+    max_refinement_chunks isa Integer &&
+        !(max_refinement_chunks isa Bool) || throw(ArgumentError(
+        "candidate summary optimization max_refinement_chunks must be an integer"
+    ))
+    Int(max_refinement_chunks) == Int(expected["max_refinement_chunks"]) ||
+        throw(ArgumentError(
+            "candidate summary optimization max_refinement_chunks disagrees with the immutable manifest"
+        ))
     return (;
         multisite_update_alg=Symbol(multisite_update_alg),
         solver_tolerance_policy=String(solver_tolerance_policy),
@@ -3201,6 +3228,7 @@ function _fig2_summary_convergence_optimization(summary, snapshot)
         energy_tol=values[:energy_tol],
         energy_mismatch_tol=values[:energy_mismatch_tol],
         stable_iterations=Int(stable_iterations),
+        max_refinement_chunks=Int(max_refinement_chunks),
     )
 end
 
