@@ -1,5 +1,7 @@
 struct MPSKitSolverStageRecord
     stage::Int
+    iteration::Int
+    kind::Symbol
     requested_maxdim::Int
     actual_maxdim::Int
     cutoff::Float64
@@ -11,6 +13,38 @@ struct MPSKitSolverStageRecord
     vumps_residual::Float64
     recomputed_galerkin_residual::Float64
     elapsed_seconds::Float64
+end
+
+function MPSKitSolverStageRecord(
+    stage::Int,
+    requested_maxdim::Int,
+    actual_maxdim::Int,
+    cutoff::Float64,
+    idmrg_maxiter::Int,
+    vumps_maxiter::Int,
+    energy_per_site::Float64,
+    energy_imaginary::Float64,
+    idmrg_diagnostic::Float64,
+    vumps_residual::Float64,
+    recomputed_galerkin_residual::Float64,
+    elapsed_seconds::Float64,
+)
+    return MPSKitSolverStageRecord(
+        stage,
+        1,
+        :idmrg2_vumps,
+        requested_maxdim,
+        actual_maxdim,
+        cutoff,
+        idmrg_maxiter,
+        vumps_maxiter,
+        energy_per_site,
+        energy_imaginary,
+        idmrg_diagnostic,
+        vumps_residual,
+        recomputed_galerkin_residual,
+        elapsed_seconds,
+    )
 end
 
 struct MPSKitSolverResult{S,E}
@@ -200,5 +234,150 @@ function run_mpskit_idmrg(
         final_record.recomputed_galerkin_residual,
         link_dimensions,
         converged,
+    )
+end
+
+function run_mpskit_vumps_refinement(
+    hamiltonian,
+    initial_state;
+    stage::Int,
+    start_iteration::Int,
+    requested_maxdim::Int,
+    cutoff::Real,
+    vumps_maxiter::Int,
+    galerkin_tol::Real,
+    energy_imag_tol::Real=1e-10,
+    max_chunks::Int,
+    stable_iterations::Int,
+    verbosity::Int=0,
+    progress_callback=(state, environments, records) -> nothing,
+)
+    length(initial_state) == length(hamiltonian) || throw(
+        ArgumentError("state and Hamiltonian unit-cell lengths do not match")
+    )
+    stage > 0 || throw(ArgumentError("stage must be positive"))
+    start_iteration > 0 || throw(
+        ArgumentError("start_iteration must be positive")
+    )
+    requested_maxdim > 0 || throw(
+        ArgumentError("requested_maxdim must be positive")
+    )
+    isfinite(cutoff) && cutoff > 0 || throw(
+        ArgumentError("cutoff must be finite and positive")
+    )
+    vumps_maxiter > 0 || throw(ArgumentError("vumps_maxiter must be positive"))
+    isfinite(galerkin_tol) && galerkin_tol > 0 || throw(
+        ArgumentError("galerkin_tol must be finite and positive")
+    )
+    isfinite(energy_imag_tol) && energy_imag_tol >= 0 || throw(
+        ArgumentError("energy_imag_tol must be finite and nonnegative")
+    )
+    max_chunks > 0 || throw(ArgumentError("max_chunks must be positive"))
+    0 < stable_iterations <= max_chunks || throw(
+        ArgumentError("stable_iterations must be between one and max_chunks")
+    )
+
+    state = initial_state
+    final_environments = MPSKit.environments(
+        state,
+        hamiltonian,
+        state,
+    )
+    records = MPSKitSolverStageRecord[]
+    stable_count = 0
+    local_eigsolve = KrylovKit.Lanczos(;
+        tol=min(Float64(cutoff), Float64(galerkin_tol)),
+        maxiter=200,
+        eager=true,
+        krylovdim=30,
+        verbosity=0,
+    )
+
+    for chunk in 1:max_chunks
+        started = time_ns()
+        environments = MPSKit.environments(state, hamiltonian, state)
+        algorithm = MPSKit.VUMPS(;
+            tol=Float64(galerkin_tol),
+            maxiter=vumps_maxiter,
+            verbosity,
+            alg_eigsolve=local_eigsolve,
+        )
+        state, _, returned_residual = MPSKit.find_groundstate(
+            state,
+            hamiltonian,
+            algorithm,
+            environments,
+        )
+        final_environments = MPSKit.environments(
+            state,
+            hamiltonian,
+            state,
+        )
+        recomputed_residual = MPSKit.calc_galerkin(
+            state,
+            hamiltonian,
+            state,
+            final_environments,
+        )
+        energy = ComplexF64(
+            MPSKit.expectation_value(
+                state,
+                hamiltonian,
+                final_environments,
+            ) / length(state),
+        )
+        link_dimensions = _mpskit_solver_link_dimensions(state)
+        maximum(link_dimensions) <= requested_maxdim || throw(
+            ArgumentError(
+                "refinement state exceeds requested_maxdim=$requested_maxdim",
+            )
+        )
+        elapsed_seconds = (time_ns() - started) / 1e9
+        push!(
+            records,
+            MPSKitSolverStageRecord(
+                stage,
+                start_iteration + chunk - 1,
+                :vumps_refinement,
+                requested_maxdim,
+                maximum(link_dimensions),
+                Float64(cutoff),
+                0,
+                vumps_maxiter,
+                real(energy),
+                imag(energy),
+                0.0,
+                Float64(returned_residual),
+                Float64(recomputed_residual),
+                elapsed_seconds,
+            ),
+        )
+        progress_callback(state, final_environments, records)
+
+        stable = mpskit_solver_converged(;
+            idmrg_diagnostic=0.0,
+            recomputed_galerkin_residual=Float64(recomputed_residual),
+            energy_per_site=real(energy),
+            energy_imaginary=imag(energy),
+            final_stage_reached=true,
+            galerkin_tol,
+            energy_imag_tol,
+        )
+        stable_count = stable ? stable_count + 1 : 0
+        stable_count >= stable_iterations && break
+    end
+
+    final_record = last(records)
+    link_dimensions = _mpskit_solver_link_dimensions(state)
+    return MPSKitSolverResult(
+        state,
+        final_environments,
+        records,
+        final_record.energy_per_site,
+        final_record.energy_imaginary,
+        final_record.vumps_residual,
+        final_record.recomputed_galerkin_residual,
+        link_dimensions,
+        stable_count >= stable_iterations,
     )
 end

@@ -136,6 +136,65 @@ end
     @test isapprox(refined_energy, result.energy_per_site; atol=1e-10, rtol=0)
 end
 
+@testset "same-dimension VUMPS refinement is stable and checkpointable" begin
+    _, hamiltonian, initial_state = exact_dimer_solver_fixture([1, 3])
+    grown = run_mpskit_idmrg(
+        hamiltonian,
+        initial_state;
+        maxdim_schedule=[4, 8],
+        cutoff=1e-10,
+        idmrg_maxiter=20,
+        vumps_maxiter=50,
+        galerkin_tol=1e-7,
+    )
+    @test grown.converged
+
+    callbacks = Any[]
+    refined = run_mpskit_vumps_refinement(
+        hamiltonian,
+        grown.state;
+        stage=2,
+        start_iteration=2,
+        requested_maxdim=8,
+        cutoff=1e-10,
+        vumps_maxiter=1,
+        galerkin_tol=1e-7,
+        energy_imag_tol=1e-12,
+        max_chunks=3,
+        stable_iterations=2,
+        progress_callback=(state, environments, records) -> push!(
+            callbacks,
+            (
+                state=state,
+                environments=environments,
+                records=copy(records),
+            ),
+        ),
+    )
+
+    @test refined.converged
+    @test length(refined.records) == 2
+    @test getproperty.(refined.records, :stage) == [2, 2]
+    @test getproperty.(refined.records, :iteration) == [2, 3]
+    @test getproperty.(refined.records, :kind) ==
+        [:vumps_refinement, :vumps_refinement]
+    @test getproperty.(refined.records, :requested_maxdim) == [8, 8]
+    @test all(
+        record -> record.recomputed_galerkin_residual <= 1e-7,
+        refined.records,
+    )
+    @test length(callbacks) == 2
+    @test length(first(callbacks).records) == 1
+    @test length(last(callbacks).records) == 2
+    @test refined.recomputed_galerkin_residual <= 1e-7
+    @test isapprox(
+        refined.energy_per_site,
+        grown.energy_per_site;
+        atol=1e-10,
+        rtol=0,
+    )
+end
+
 @testset "independent dimer product states reach the same energy" begin
     _, hamiltonian, first_state = exact_dimer_solver_fixture([1, 3])
     _, _, second_state = exact_dimer_solver_fixture([2, 4])
