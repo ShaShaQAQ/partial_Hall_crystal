@@ -4201,6 +4201,15 @@ if all(
                     restart_valid=true,
                 )
             end,
+            load_state=(spec, dimension, point, selection, checkpoint) -> begin
+                _ = (spec, checkpoint)
+                return (;
+                    source=:checkpoint,
+                    dimension,
+                    point,
+                    candidate_id=selection.candidate_id,
+                )
+            end,
         )
         run_fig2_benchmark(
             spec,
@@ -6814,6 +6823,124 @@ if all(
                 fluxes=[0.0, 6pi],
                 operations,
             )
+        end
+    end
+
+    @testset "higher bond dimension starts from the selected predecessor checkpoint" begin
+        mktempdir() do directory
+            spec = load_fig2_benchmark(FIG2_MANIFEST_PATH)
+            candidate_calls = NamedTuple[]
+            load_calls = NamedTuple[]
+            operations = Fig2BenchmarkOperations(
+                checkpoint_audit=synthetic_checkpoint_audit,
+                progress_audit=synthetic_progress_audit,
+                provenance=synthetic_fig2_provenance,
+                candidate_ids=(spec, dimension, point, previous) -> begin
+                    _ = (spec, point, previous)
+                    dimension == 4 ? ["seed"] : ["warm"]
+                end,
+                run_candidate=(spec, dimension, point, phi_y, candidate_id,
+                               previous_state, candidate_directory) -> begin
+                    push!(candidate_calls, (;
+                        dimension,
+                        point,
+                        candidate_id,
+                        previous_state,
+                    ))
+                    energy = dimension == 4 ? -1.0 : -1.1
+                    raw_polarization = dimension == 4 ? 0.20 : 0.21
+                    sectors = synthetic_sector_weights_for_polarization(
+                        raw_polarization
+                    )
+                    write_fake_candidate_files(
+                        candidate_directory,
+                        "dimension=$dimension,candidate=$candidate_id";
+                        requested_maxdim=dimension,
+                        summary_energy_per_site=energy,
+                        sector_weights=sectors,
+                    )
+                    momentum = synthetic_counting_momentum()
+                    counting = InfiniteCylinderDMRG._fig2_momentum_counting(
+                        spec, momentum
+                    )
+                    return Fig2CandidateEvidence(;
+                        state=(; source=:fresh, dimension, candidate_id),
+                        requested_maxdim=dimension,
+                        achieved_maxlinkdim=dimension,
+                        converged=true,
+                        valid=true,
+                        energy_per_site=energy,
+                        raw_schmidt_polarization=raw_polarization,
+                        sector_weights=sectors,
+                        fidelity_to_previous=NaN,
+                        fidelity_valid=false,
+                        mixed_fidelity=nothing,
+                        momentum,
+                        momentum_counting=counting.counts,
+                        momentum_counting_evidence=counting,
+                        restart_valid=true,
+                    )
+                end,
+                load_state=(spec, dimension, point, selection, checkpoint) -> begin
+                    _ = spec
+                    push!(load_calls, (;
+                        dimension,
+                        point,
+                        candidate_id=selection.candidate_id,
+                        checkpoint,
+                    ))
+                    return (;
+                        source=:checkpoint,
+                        dimension,
+                        point,
+                        candidate_id=selection.candidate_id,
+                    )
+                end,
+            )
+
+            first_run = run_fig2_benchmark(
+                spec,
+                directory;
+                stage="cross_dimension",
+                dimensions=[4, 8],
+                fluxes=[0.0],
+                operations,
+            )
+            @test [(row.dimension, row.candidate_id) for
+                   row in first_run.selections] == [(4, "seed"), (8, "warm")]
+            @test length(candidate_calls) == 2
+            @test isnothing(candidate_calls[1].previous_state)
+            @test candidate_calls[2].previous_state == (;
+                source=:checkpoint,
+                dimension=4,
+                point=1,
+                candidate_id="seed",
+            )
+            @test length(load_calls) == 1
+            @test load_calls[1].dimension == 4
+            @test load_calls[1].point == 1
+            @test load_calls[1].candidate_id == "seed"
+            @test endswith(load_calls[1].checkpoint, joinpath(
+                "D_0004", "phi_0000", "candidate_seed", "state.h5"
+            ))
+
+            ledger = TOML.parsefile(joinpath(directory, "ledger.toml"))
+            @test length(ledger["candidate"]) == 2
+            @test length(ledger["selection"]) == 2
+
+            empty!(candidate_calls)
+            empty!(load_calls)
+            resumed = run_fig2_benchmark(
+                spec,
+                directory;
+                stage="cross_dimension",
+                dimensions=[4, 8],
+                fluxes=[0.0],
+                operations,
+            )
+            @test length(resumed.selections) == 2
+            @test isempty(candidate_calls)
+            @test isempty(load_calls)
         end
     end
 

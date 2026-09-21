@@ -4842,9 +4842,26 @@ function run_fig2_benchmark(
         checkpoint_filename,
     )
     selections = Fig2Selection[]
+    previous_dimension_first_selection = nothing
     for dimension in dims
         previous_state = nothing
         previous_selection = nothing
+        first_selection_key = (dimension, firstindex(phis))
+        if !isnothing(previous_dimension_first_selection) &&
+                !haskey(persisted_selections, first_selection_key)
+            checkpoint = joinpath(
+                root,
+                previous_dimension_first_selection.directory,
+                checkpoint_filename,
+            )
+            previous_state = operations.load_state(
+                spec,
+                previous_dimension_first_selection.dimension,
+                previous_dimension_first_selection.point,
+                previous_dimension_first_selection,
+                checkpoint,
+            )
+        end
         for (point, phi_y) in enumerate(phis)
             selection_key = (dimension, point)
             persisted_candidate_ids = String[
@@ -4872,6 +4889,8 @@ function run_fig2_benchmark(
                     ArgumentError("persisted selection has no complete candidate row")
                 )
                 push!(selections, selection)
+                point == firstindex(phis) &&
+                    (previous_dimension_first_selection = selection)
                 previous_selection = selection
                 previous_state = nothing
                 continue
@@ -4997,6 +5016,8 @@ function run_fig2_benchmark(
             persisted_selections[selection_key] = last(ledger["selection"])
             _write_fig2_toml(joinpath(root, "ledger.toml"), ledger)
             _write_fig2_pump_tables(spec, root, selections)
+            point == firstindex(phis) &&
+                (previous_dimension_first_selection = selection)
             previous_selection = selection
             previous_state = selected.evidence.state
             if isnothing(previous_state)
