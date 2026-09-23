@@ -896,6 +896,208 @@ FQAHC 候选态；光电导进一步给出其中 current-active 中性激发的�
 光电导本身不能确认五重拓扑部分，仍需结合上述拓扑诊断。
 
 \clearpage
+\section{Np=13 的两组 30-site full ED 结果}
+
+下面新增的两组数据都来自 30-site 倾斜环面上的 full ED。共同参数是
+Np=13（13/30 filling）、\(t_1=1\)、\(t_3=0.2\)，并采用
+\texttt{corrected lattice convention}。Hilbert 空间按动量扇区分解，
+每扇区保留 8 能级；候选流形为扇区 0:14 各 1 态，共 15 态。
+能谱和结构因子直接由 full ED 保存的波函数计算。以下每个参数点都先给出
+能谱和静态结构因子，再给出光学响应；因此光学峰的解释始终以同一批 ED 波函数为准。
+
+\subsection{强耦合 Np=13 参数点：能谱与结构因子}
+
+本小节采用 \(V_1=100,V_2=V_3=0\)，并保持上述
+30-site 倾斜环面、\(N_p=13\) 和 corrected lattice convention。全局基态能量为
+\[
+  E_0=892.7693923475454 .
+\]
+候选 15 态流形的宽度为 \(0.11898243171037848\)，第 15 到第 16 态的间隔为
+\(0.20949350939918077\)。保存的能级满足最大本征方程残差
+\(4.93366\times10^{-12}\)。图中的每个点都是每个动量扇区 full ED 求得的本征值，
+并以全局 \(E_0\) 作相对能量；因此图中低能带首先回答的是 15 态流形是否隔离，
+而不是光学峰的位置。
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_np13_strong_manybody_spectrum.png}
+\caption{Np=13 强耦合参数点的 30-site full ED 能谱。每个扇区由 ED 保存最低
+8 个能级，左图显示全能窗，右图放大扇区 0:14 的候选流形；红色标记 15 态，
+蓝灰色标记更高能级。15 态宽度为 \(0.11898243171037848\)，第 15--16 态间隔为
+\(0.20949350939918077\)，所以图示的低能带确实是有限尺寸的候选流形。}
+\label{fig:phc30-np13-strong-spectrum}
+\end{figure}
+
+对扇区 0:14 的 15 个 full ED 基态分别计算静态结构因子，再作等权平均。
+这里仍使用原胞归一化 \(1/N_{\mathrm{uc}}\) 和 corrected lattice convention
+的 Fourier 网格；没有使用 DMRG。平均曲线在 \(q=5,10\) 的主峰相同，
+\[
+  \overline{N(q=5)}=\overline{N(q=10)}=1.321613404399,
+\]
+15 个扇区的峰高范围为 \(1.081443970873\text{--}1.579102752688\)。
+因此结构因子给出周期三晶体序的直接静态信号，但零通量能谱和结构因子本身不能
+单独确证拓扑序；强耦合点在此只作为与温和参数点比较的候选流形数据。
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/optical_response/phc30_np13_strong_structure_factor.png}
+\caption{Np=13 强耦合候选流形的结构因子。彩色细线是扇区 0:14 各自的 full ED
+基态结果，黑色粗线是 15 态等权平均；\(q=5,10\) 的等高峰是周期三密度序的
+静态结论，阴影范围表示 \(1.081443970873\text{--}1.579102752688\) 的扇区差异。}
+\label{fig:phc30-np13-strong-structure-factor}
+\end{figure}
+
+\subsection{Np=13 强耦合参数点：光学响应}
+
+每个扇区基态 \(\lvert g_k\rangle\) 的光学响应由
+\(QJ_x\lvert g_k\rangle\) 作为源向量的 response-Lanczos/resolvent 计算，
+取 \(\eta=0.065\)、\(M=600\)，最后对 15 态等权平均。这里 response-Lanczos
+只是 Hilbert 空间太大时无需显式求出所有激发态即可计算频率响应的 ED 算法，
+不是 DMRG 动力学；\(J_x\) 保持晶格总动量，所以峰只来自 same-sector、
+current-active 中性激发。全频率网格上的最大光学响应残差为
+\(5.506057888005199\times10^{-12}\)。
+
+平均 regular 实部的主峰为
+\[
+  \omega=1.200,\qquad
+  \operatorname{Re}\overline{\sigma_{xx}^{\mathrm{reg}}}=3.773389760031857 .
+\]
+同一平均谱还可见 \(\omega=1.416\)（峰高 \(2.05082509\)）以及低频
+\(\omega=0.216\)（峰高 \(0.902612709\)）；各扇区最强峰的位置为
+\(1.160--1.428\)，峰高为 \(3.44686--6.96221\)。这些是 current-active
+中性激发的谱权重，不是完整 many-body gap。四幅图的算法和读法分别是：
+regular 实部显示 \(\eta\) 展宽后的有限频率吸收，regular 虚部显示同一 resolvent
+的色散响应，total 实部在 regular 吸收上加入 Drude 展宽项，total 虚部则包含
+对应的反应性 Drude 极点；四图均画 15 态平均和扇区范围。
+
+有限 torus 固定 twist 曲率得到的 Drude 统计为
+\[
+  \operatorname{mean}(D_{xx})=-1.923004722924851,\qquad
+  \operatorname{std}(D_{xx})=0.8082451494173644,
+\]
+最小/最大值为 \(-2.919037372848053/-1.092715887328596\)。这里的负 Drude
+只按有限 torus 固定 twist 曲率报告，不能解释为热力学负 Drude weight。
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_strong_sigma_xx_regular_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\)：\(\eta=0.065\) 展宽吸收。}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_strong_sigma_xx_regular_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{reg}}\)：同一 ED resolvent 的色散。}
+\end{subfigure}
+\par\medskip
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_strong_sigma_xx_total_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{total}}\)：吸收加 Drude 展宽项。}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_strong_sigma_xx_total_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\)：含 Drude 反应性极点。}
+\end{subfigure}
+\caption{Np=13 强耦合的四幅光电导图。每条细线由相应扇区基态的
+response-Lanczos ED（\(M=600\)）独立得到，黑线为 15 态等权平均，灰带为扇区
+极值；主峰 \(1.200\) 是 same-sector、current-active 中性激发，而不是完整 gap。}
+\label{fig:phc30-np13-strong-optical}
+\end{figure}
+
+\subsection{温和参数 Np=13 参数点：能谱与结构因子}
+
+温和参数点取 \(V_1=10,V_2=V_3=2\)，其余几何、填充和 hopping 参数与上小节完全
+相同。全局基态能量为 \(E_0=157.19949322891767\)。扇区 0:14 各一态组成
+候选 15 态流形，流形宽度为 \(0.1780098138966082\)，第 15 到第 16 态间隔为
+\(0.25265895492933055\)；保存态的最大 spectrum residual 为
+\(6.36322\times10^{-13}\)。这组结果仍是 full ED：图中的能级来自每扇区保存的
+最低 8 个本征值，波函数用于下方结构因子和光学响应。
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.96\linewidth]{figures/optical_response/phc30_np13_moderate_manybody_spectrum.png}
+\caption{Np=13 温和参数点的 30-site full ED 能谱。每个扇区保留 8 个能级，
+红点标记扇区 0:14 各一态的 15 态候选流形，蓝灰点为其余能级；图中标出的
+\(0.1780098138966082\) 是流形宽度，\(0.25265895492933055\) 是第 15--16 态间隔。}
+\label{fig:phc30-np13-moderate-spectrum}
+\end{figure}
+
+用同一批 15 个 full ED 基态计算静态结构因子并等权平均。平均主峰为
+\[
+  \overline{N(q=5)}=\overline{N(q=10)}=1.076334465756,
+\]
+15 个扇区的主峰范围为
+\[
+  0.819697952425\text{--}1.376882017093,
+\]
+次峰在 \(q=6,9\)，平均值为 \(0.388442756221\)。因此温和点也显示周期三
+晶体序；然而这只是零通量静态证据，不能单独确证拓扑序，故称为 FQAHC 候选。
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=0.82\linewidth]{figures/optical_response/phc30_np13_moderate_structure_factor.png}
+\caption{Np=13 温和候选流形的结构因子。细线来自扇区 0:14 各自的 full ED
+基态，黑线是 15 态等权平均；\(q=5,10\) 主峰及 \(q=6,9\) 次峰分别给出
+周期三晶体序和其余有限尺寸结构，扇区主峰范围为
+\(0.819697952425\text{--}1.376882017093\)。}
+\label{fig:phc30-np13-moderate-structure-factor}
+\end{figure}
+
+\subsection{Np=13 温和参数点：光学响应}
+
+响应算法与强耦合点相同：对每个 sector 的 \(J_x\lvert g_k\rangle\) 做
+response-Lanczos/resolvent，\(\eta=0.065\)、\(M=600\)，再作 15 态等权平均；
+最大 optical residual 为 \(8.287294881631763\times10^{-13}\)。由于电流算符
+保持动量，图中峰仍只属于 same-sector、current-active 中性激发，response-Lanczos
+不需要显式求出所有激发态，也不是 DMRG。
+
+平均 regular 实部的主峰为
+\[
+  \omega=1.562,\qquad
+  \operatorname{Re}\overline{\sigma_{xx}^{\mathrm{reg}}}=8.69526118214673 .
+\]
+另外可见 \(\omega=1.392\)（峰高 \(6.16009960\)）和
+\(\omega=2.412\)（峰高 \(0.715658572\)）；各扇区最强峰位置为
+\(1.384--1.598\)，峰高为 \(8.93081--15.13362\)。它们是 same-sector 的
+current-active optical peaks，而不是完整 many-body gap。四幅图仍按相同算法
+区分 regular 实部吸收、regular 虚部色散、加入 Drude 的 total 实部以及含
+反应性 Drude 极点的 total 虚部。
+
+固定 twist 的 Drude 曲率统计为
+\[
+  \operatorname{mean}(D_{xx})=-4.38000670699518,\qquad
+  \operatorname{std}(D_{xx})=0.4861527438891664,
+\]
+范围为 \(-4.888351330592577/-3.370946817502301\)。负号只表示有限 torus
+固定 twist 曲率，不能外推为热力学负 Drude weight。零通量能谱、结构因子和
+光电导均不能单独确认五重拓扑部分，仍需 flux insertion 或 many-body Chern number。
+
+\begin{figure}[p]
+\centering
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_moderate_sigma_xx_regular_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{reg}}\)：\(\eta=0.065\) 展宽吸收。}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_moderate_sigma_xx_regular_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{reg}}\)：ED resolvent 色散。}
+\end{subfigure}
+\par\medskip
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_moderate_sigma_xx_total_real.png}
+  \caption{\(\operatorname{Re}\sigma_{xx}^{\mathrm{total}}\)：regular 加 Drude。}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+  \includegraphics[width=\linewidth]{figures/optical_response/phc30_np13_moderate_sigma_xx_total_imag.png}
+  \caption{\(\operatorname{Im}\sigma_{xx}^{\mathrm{total}}\)：含反应性 Drude。}
+\end{subfigure}
+\caption{Np=13 温和候选流形的四幅光电导图。每条细线由单一 sector 的
+response-Lanczos ED 独立计算，黑线为 15 态等权平均，灰带为 sector 极值，
+并另标出 \(k=0,5,10\) 代表线。平均主峰 \(1.562\) 来自 same-sector、
+current-active 中性激发。}
+\label{fig:phc30-np13-moderate-optical}
+\end{figure}
+
+\clearpage
 \subsection{可以比较与不能直接比较的内容}
 
 \begin{table}[h]
